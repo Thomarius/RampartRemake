@@ -82,7 +82,7 @@ export class Hud {
     this.bannerRoot.replaceChildren(banner);
   }
 
-  update(state: MatchState, humanPlayer: number): void {
+  update(state: MatchState, humanPlayer: number, status = ''): void {
     const waiting = state.phase === 'intermission';
     const shown = waiting ? (state.pendingPhase ?? state.phase) : state.phase;
     const secondsLeft = Math.max(0, (state.phaseEndTick - state.tick) / state.ruleset.tickRateHz);
@@ -147,6 +147,7 @@ export class Hud {
       ${queue}
       ${cannonCount}
       <div class="hint">${PHASE_HINT[state.phase]}</div>
+      ${status ? `<div class="net">${status}</div>` : ''}
       ${banner}
     `;
   }

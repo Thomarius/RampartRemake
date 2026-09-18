@@ -707,6 +707,46 @@ The real cost of keeping two styles is not the abstraction but the discipline �
 renderer feature from here is built and verified twice. That is a deliberate tax, accepted
 because the minimal look is a shipping option rather than scaffolding.
 
+## 10c. How the netcode actually works
+
+The server never sends the board during play. It sends **the actions it applied and the
+tick they landed on**, and every client replays them into its own simulation. This is only
+sound because the simulation is deterministic, which is why M1 spent effort on exact
+integer square roots and a hand-written sine: those were not pedantry, they are what makes
+this design safe.
+
+```
+client intent ──► server validates against the same rules everyone runs
+                     │
+                     ├─ accepted ──► broadcast commit { tick, actions }
+                     └─ refused  ──► rejected { action, reason }  (to the sender only)
+```
+
+A client may advance its simulation to `tick + 1` on receiving commit `tick`, and never
+further: the server never assigns an action to a tick it has already stepped past, so a
+confirmed tick is final. The client therefore cannot display something that did not
+happen. The cost is that a player's own action appears after one round trip — well under
+the flight time of a cannonball, and far cheaper than local prediction with rollback.
+
+**The hash is not a nicety.** Every 30 ticks the server includes a state fingerprint.
+A client that disagrees has desynced, and says so rather than quietly drifting. The
+integration suite runs whole matches between in-process clients and asserts zero
+mismatches; an end-to-end run over real sockets reported 299 commits, 10 hash checks and
+0 desyncs across two clients.
+
+**Terrain is never transmitted.** A snapshot carries the seed, the ruleset and the
+dynamic layers run-length encoded; the terrain and the piece sequence are regenerated.
+The ruleset travelling with the snapshot matters: a client running different rules would
+desync rather than merely look wrong.
+
+**Authority over identity.** The server overwrites the `player` field of every incoming
+action with the sender's own seat, so a client cannot act for someone else by writing a
+different id. There is a test that tries exactly that.
+
+**Disconnects.** A dropped seat is played by a bot after a grace period, so one dead
+connection cannot stall the table. The seat is held, not freed: presenting the token
+reclaims it and the returning player is sent a snapshot of the board as it now stands.
+
 ## 11. Deferred (explicitly out of scope for v1)
 
 Team modes (2v2), quick-match / matchmaking queue, accounts and persistence, ranking,

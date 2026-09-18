@@ -1,5 +1,5 @@
 import { defaultRuleset, defaultTerrainConfig, type Ruleset } from '@rampart/config';
-import { stopgapAction } from './opponent.js';
+import { stopgapAction } from '@rampart/ai';
 
 import {
   Rng,

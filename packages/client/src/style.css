@@ -311,3 +311,62 @@ body {
   border-color: var(--edge);
   color: var(--muted);
 }
+
+/* ---------- lobby and network ---------- */
+
+.menu input[type='text'] {
+  width: 8rem;
+}
+
+.split {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+
+.split span {
+  color: var(--muted);
+}
+
+.split button,
+.split input {
+  margin: 0;
+  flex: 1;
+}
+
+.menu button.quiet {
+  margin-top: 0.5rem;
+  border-color: var(--edge);
+  color: var(--muted);
+}
+
+.seats {
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+
+.seats li {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--edge);
+}
+
+.seats li.you {
+  color: var(--accent);
+}
+
+.seats em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 11px;
+}
+
+.net {
+  position: absolute;
+  right: 1rem;
+  bottom: 0.75rem;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}

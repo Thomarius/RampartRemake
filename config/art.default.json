@@ -1,5 +1,5 @@
 {
-  "style": "flat",
+  "style": "pixel",
   "tileSizePx": 16,
   "atlasSizePx": 2048,
   "pixelSnap": true,

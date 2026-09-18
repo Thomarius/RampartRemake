@@ -30,7 +30,8 @@ npm start -w @rampart/headless -- --matches 20 --players 3
 # Print a generated map as ASCII
 npm start -w @rampart/headless -- --map --players 4 --seed 11
 
-npm start   -w @rampart/server     # load and cross-validate config from disk
+npm run build -w @rampart/client   # the server serves the built client
+npm start   -w @rampart/server     # play online at http://localhost:8080
 npm run dev -w @rampart/client     # play a local match at http://localhost:5173
 ```
 

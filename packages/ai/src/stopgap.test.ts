@@ -11,7 +11,7 @@ import {
 } from '@rampart/sim';
 import { describe, expect, it } from 'vitest';
 
-import { stopgapAction } from './opponent.js';
+import { stopgapAction } from './stopgap.js';
 
 type Driver = (state: MatchState, playerId: number, rng: Rng) => Action | null;
 
