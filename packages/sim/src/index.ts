@@ -12,4 +12,5 @@ export * from './placement.js';
 export * from './shots.js';
 export * from './match.js';
 export * from './playout.js';
+export * from './testing.js';
 export * from './debug.js';

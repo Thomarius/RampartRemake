@@ -20,5 +20,6 @@
   "snapshot": {
     "onPhaseChange": true,
     "keepaliveIntervalMs": 15000
-  }
+  },
+  "botDifficulty": "gunner"
 }

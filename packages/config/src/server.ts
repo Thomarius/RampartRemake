@@ -24,6 +24,9 @@ export const ServerConfigSchema = z.strictObject({
     botTakeoverDelayMs: z.number().int().nonnegative(),
   }),
 
+  /** Skill of the bots that fill empty seats and cover dropped players. */
+  botDifficulty: z.enum(['recruit', 'gunner', 'marshal']),
+
   snapshot: z.strictObject({
     onPhaseChange: z.boolean(),
     keepaliveIntervalMs: z.number().int().positive(),

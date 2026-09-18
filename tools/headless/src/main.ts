@@ -3,11 +3,16 @@ import { fileURLToPath } from 'node:url';
 
 import { validateConfigBundle } from '@rampart/config';
 import { loadConfigBundle } from '@rampart/config/node';
+import { Bot, DIFFICULTIES, type Difficulty } from '@rampart/ai';
 import {
+  Rng,
+  applyAction,
+  createMatch,
+  drainEvents,
   generateTerrain,
   hashMatchState,
-  recordRandomPlayout,
   renderAscii,
+  step,
   type MatchState,
 } from '@rampart/sim';
 
@@ -25,10 +30,18 @@ interface Args {
   seed: number;
   maxTicks: number;
   map: boolean;
+  difficulty: Difficulty;
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { matches: 20, players: 3, seed: 1, maxTicks: 120_000, map: false };
+  const args: Args = {
+    matches: 20,
+    players: 3,
+    seed: 1,
+    maxTicks: 150_000,
+    map: false,
+    difficulty: 'gunner',
+  };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     const value = argv[i + 1];
@@ -49,12 +62,17 @@ function parseArgs(argv: string[]): Args {
         args.maxTicks = Number(value);
         i++;
         break;
+      case '--difficulty':
+        if (DIFFICULTIES.includes(value as Difficulty)) args.difficulty = value as Difficulty;
+        i++;
+        break;
       case '--map':
         args.map = true;
         break;
       case '--help':
         console.log(
-          'usage: npm start -w @rampart/headless -- [--matches N] [--players N] [--seed N] [--max-ticks N] [--map]',
+          'usage: npm start -w @rampart/headless -- [--matches N] [--players N] [--seed N] ' +
+            `[--max-ticks N] [--difficulty ${DIFFICULTIES.join('|')}] [--map]`,
         );
         process.exit(0);
     }
@@ -97,28 +115,41 @@ if (args.map) {
 }
 
 console.log(
-  `running ${args.matches} match(es), ${args.players} players, ` +
+  `running ${args.matches} match(es), ${args.players} ${args.difficulty} bots, ` +
     `${bundle.terrain.gridWidth}x${bundle.terrain.gridHeight} grid\n`,
 );
 
 const started = Date.now();
 const outcomes = new Map<string, number>();
+let refusedTotal = 0;
 let totalTicks = 0;
 let totalRounds = 0;
 let unfinished = 0;
 
 for (let i = 0; i < args.matches; i++) {
   const seed = args.seed + i;
-  const { state } = recordRandomPlayout(
-    {
-      seed,
-      ruleset: bundle.ruleset,
-      terrainConfig: bundle.terrain,
-      players: Array.from({ length: args.players }, (_, p) => ({ name: `bot${p}`, isBot: true })),
-    },
+  const state = createMatch({
     seed,
-    args.maxTicks,
-  );
+    ruleset: bundle.ruleset,
+    terrainConfig: bundle.terrain,
+    players: Array.from({ length: args.players }, (_, p) => ({
+      name: `${args.difficulty}${p}`,
+      isBot: true,
+    })),
+  });
+  const rng = new Rng(seed);
+  const bots = state.players.map((p) => new Bot(p.id, args.difficulty));
+  let refused = 0;
+
+  while (state.phase !== 'game_over' && state.tick < args.maxTicks) {
+    for (const player of state.players) {
+      const action = bots[player.id]?.think(state, rng) ?? null;
+      if (action !== null && applyAction(state, action) !== null) refused++;
+    }
+    step(state);
+    drainEvents(state);
+  }
+  if (refused > 0) refusedTotal += refused;
 
   const outcome = describeOutcome(state);
   outcomes.set(outcome, (outcomes.get(outcome) ?? 0) + 1);
@@ -142,7 +173,15 @@ console.log(
 for (const [outcome, count] of [...outcomes].sort((a, b) => b[1] - a[1])) {
   console.log(`  ${String(count).padStart(4)}  ${outcome}`);
 }
-if (unfinished > 0) {
-  console.error(`\n${unfinished} match(es) did not finish within ${args.maxTicks} ticks`);
+// A bot asking for something the rules refuse is a bug in the bot: everything it
+// proposes is derived from the state it was just handed.
+if (refusedTotal > 0) {
+  console.error(`\n${refusedTotal} action(s) were refused by the rules`);
   process.exit(1);
+}
+if (unfinished > 0) {
+  console.error(
+    `\n${unfinished} match(es) did not finish within ${args.maxTicks} ticks. ` +
+      `Two evenly matched defenders can hold each other off indefinitely.`,
+  );
 }

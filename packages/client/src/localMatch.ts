@@ -1,5 +1,5 @@
 import { defaultRuleset, defaultTerrainConfig, type Ruleset } from '@rampart/config';
-import { stopgapAction } from '@rampart/ai';
+import { Bot, type Difficulty } from '@rampart/ai';
 
 import {
   Rng,
@@ -20,6 +20,7 @@ export interface LocalMatchOptions {
   /** Which seat the person at the keyboard occupies. */
   humanPlayer: number;
   ruleset?: Ruleset;
+  difficulty?: Difficulty;
 }
 
 /**
@@ -34,6 +35,7 @@ export class LocalMatch {
   readonly state: MatchState;
   readonly humanPlayer: number;
   private readonly rng: Rng;
+  private readonly bots = new Map<number, Bot>();
   private readonly tickMs: number;
   private accumulator = 0;
   private events: MatchEvent[] = [];
@@ -50,6 +52,10 @@ export class LocalMatch {
       })),
     });
     this.humanPlayer = options.humanPlayer;
+    for (const player of this.state.players) {
+      if (player.id === options.humanPlayer) continue;
+      this.bots.set(player.id, new Bot(player.id, options.difficulty ?? 'gunner'));
+    }
     this.rng = new Rng(options.seed ^ 0x5f3759df);
     this.tickMs = 1000 / ruleset.tickRateHz;
   }
@@ -93,7 +99,9 @@ export class LocalMatch {
     while (this.state.phase !== phase && this.state.tick < maxTicks && !this.finished) {
       for (const player of this.state.players) {
         if (player.eliminated) continue;
-        const action = stopgapAction(this.state, player.id, this.rng);
+        const action =
+          this.bots.get(player.id)?.think(this.state, this.rng) ??
+          new Bot(player.id, 'gunner').think(this.state, this.rng);
         if (action !== null) applyAction(this.state, action);
       }
       step(this.state);
@@ -104,7 +112,7 @@ export class LocalMatch {
   private stepOnce(): void {
     for (const player of this.state.players) {
       if (player.id === this.humanPlayer || player.eliminated) continue;
-      const action = stopgapAction(this.state, player.id, this.rng);
+      const action = this.bots.get(player.id)?.think(this.state, this.rng) ?? null;
       if (action !== null) applyAction(this.state, action);
     }
     step(this.state);

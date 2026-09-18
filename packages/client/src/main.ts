@@ -110,7 +110,7 @@ function showMenu(): void {
         <input id="code" type="text" maxlength="8" placeholder="room code" />
         <button id="join">Join</button>
       </div>
-      <p class="note">Offline opponents play legal moves without a plan — real bots arrive in M5.</p>
+      <p class="note">Empty seats are filled by bots.</p>
     </div>
   `;
   const styleField = document.querySelector<HTMLSelectElement>('#style');

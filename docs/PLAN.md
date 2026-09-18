@@ -520,27 +520,71 @@ Music: `music_lobby`, `music_combat`, `music_build`, `music_gameover`.
 ## 8. `packages/ai`
 
 ```ts
-interface Bot {
-  think(state: MatchState, playerId: number, budgetMs: number): Action[];
+class Bot {
+  constructor(playerId: number, difficulty: Difficulty)
+  think(state: MatchState, rng: Rng): Action | null
 }
 ```
 
-Bots run server-side on a throttled schedule and consume exactly the same validated action
-API as human players — they cannot cheat by construction.
+Bots go through exactly the same validated action API as a person, so they cannot cheat
+by construction — and they never ask for anything the rules refuse, which the soak run
+asserts.
 
-- **Combat**: score enemy wall tiles by criticality. Cheap heuristic — prefer tiles adjacent
-  to existing breaches (widen rather than scatter), and tiles on the shortest loop segment.
-  Higher difficulties use articulation-point analysis on the wall graph and lead their aim
-  using flight time.
-- **Build**: compute breaches in the current loop, then find the cheapest wall additions
-  that seal at least one castle (BFS over candidate closure paths). Place toward that goal
-  with the piece in hand; fall back to widening the safest pocket.
-- **Cannon place**: interior tiles, spread out, biased toward the shore facing the
-  currently weakest opponent.
-- **Difficulty tiers** (3): reaction delay, aim jitter, planning depth, whether flight-time
-  leading is modelled.
+### Sealing is a minimum cut
 
----
+The bot does not follow a shape. It asks for the cheapest wall that exists.
+
+Enclosure is an escape flood from the map border across non-wall tiles, so sealing a
+castle means cutting every such path. Give each tile the player could build on capacity
+one, everything else that cannot be built on infinite capacity, and the **minimum cut
+between the border and the castle is the smallest wall that works**. Existing walls are
+simply absent from the graph, so their value is counted without any special case.
+
+The graph is built over the bot's own island alone — a few hundred tiles rather than
+6400 — because water is all connected to the border, so every tile where the island meets
+the sea is an entry point hanging off the source. That is exact, not an approximation, and
+it made the solver **37x faster**: 7.8s per match to 211ms.
+
+This is precisely what the stopgap lacked. It rebuilt the ring it was handed, which is the
+one shape guaranteed to be expensive. A bot that asks for the cheapest loop instead hugs
+the coast, reuses whatever survived the barrage, and abandons a ring no longer worth
+holding.
+
+**Unfillable gaps.** A cut tile with no free neighbours cannot be filled, since the
+smallest piece is three cells and pieces may not overlap — the M2 geometry problem. When
+no legal placement reaches a tile the bot marks it unusable and replans, and the cut
+routes around it. Adding this was the difference between dying in round 2 and enclosing
+all three castles by round 4.
+
+### Attacking is a shortest path
+
+A 0-1 breadth-first search from the border to an enemy castle, free across open ground and
+costing one per wall block, finds **the thinnest part of their defence**. Its wall tiles
+are what to shoot. Scattering fire over a wall achieves nothing; concentrating it on four
+blocks in a line opens a breach.
+
+### Difficulty
+
+| | recruit | gunner | marshal |
+|---|---|---|---|
+| Aim | mostly random | usually the weak point | almost always the weak point |
+| Target | random opponent | the strongest | the strongest |
+| Castle choice | random | cheapest to wall | cheapest to wall |
+| Ambition | 1 castle | 1 castle | up to 2 |
+| Replans every | 60 ticks | 30 | 15 |
+
+Measured over 14 seeds head to head: marshal beats recruit 12-0, gunner beats recruit 8-3,
+and marshal beats gunner 7-6. The top two are close, which is honest — the gap between
+them is aim quality and replanning rate, not a difference in kind.
+
+**Ambition has to be bounded.** An earlier marshal tried to wall all three castles at
+once and *lost* to gunner: the blocks to build a wall are a one-off, but its length is a
+bill that arrives every round under fire. Valuing a castle too highly makes a bot reach
+for everything and lose the lot.
+
+**Matches can still stalemate**, in roughly one in twenty: two evenly matched defenders
+hold each other off and nothing in the rules forces escalation. It is a property of the
+design rather than a fault in the bot, and worth revisiting in the balance pass.
 
 ## 9. Testing
 

@@ -1,5 +1,5 @@
 import type { Ruleset, ServerConfig, TerrainConfig } from '@rampart/config';
-import { stopgapAction } from '@rampart/ai';
+import { Bot, type Difficulty } from '@rampart/ai';
 import {
   ActionSchema,
   captureSnapshot,
@@ -72,6 +72,8 @@ export class Room {
   private readonly rng: Rng;
 
   private state: MatchState | null = null;
+  /** One per seat, created when the match starts: a bot keeps a plan between ticks. */
+  private bots = new Map<number, Bot>();
   private accumulatorMs = 0;
   private pending: { seat: Seat; action: Action }[] = [];
   private hostId = 0;
@@ -206,6 +208,9 @@ export class Room {
       players: this.seats.map((seat) => ({ name: seat.name, isBot: seat.bot })),
     });
 
+    const difficulty = this.options.server.botDifficulty as Difficulty;
+    for (const seat of this.seats) this.bots.set(seat.playerId, new Bot(seat.playerId, difficulty));
+
     this.broadcastRoom();
     for (const seat of this.seats) this.sendSnapshot(seat);
   }
@@ -240,7 +245,7 @@ export class Room {
     for (const seat of this.seats) {
       const playsItself = seat.bot || (seat.connection === null && seat.graceTicks === 0);
       if (!playsItself) continue;
-      const action = stopgapAction(state, seat.playerId, this.rng);
+      const action = this.bots.get(seat.playerId)?.think(state, this.rng) ?? null;
       if (action !== null && applyAction(state, action) === null) applied.push(action);
     }
 

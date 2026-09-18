@@ -25,7 +25,7 @@ The game is playable locally against stopgap opponents; there is no network or a
 
 ```bash
 # Run bot-vs-bot matches with no renderer, and print outcomes and state hashes
-npm start -w @rampart/headless -- --matches 20 --players 3
+npm start -w @rampart/headless -- --matches 20 --players 3 --difficulty marshal
 
 # Print a generated map as ASCII
 npm start -w @rampart/headless -- --map --players 4 --seed 11
