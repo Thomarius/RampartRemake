@@ -1,4 +1,5 @@
 {
+  "style": "flat",
   "tileSizePx": 16,
   "atlasSizePx": 2048,
   "pixelSnap": true,
@@ -28,9 +29,27 @@
     "uiInvalid": "#d8404a"
   },
   "players": [
-    { "name": "crimson", "base": "#c8283c", "light": "#f0607a", "dark": "#7a1424", "hueRotate": 0 },
-    { "name": "azure", "base": "#2860c8", "light": "#60a0f0", "dark": "#143a7a", "hueRotate": 215 },
-    { "name": "amber", "base": "#d8a028", "light": "#f0d060", "dark": "#8a6014", "hueRotate": 45 },
+    {
+      "name": "crimson",
+      "base": "#c8283c",
+      "light": "#f0607a",
+      "dark": "#7a1424",
+      "hueRotate": 0
+    },
+    {
+      "name": "azure",
+      "base": "#2860c8",
+      "light": "#60a0f0",
+      "dark": "#143a7a",
+      "hueRotate": 215
+    },
+    {
+      "name": "amber",
+      "base": "#d8a028",
+      "light": "#f0d060",
+      "dark": "#8a6014",
+      "hueRotate": 45
+    },
     {
       "name": "viridian",
       "base": "#28a868",
@@ -81,5 +100,13 @@
       "sizePx": 20,
       "spinMsPerRevolution": 3000
     }
+  },
+  "flat": {
+    "landAlpha": 0.55,
+    "territoryAlpha": 0.3,
+    "structureInsetPx": 1,
+    "outlineWidthPx": 2,
+    "castleCoreScale": 0.45,
+    "cannonBoreScale": 0.34
   }
 }

@@ -8,7 +8,7 @@ import {
   type MatchState,
 } from '@rampart/sim';
 
-import type { Ghost, Scene } from './scene.js';
+import type { Ghost, Scene } from './render/scene.js';
 
 /**
  * Pointer and keyboard handling.

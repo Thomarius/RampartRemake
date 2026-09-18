@@ -1,10 +1,16 @@
-import { defaultConfigBundle, validateConfigBundle } from '@rampart/config';
+import {
+  ArtStyleSchema,
+  defaultArtConfig,
+  defaultConfigBundle,
+  validateConfigBundle,
+  type ArtStyle,
+} from '@rampart/config';
 import { PHASES, type MatchEvent, type Phase } from '@rampart/sim';
 
 import { Controls } from './controls.js';
 import { Hud } from './hud.js';
 import { LocalMatch } from './localMatch.js';
-import { Scene } from './scene.js';
+import { Scene, createTheme } from './render/scene.js';
 
 /**
  * M2: the simulation, in a browser, with placeholder rectangles.
@@ -46,6 +52,7 @@ globalThis.addEventListener('unhandledrejection', (event) =>
 interface Setup {
   players: number;
   seed: number;
+  style: ArtStyle;
 }
 
 function showMenu(onStart: (setup: Setup) => void): void {
@@ -62,20 +69,35 @@ function showMenu(onStart: (setup: Setup) => void): void {
         </select>
       </label>
       <label>Seed <input id="seed" type="number" value="1" min="0" step="1" /></label>
+      <label>Style
+        <select id="style">
+          <option value="flat">Minimal</option>
+          <option value="pixel">Pixel art</option>
+        </select>
+      </label>
       <button id="start">Start match</button>
       <p class="note">Opponents play legal moves without a plan — real bots arrive in M5.</p>
     </div>
   `;
+  const styleField = document.querySelector<HTMLSelectElement>('#style');
+  if (styleField) styleField.value = preferredStyle;
+
   const start = document.querySelector<HTMLButtonElement>('#start');
   start?.addEventListener('click', () => {
     onStart({
       players: Number(document.querySelector<HTMLSelectElement>('#players')?.value ?? 3),
       seed: Number(document.querySelector<HTMLInputElement>('#seed')?.value ?? 1),
+      style: ArtStyleSchema.catch(defaultArtConfig.style).parse(styleField?.value),
     });
   });
 }
 
 const params = new URLSearchParams(globalThis.location.search);
+
+/** ?style=flat|pixel overrides the configured default. */
+const preferredStyle: ArtStyle = ArtStyleSchema.catch(defaultArtConfig.style).parse(
+  params.get('style'),
+);
 
 /** Dev only: ?speed=20 runs the clock faster, to reach a later phase quickly. */
 const timeScale = Math.max(1, Number(params.get('speed') ?? 1));
@@ -89,7 +111,7 @@ async function runMatch(setup: Setup): Promise<void> {
 
   const match = new LocalMatch({ seed: setup.seed, playerCount: setup.players, humanPlayer: 0 });
   const scene = new Scene();
-  await scene.init(canvas);
+  await scene.init(canvas, createTheme(setup.style));
 
   const hud = new Hud(hudRoot, bannerRoot);
   const controls = new Controls(canvas, scene, match.state, match.humanPlayer, (action) => {
@@ -225,6 +247,7 @@ if (params.get('autostart') === '1') {
   void runMatch({
     players: Number(params.get('players') ?? 3),
     seed: Number(params.get('seed') ?? 1),
+    style: preferredStyle,
   }).catch((error: unknown) => showError('Failed to start match', error));
 } else {
   showMenu((setup) => {

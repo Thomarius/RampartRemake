@@ -42,8 +42,31 @@ export const PlayerPaletteSchema = z.strictObject({
 });
 export type PlayerPalette = z.infer<typeof PlayerPaletteSchema>;
 
+/**
+ * Visual styles are interchangeable implementations of one renderer interface.
+ * `flat` is the minimal look: solid colour, no textures, no atlas to generate.
+ */
+export const ArtStyleSchema = z.enum(['flat', 'pixel']);
+export type ArtStyle = z.infer<typeof ArtStyleSchema>;
+
+export const FlatStyleSchema = z.strictObject({
+  /** Opacity of the island tint, which is what makes ownership readable. */
+  landAlpha: z.number().min(0).max(1),
+  territoryAlpha: z.number().min(0).max(1),
+  /** Gap left around each structure tile, so walls read as blocks rather than a mass. */
+  structureInsetPx: z.number().int().nonnegative(),
+  outlineWidthPx: z.number().int().positive(),
+  /** Inner mark that distinguishes a castle keep from a plain block, as a fraction of the tile. */
+  castleCoreScale: z.number().min(0).max(1),
+  /** Bore of a cannon, as a fraction of its footprint. */
+  cannonBoreScale: z.number().min(0).max(1),
+});
+export type FlatStyleConfig = z.infer<typeof FlatStyleSchema>;
+
 export const ArtConfigSchema = z
   .strictObject({
+    style: ArtStyleSchema,
+    flat: FlatStyleSchema,
     tileSizePx: z.number().int().positive(),
     atlasSizePx: z.number().int().positive(),
     pixelSnap: z.boolean(),

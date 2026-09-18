@@ -5,7 +5,7 @@ opponents' castle walls, then race to rebuild your own with falling blocks befor
 next barrage. Fail to seal a castle and you are out. Last player standing wins.
 
 - Online play via shareable room codes, 2–4 players, AI filling any empty slot
-- All visual assets generated procedurally at runtime — no binary art in the repository
+- Interchangeable visual styles: a minimal flat look, and procedural art generated at runtime — no binary art in the repository
 - Authoritative server; the simulation is deterministic and shared by client, server and bots
 
 See [`docs/PLAN.md`](docs/PLAN.md) for the full design and implementation plan.
@@ -35,7 +35,8 @@ npm run dev -w @rampart/client     # play a local match at http://localhost:5173
 ```
 
 The client takes dev query parameters: `?autostart=1&players=4&seed=3` skips the menu,
-`&snapshot=build` jumps straight to a given phase, and `&speed=10` runs the clock faster.
+`&snapshot=build` jumps straight to a given phase, `&speed=10` runs the clock faster, and
+`&style=flat` picks a visual style (also available from the menu).
 
 ## Layout
 

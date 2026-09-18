@@ -563,7 +563,8 @@ API as human players — they cannot cheat by construction.
 | **M0** | Scaffold         | npm workspace, per-package tsconfigs, eslint/prettier, vitest, CI, all config files + zod schemas. **Done.**                                                                       |
 | **M1** | Sim core         | Terrain generation, enclosure solver, placement rules, shot resolution, phase state machine. Full match runs headless from a scripted input log. Determinism test green. **Done.** |
 | **M2** | Playable locally | Pixi client running the sim in-browser, no network. Placeholder rectangles. **This is the fun-check** — if the loop is not fun here, adjust rules before building anything else.   |
-| **M3** | Procedural art   | Full generator suite, atlas, animation, per-player palettes. The game looks like Rampart.                                                                                          |
+| **M3a** | Style abstraction | Renderer split into a scene that owns camera, layers and dirty tracking, and a theme that owns only appearance. The minimal style becomes the reference implementation, selectable from the menu and by URL. **Done.** |
+| **M3b** | Procedural art   | Full generator suite, atlas, animation, per-player palettes, implemented as a second theme. The game looks like Rampart. |
 | **M4** | Online           | ws server, room codes, authoritative loop, clock sync, reconnect + bot takeover. 2-player online match end to end.                                                                 |
 | **M5** | AI               | 3 difficulty tiers, bots fill empty slots, headless bot-vs-bot soak runs clean.                                                                                                    |
 | **M6** | Full scope       | 3–4 players, audio integration, HUD/menu polish, Docker, deployment.                                                                                                               |
@@ -650,6 +651,45 @@ could never be closed and not find out until the first resolution.
 Every castle must be a viable opening choice, so the generator rejects any layout where
 one castle's footprint intersects another's ring rectangle, and a test asserts that every
 castle on a map yields a complete, sealed ring when chosen.
+
+## 10b. Visual styles
+
+The renderer is split in two. The **scene** owns the Pixi application, the layer stack,
+the camera fit, the screen-to-tile mapping and the dirty tracking that decides when a
+repaint is needed. A **theme** owns only what things look like.
+
+Everything a theme needs is derived in the client from grid state it already has —
+neighbour bitmasks for autotiling, damage states, animation frames — so styles reach into
+neither the simulation nor the protocol. A second style costs its drawing code and
+nothing else.
+
+```
+Theme
+  init(layers, art)          prepare; a textured style generates its atlas here
+  drawTerrain(state, view)   static for the match
+  drawTerritory(state, view) on solver changes
+  drawStructures(state, view) on grid changes
+  drawEffects(state, view, frame)   every frame
+  drawOverlay(state, view, ghost, player)  every frame
+  noteImpact(x, y) / destroy()
+```
+
+**`flat`** — the minimal style: solid colour, hard edges, no textures and no atlas to
+generate. It began as placeholder art for M2 and is kept as a real option. Besides being
+a style in its own right it is the fallback when texture generation fails or is slow, the
+low-spec option, and by some distance the easiest thing to debug against: an enclosure or
+territory bug is obvious in flat colour and easy to miss under texture.
+
+**`pixel`** — the procedural style, built in M3b. Until it exists, selecting it falls back
+to `flat` rather than producing a black screen.
+
+Chosen by `art.style` in config, overridden by `?style=` and by the menu. The palette is
+shared: the minimal style's colours are the pixel style's colours, so the two cannot drift
+apart.
+
+The real cost of keeping two styles is not the abstraction but the discipline — every
+renderer feature from here is built and verified twice. That is a deliberate tax, accepted
+because the minimal look is a shipping option rather than scaffolding.
 
 ## 11. Deferred (explicitly out of scope for v1)
 
