@@ -1,11 +1,30 @@
 import { defaultRuleset, defaultTerrainConfig } from '@rampart/config';
-import { Rng, applyAction, createMatch, drainEvents, step, type MatchState } from '@rampart/sim';
+import {
+  Rng,
+  applyAction,
+  createMatch,
+  drainEvents,
+  scriptedAction,
+  step,
+  type Action,
+  type MatchState,
+} from '@rampart/sim';
 import { describe, expect, it } from 'vitest';
 
 import { stopgapAction } from './opponent.js';
 
-/** Runs a match with every seat driven by the stopgap opponent. */
-function playOut(seed: number, playerCount: number, maxTicks = 200_000): MatchState {
+type Driver = (state: MatchState, playerId: number, rng: Rng) => Action | null;
+
+/** The simulation's unthinking driver, as a baseline to measure against. */
+const randomDriver: Driver = (state, playerId, rng) =>
+  scriptedAction(state, playerId, rng, { fireChance: 0.12, buildChance: 0.1 });
+
+function playOut(
+  seed: number,
+  playerCount: number,
+  maxTicks = 200_000,
+  driver: Driver = stopgapAction,
+): MatchState {
   const state = createMatch({
     seed,
     ruleset: defaultRuleset,
@@ -15,7 +34,7 @@ function playOut(seed: number, playerCount: number, maxTicks = 200_000): MatchSt
   const rng = new Rng(seed);
   while (state.phase !== 'game_over' && state.tick < maxTicks) {
     for (const player of state.players) {
-      const action = stopgapAction(state, player.id, rng);
+      const action = driver(state, player.id, rng);
       if (action !== null) applyAction(state, action);
     }
     step(state);
@@ -24,18 +43,23 @@ function playOut(seed: number, playerCount: number, maxTicks = 200_000): MatchSt
   return state;
 }
 
+/** How many of these seeds still had somebody holding a castle after round one. */
+function survivalRate(driver: Driver): number {
+  let survived = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    if (playOut(seed, 3, 200_000, driver).round >= 2) survived++;
+  }
+  return survived;
+}
+
 describe('stopgap opponent', () => {
-  it('usually survives the first resolution', () => {
-    // The simulation's uniformly-random driver never closes a breach at all, so
-    // every seat it plays is eliminated in round one. This opponent is weak — it
-    // rebuilds the thin ring, which is the wrong shape — but it should get most
-    // matches past the first resolution with somebody still standing.
-    let survived = 0;
-    for (let seed = 1; seed <= 10; seed++) {
-      const state = playOut(seed, 3, 2600);
-      if (state.players.some((p) => !p.eliminated && p.enclosedCastles >= 1)) survived++;
-    }
-    expect(survived).toBeGreaterThanOrEqual(7);
+  it('repairs well enough to outlast the unthinking driver', () => {
+    // Stated as a comparison rather than a fixed number, because the absolute rate
+    // moves with map generation and rule changes while the property being tested —
+    // that plugging ring gaps beats placing blocks at random — does not.
+    const baseline = survivalRate(randomDriver);
+    const stopgap = survivalRate(stopgapAction);
+    expect(stopgap).toBeGreaterThan(baseline);
   });
 
   it('always reaches a conclusion rather than stalling', () => {

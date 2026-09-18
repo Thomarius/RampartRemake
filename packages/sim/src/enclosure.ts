@@ -10,6 +10,10 @@ import { Structure, type MatchState } from './types.js';
  *
  * Only walls block. Castles and cannons do not, which stops a player from parking a
  * cannon in a gap and calling the loop sealed.
+ *
+ * The flood is 8-connected while the wall is not, which is what forces a wall to turn
+ * its corners: the sea slips through a diagonal join, so two blocks meeting at a point
+ * do not seal and the corner block has to actually be there.
  */
 export interface EnclosureResult {
   /** 1 where a tile is reachable from the map border without crossing a wall. */

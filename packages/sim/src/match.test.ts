@@ -152,12 +152,19 @@ describe('round resolution', () => {
       if (state.islandId[i] !== 1) continue;
       const x = i % state.width;
       const y = (i - x) / state.width;
+      // Walls every land tile touching water, diagonals included. Orthogonal
+      // neighbours alone leave a band that a diagonal coastline lets the sea
+      // slip through, now that the escape flood is 8-connected.
       let coastal = false;
       for (const [ox, oy] of [
         [0, -1],
+        [1, -1],
         [1, 0],
+        [1, 1],
         [0, 1],
+        [-1, 1],
         [-1, 0],
+        [-1, -1],
       ] as const) {
         const nx = x + ox;
         const ny = y + oy;
@@ -491,5 +498,63 @@ describe('cannon placement phase', () => {
     );
     // It ended because there was no room, not because everything was placed.
     expect(state.players.some((p) => p.cannonsToPlace > 0)).toBe(true);
+  });
+});
+
+describe('starting rings', () => {
+  it('builds a complete, sealed ring for any castle a player picks', () => {
+    // A castle whose ring has a hole in it is a trap: the player commits to it and
+    // starts the match unenclosed. This went unnoticed while the escape flood was
+    // 4-connected, because a missing corner still sealed.
+    const ring = defaultTerrainConfig.startingWall.ringRadiusTiles;
+
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const probe = beginMatch(createMatch(options(3, seed)));
+      const mine = probe.castles.filter((c) => c.islandId === 1);
+      expect(mine).toHaveLength(defaultTerrainConfig.castles.perIsland);
+
+      for (const choice of mine) {
+        const state = beginMatch(createMatch(options(3, seed)));
+        expect(
+          applyAction(state, { kind: 'select_castle', player: 0, castleId: choice.id }),
+        ).toBeNull();
+
+        const x0 = choice.x - ring;
+        const y0 = choice.y - ring;
+        const x1 = choice.x + choice.w - 1 + ring;
+        const y1 = choice.y + choice.h - 1 + ring;
+
+        // Every tile of the perimeter, corners included, is wall.
+        for (let y = y0; y <= y1; y++) {
+          for (let x = x0; x <= x1; x++) {
+            if (x !== x0 && x !== x1 && y !== y0 && y !== y1) continue;
+            expect({ x, y, kind: state.structure[y * state.width + x] }).toEqual({
+              x,
+              y,
+              kind: Structure.Wall,
+            });
+          }
+        }
+
+        expect(computeEnclosure(state).enclosedCastlesByPlayer[0]).toBeGreaterThanOrEqual(1);
+      }
+    }
+  });
+
+  it('keeps every other castle clear of that ring', () => {
+    const ring = defaultTerrainConfig.startingWall.ringRadiusTiles;
+    for (const seed of [7, 11, 13]) {
+      const state = createMatch(options(4, seed));
+      for (const castle of state.castles) {
+        for (const other of state.castles) {
+          if (other.id === castle.id || other.islandId !== castle.islandId) continue;
+          const overlapsX =
+            other.x + other.w > castle.x - ring && other.x <= castle.x + castle.w - 1 + ring;
+          const overlapsY =
+            other.y + other.h > castle.y - ring && other.y <= castle.y + castle.h - 1 + ring;
+          expect(overlapsX && overlapsY).toBe(false);
+        }
+      }
+    }
   });
 });

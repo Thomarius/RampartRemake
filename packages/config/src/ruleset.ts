@@ -78,6 +78,11 @@ export const RulesetSchema = z
     enclosure: z.strictObject({
       /** False: the coastline gives you nothing, a full wall loop on land is required. */
       shorelineCountsAsWall: z.boolean(),
+      /**
+       * Connectivity of the escape flood, not of the wall. 8 means the sea slips
+       * through a diagonal join, so a sealing wall must be a 4-connected loop and
+       * has to include its corners. 4 would let a diagonal step stand in for one.
+       */
       connectivity: z.union([z.literal(4), z.literal(8)]),
       /** One sealed region holding K castles counts as K. */
       sharedRegionCountsAllCastles: z.boolean(),

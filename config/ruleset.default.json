@@ -84,7 +84,7 @@
   },
   "enclosure": {
     "shorelineCountsAsWall": false,
-    "connectivity": 4,
+    "connectivity": 8,
     "sharedRegionCountsAllCastles": true
   },
   "elimination": {

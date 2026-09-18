@@ -34,7 +34,10 @@ describe('enclosure solver', () => {
     expect(computeEnclosure(state).castleEnclosed[0]).toBe(false);
   });
 
-  it('treats a diagonal join as sealed, since the escape flood is 4-connected', () => {
+  it('leaks through a diagonal join, so a wall must turn its corners', () => {
+    // Two blocks meeting at a point do not seal: the escape flood is 8-connected
+    // while the wall is not, so the sea slips between them. The corner block has
+    // to be there.
     const state = stateFromAscii(`
       ..........
       ...####...
@@ -45,7 +48,35 @@ describe('enclosure solver', () => {
       ...####...
       ..........
     `);
+    expect(computeEnclosure(state).castleEnclosed[0]).toBe(false);
+  });
+
+  it('seals once the corner blocks are added', () => {
+    const state = stateFromAscii(`
+      ..........
+      ..######..
+      ..#,,,,#..
+      ..#,@@,#..
+      ..#,@@,#..
+      ..#,,,,#..
+      ..######..
+      ..........
+    `);
     expect(computeEnclosure(state).castleEnclosed[0]).toBe(true);
+  });
+
+  it('does not let a diagonal staircase stand in for a wall', () => {
+    const state = stateFromAscii(`
+      ............
+      ....#####...
+      ...#,,,,#...
+      ..#,,@@,,#..
+      .#,,,@@,,,#.
+      .#,,,,,,,,#.
+      .##########.
+      ............
+    `);
+    expect(computeEnclosure(state).castleEnclosed[0]).toBe(false);
   });
 
   it('does not let the coastline stand in for a wall', () => {

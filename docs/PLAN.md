@@ -53,8 +53,12 @@ LOBBY
 - Walls may only be placed on **free land tiles of your own island**. You cannot build in
   or interfere with an opponent's territory.
 - **The shoreline does not count as wall.** Enclosure requires a complete wall loop on
-  land. Formally: flood-fill 4-connected from the map border across every tile that is not
-  a wall — water included — and any castle not reached is enclosed.
+  land. Formally: flood-fill from the map border across every tile that is not a wall —
+  water included — and any castle not reached is enclosed.
+- **The wall must turn its corners.** The escape flood is 8-connected while the wall is
+  not, so the sea slips between two blocks meeting at a point: a diagonal join does not
+  seal, and the corner block has to be there. A 4-connected flood would let a diagonal
+  staircase stand in for a wall, which the original did not allow.
 - A single sealed region containing K castles counts as K castles. Separate sealed regions
   stack. This is the central tradeoff: a wide loop earns more cannons but leaves far more
   perimeter to repair each round.
@@ -241,7 +245,7 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
   },
   "enclosure": {
     "shorelineCountsAsWall": false,
-    "connectivity": 4,
+    "connectivity": 8,
     "sharedRegionCountsAllCastles": true
   },
   "elimination": {
@@ -249,7 +253,7 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
     "simultaneousIsDraw": true
   }
 }
-````
+```
 
 ### `config/terrain.default.json`
 
@@ -269,15 +273,18 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
   },
   "castles": {
     "perIsland": 3,
-    "footprint": [3, 3],
-    "minSpacingTiles": 7,
+    "footprint": [
+      3,
+      3
+    ],
+    "minSpacingTiles": 6,
     "minDistanceFromShoreTiles": 3
   },
   "startingWall": {
     "ringRadiusTiles": 3
   },
   "generation": {
-    "maxRetries": 50
+    "maxRetries": 150
   }
 }
 ```
@@ -630,7 +637,22 @@ decision in itself:
 The cannon placement phase also ends as soon as no player has anywhere left to put one,
 rather than running a timer that cannot change anything.
 
+### Castles must never block each other's rings
+
+Castle siting enforces separation on an axis, not merely by distance. Euclidean spacing
+alone is not enough: an offset of 5,5 clears a minimum distance of 7 while dropping one
+castle squarely on another's ring corner, and the ring is then built with a hole in it.
+
+This mattered only once the escape flood became 8-connected. Before that a missing corner
+still sealed, so the bug was invisible — a player could commit to a castle whose ring
+could never be closed and not find out until the first resolution.
+
+Every castle must be a viable opening choice, so the generator rejects any layout where
+one castle's footprint intersects another's ring rectangle, and a test asserts that every
+castle on a map yields a complete, sealed ring when chosen.
+
 ## 11. Deferred (explicitly out of scope for v1)
 
 Team modes (2v2), quick-match / matchmaking queue, accounts and persistence, ranking,
 mobile and touch input, spectator mode, shipped replays, naval units, singleplayer campaign.
+````

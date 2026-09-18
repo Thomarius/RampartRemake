@@ -58,6 +58,7 @@ export type RejectReason =
   | 'water_gap'
   | 'castle_out_of_bounds'
   | 'castle_ring_off_island'
+  | 'castle_ring_blocked'
   | 'castle_spacing';
 
 export class TerrainGenerationError extends Error {}
@@ -273,6 +274,19 @@ function distanceToWater(mask: Uint8Array, w: number, h: number): Int32Array {
 }
 
 /**
+ * Whether two castles are far enough apart that neither sits inside the other's
+ * starting wall ring.
+ *
+ * Euclidean spacing alone is not enough: a diagonal offset of 5,5 clears a minimum
+ * distance of 7 but drops one castle squarely on the other's ring corner, and the
+ * ring is then built with a hole in it. Separation on either axis is what matters,
+ * because the ring is a rectangle.
+ */
+function ringsClear(ax: number, ay: number, bx: number, by: number, clearance: number): boolean {
+  return Math.abs(ax - bx) >= clearance || Math.abs(ay - by) >= clearance;
+}
+
+/**
  * Picks castle sites by farthest-point sampling: the most inland site first, then
  * repeatedly the site furthest from those already chosen. Spreading castles out is
  * what gives the enclosure decision its bite — a loop around all three is a long
@@ -328,6 +342,7 @@ function placeCastles(
 
   const chosen: { x: number; y: number; cx: number; cy: number }[] = [];
   const minSpacing2 = config.castles.minSpacingTiles * config.castles.minSpacingTiles;
+  const ringClearance = Math.max(cw, ch) + config.startingWall.ringRadiusTiles;
 
   // Most inland site first; ties broken by scan order, so the choice is deterministic.
   let first = candidates[0] as (typeof candidates)[number];
@@ -339,12 +354,14 @@ function placeCastles(
     let bestScore = -1;
     for (const c of candidates) {
       let nearest = Infinity;
+      let intrudes = false;
       for (const s of chosen) {
         const dx = c.cx - s.cx;
         const dy = c.cy - s.cy;
         nearest = Math.min(nearest, dx * dx + dy * dy);
+        if (!ringsClear(c.x, c.y, s.x, s.y, ringClearance)) intrudes = true;
       }
-      if (nearest < minSpacing2) continue;
+      if (intrudes || nearest < minSpacing2) continue;
       if (nearest > bestScore) {
         bestScore = nearest;
         best = c;
@@ -492,11 +509,19 @@ function tryGenerate(
     }
 
     // Spacing cannot be repaired, only rejected.
+    const ringClearance = Math.max(castleW, castleH) + ring;
     for (let a = 0; a < mine.length; a++) {
       for (let b = a + 1; b < mine.length; b++) {
-        const dx = (mine[a] as GeneratedCastle).x - (mine[b] as GeneratedCastle).x;
-        const dy = (mine[a] as GeneratedCastle).y - (mine[b] as GeneratedCastle).y;
+        const first = mine[a] as GeneratedCastle;
+        const second = mine[b] as GeneratedCastle;
+        const dx = first.x - second.x;
+        const dy = first.y - second.y;
         if (dx * dx + dy * dy < minSpacing2) return { ok: false, reason: 'castle_spacing' };
+        // Every castle must be able to build a complete ring, which means no other
+        // castle may stand on any tile of it.
+        if (!ringsClear(first.x, first.y, second.x, second.y, ringClearance)) {
+          return { ok: false, reason: 'castle_ring_blocked' };
+        }
       }
     }
     castles.push(...mine);
