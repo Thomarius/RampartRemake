@@ -45,8 +45,36 @@ function pieceSwatch(pieceId: number, colour: string, scale: number): string {
   return `<span class="swatch" style="width:${w * scale}px;height:${h * scale}px">${boxes}</span>`;
 }
 
+/** Short, shouted names for the sweeping phase announcement. */
+const PHASE_CALL: Record<Phase, string> = {
+  lobby: '',
+  castle_select: 'Choose your castle',
+  combat: 'Fire!',
+  build: 'Rebuild',
+  cannon_place: 'Place cannons',
+  game_over: '',
+};
+
 export class Hud {
-  constructor(private readonly root: HTMLElement) {}
+  constructor(
+    private readonly root: HTMLElement,
+    private readonly bannerRoot: HTMLElement,
+  ) {}
+
+  /**
+   * Announces a phase with a banner that sweeps down the screen, as the original
+   * did. Phases change without warning otherwise, and a player who does not notice
+   * that combat has ended spends the first seconds of the build phase shooting.
+   */
+  announce(phase: Phase): void {
+    const text = PHASE_CALL[phase];
+    if (text === '') return;
+    const banner = document.createElement('div');
+    banner.className = 'phase-call';
+    banner.textContent = text;
+    banner.addEventListener('animationend', () => banner.remove());
+    this.bannerRoot.replaceChildren(banner);
+  }
 
   update(state: MatchState, humanPlayer: number): void {
     const secondsLeft = Math.max(0, (state.phaseEndTick - state.tick) / state.ruleset.tickRateHz);
@@ -66,6 +94,15 @@ export class Hud {
         return `<li class="${classes}"><b style="background:${playerColour(p.id)}"></b>${p.name}<span>${status}</span></li>`;
       })
       .join('');
+
+    let cannonCount = '';
+    if (state.phase === 'cannon_place' && human && !human.eliminated) {
+      const left = human.cannonsToPlace;
+      cannonCount =
+        left > 0
+          ? `<div class="counter">${left} cannon${left === 1 ? '' : 's'} left to place</div>`
+          : `<div class="counter done">All cannons placed</div>`;
+    }
 
     let queue = '';
     if (state.phase === 'build' && human && !human.eliminated) {
@@ -100,6 +137,7 @@ export class Hud {
         <ul class="roster">${roster}</ul>
       </div>
       ${queue}
+      ${cannonCount}
       <div class="hint">${PHASE_HINT[state.phase]}</div>
       ${banner}
     `;

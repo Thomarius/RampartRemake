@@ -81,16 +81,17 @@ const params = new URLSearchParams(globalThis.location.search);
 const timeScale = Math.max(1, Number(params.get('speed') ?? 1));
 
 async function runMatch(setup: Setup): Promise<void> {
-  app!.innerHTML = `<canvas id="stage"></canvas><div id="hud"></div>`;
+  app!.innerHTML = `<canvas id="stage"></canvas><div id="hud"></div><div id="banner"></div>`;
   const canvas = document.querySelector<HTMLCanvasElement>('#stage');
   const hudRoot = document.querySelector<HTMLElement>('#hud');
-  if (!canvas || !hudRoot) throw new Error('missing stage');
+  const bannerRoot = document.querySelector<HTMLElement>('#banner');
+  if (!canvas || !hudRoot || !bannerRoot) throw new Error('missing stage');
 
   const match = new LocalMatch({ seed: setup.seed, playerCount: setup.players, humanPlayer: 0 });
   const scene = new Scene();
   await scene.init(canvas);
 
-  const hud = new Hud(hudRoot);
+  const hud = new Hud(hudRoot, bannerRoot);
   const controls = new Controls(canvas, scene, match.state, match.humanPlayer, (action) => {
     match.submit(action);
   });
@@ -166,7 +167,12 @@ async function runMatch(setup: Setup): Promise<void> {
           break;
         case 'phase_changed':
           controls.resetRotation();
+          hud.announce(event.phase);
           territoryChanged = true;
+          // The starting wall ring is laid down as castle selection ends, so a
+          // phase change can carry grid changes with it. Without this the rings
+          // stayed invisible until the first cannonball happened to land.
+          structuresChanged = true;
           break;
         default:
           break;

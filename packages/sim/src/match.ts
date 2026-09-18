@@ -3,7 +3,7 @@ import type { Ruleset, TerrainConfig } from '@rampart/config';
 import { applyEnclosure } from './enclosure.js';
 import { Hasher } from './hash.js';
 import { generatePieceSequence } from './pieces.js';
-import { placeCannon, placePiece, spawnCannon, type Rejection } from './placement.js';
+import { placeCannon, placePiece, type Rejection } from './placement.js';
 import { fire, resolveImpacts } from './shots.js';
 import { generateTerrain } from './terrain.js';
 import {
@@ -146,76 +146,6 @@ function buildStartingRing(state: MatchState, castle: Castle): void {
   }
 }
 
-/**
- * Drops the starting cannons inside the ring, spread as far apart as the space
- * allows so a player does not begin with every gun in one corner.
- */
-function placeStartingCannons(state: MatchState, playerId: number, castle: Castle): void {
-  const ring = state.terrainConfig.startingWall.ringRadiusTiles;
-  const [cw, ch] = state.ruleset.cannons.footprint;
-  const x0 = castle.x - ring + 1;
-  const y0 = castle.y - ring + 1;
-  const x1 = castle.x + castle.w - 1 + ring - 1;
-  const y1 = castle.y + castle.h - 1 + ring - 1;
-
-  const candidates: { x: number; y: number }[] = [];
-  for (let y = y0; y + ch - 1 <= y1; y++) {
-    for (let x = x0; x + cw - 1 <= x1; x++) {
-      let ok = true;
-      for (let oy = 0; oy < ch && ok; oy++) {
-        for (let ox = 0; ox < cw; ox++) {
-          const tx = x + ox;
-          const ty = y + oy;
-          if (tx < 0 || ty < 0 || tx >= state.width || ty >= state.height) {
-            ok = false;
-            break;
-          }
-          const i = ty * state.width + tx;
-          if (state.structure[i] !== Structure.Empty || state.islandId[i] !== castle.islandId) {
-            ok = false;
-            break;
-          }
-        }
-      }
-      if (ok) candidates.push({ x, y });
-    }
-  }
-
-  const chosen: { x: number; y: number }[] = [];
-  const wanted = Math.min(state.ruleset.cannons.startingCount, candidates.length);
-  while (chosen.length < wanted) {
-    let best = -1;
-    let bestScore = -1;
-    for (let c = 0; c < candidates.length; c++) {
-      const cand = candidates[c] as { x: number; y: number };
-      if (chosen.some((s) => s.x === cand.x && s.y === cand.y)) continue;
-      // Reject overlaps with cannons already chosen this round.
-      if (chosen.some((s) => Math.abs(s.x - cand.x) < cw && Math.abs(s.y - cand.y) < ch)) continue;
-      let score: number;
-      if (chosen.length === 0) {
-        const dx = cand.x - castle.x;
-        const dy = cand.y - castle.y;
-        score = dx * dx + dy * dy;
-      } else {
-        score = Infinity;
-        for (const s of chosen) {
-          const dx = cand.x - s.x;
-          const dy = cand.y - s.y;
-          score = Math.min(score, dx * dx + dy * dy);
-        }
-      }
-      if (score > bestScore) {
-        bestScore = score;
-        best = c;
-      }
-    }
-    if (best < 0) break;
-    const pick = candidates[best] as { x: number; y: number };
-    chosen.push(pick);
-    spawnCannon(state, playerId, pick.x, pick.y);
-  }
-}
-
 function finishCastleSelect(state: MatchState): void {
   for (const player of state.players) {
     if (player.startingCastleId === null) {
@@ -227,12 +157,17 @@ function finishCastleSelect(state: MatchState): void {
     const castle = state.castles.find((c) => c.id === player.startingCastleId);
     if (!castle) continue;
     buildStartingRing(state, castle);
-    placeStartingCannons(state, player.id, castle);
   }
 
   applyEnclosure(state);
-  state.round = 1;
-  enterPhase(state, 'combat', state.ruleset.phases.combatMs);
+
+  // The opening cannons are placed by the player, exactly like every later batch.
+  // Round 0 here; the first combat phase starts round 1 via startNextCombat.
+  state.round = 0;
+  for (const player of state.players) {
+    player.cannonsToPlace = state.ruleset.cannons.startingCount;
+  }
+  enterPhase(state, 'cannon_place', state.ruleset.phases.cannonPlaceMs);
 }
 
 /** Clears an eliminated player's cannons and leaves their walls as neutral rubble. */

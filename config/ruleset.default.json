@@ -6,9 +6,9 @@
   },
   "phases": {
     "castleSelectMs": 15000,
-    "combatMs": 30000,
+    "combatMs": 20000,
     "buildMs": 25000,
-    "cannonPlaceMs": 10000
+    "cannonPlaceMs": 12000
   },
   "cannons": {
     "startingCount": 2,
@@ -22,7 +22,7 @@
     "baseFlightMs": 350,
     "perTileFlightMs": 35,
     "maxRangeTiles": null,
-    "craterPattern": "plus5",
+    "craterPattern": "single",
     "damagesWalls": true,
     "damagesCastles": false,
     "damagesCannons": false

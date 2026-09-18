@@ -13,6 +13,7 @@ import {
   ticksFor,
   type MatchOptions,
 } from './match.js';
+import { legalCannonPlacements } from './placement.js';
 import { Structure } from './types.js';
 import { recordRandomPlayout } from './playout.js';
 import { fastRuleset } from './testing.js';
@@ -54,7 +55,7 @@ describe('match setup', () => {
 });
 
 describe('castle selection', () => {
-  it('grants a sealed ring and the starting cannons, then opens fire', () => {
+  it('grants a sealed ring and hands the player cannons to place', () => {
     const state = createMatch(options(2));
     for (const player of state.players) {
       const castle = state.castles.find((c) => c.islandId === player.islandId)!;
@@ -62,22 +63,44 @@ describe('castle selection', () => {
         applyAction(state, { kind: 'select_castle', player: player.id, castleId: castle.id }),
       ).toBeNull();
     }
-    expect(state.phase).toBe('combat');
-    expect(state.round).toBe(1);
 
-    // Two cannons each, and everyone starts properly enclosed.
-    expect(state.cannons).toHaveLength(2 * defaultRuleset.cannons.startingCount);
+    // The opening cannons are placed by the player, not dropped in automatically.
+    expect(state.phase).toBe('cannon_place');
+    expect(state.cannons).toHaveLength(0);
+    for (const player of state.players) {
+      expect(player.cannonsToPlace).toBe(defaultRuleset.cannons.startingCount);
+    }
+
+    // The ring is already sealed, so there is somewhere legal to put them.
     const result = computeEnclosure(state);
     for (const player of state.players) {
       expect(result.enclosedCastlesByPlayer[player.id]).toBe(1);
+      expect(legalCannonPlacements(state, player.id).length).toBeGreaterThan(0);
     }
+  });
+
+  it('starts round 1 once the opening cannons are down', () => {
+    const state = createMatch(options(2));
+    for (const player of state.players) {
+      const castle = state.castles.find((c) => c.islandId === player.islandId)!;
+      applyAction(state, { kind: 'select_castle', player: player.id, castleId: castle.id });
+    }
+    for (const player of state.players) {
+      for (let i = 0; i < defaultRuleset.cannons.startingCount; i++) {
+        const spot = legalCannonPlacements(state, player.id)[0]!;
+        expect(applyAction(state, { kind: 'place_cannon', player: player.id, ...spot })).toBeNull();
+      }
+    }
+    expect(state.phase).toBe('combat');
+    expect(state.round).toBe(1);
+    expect(state.cannons).toHaveLength(2 * defaultRuleset.cannons.startingCount);
     expect(state.cannons.every((c) => c.active)).toBe(true);
   });
 
   it('picks a castle for anyone who runs out the clock', () => {
     const state = createMatch(options(2));
     stepTo(state, ticksFor(fastRuleset().phases.castleSelectMs, defaultRuleset.tickRateHz) + 1);
-    expect(state.phase).toBe('combat');
+    expect(state.phase).toBe('cannon_place');
     for (const player of state.players) expect(player.startingCastleId).not.toBeNull();
   });
 });
@@ -94,7 +117,10 @@ describe('round resolution', () => {
 
   /** Advances to the end of the next build phase, where the round is resolved. */
   function runToResolution(state: ReturnType<typeof startedMatch>) {
-    while (state.phase !== 'cannon_place' && state.phase !== 'game_over') step(state);
+    const resolutions = (): number =>
+      state.events.filter((e) => e.kind === 'round_resolved').length;
+    const before = resolutions();
+    while (state.phase !== 'game_over' && resolutions() === before) step(state);
   }
 
   it('awards two cannons for one castle', () => {

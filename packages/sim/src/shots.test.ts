@@ -101,15 +101,28 @@ describe('impact', () => {
     return result.shot;
   }
 
-  it('clears walls in the configured crater pattern', () => {
+  it('clears only the tile it was aimed at', () => {
     const state = stateFromAscii(RANGE);
     const shot = fireAndLand(state, 16, 1);
     expect(state.structure[1 * state.width + 16]).toBe(Structure.Empty);
-    expect(state.structure[1 * state.width + 17]).toBe(Structure.Empty); // orthogonal
-    expect(state.structure[2 * state.width + 17]).toBe(Structure.Wall); // diagonal survives
+    // Neighbours are untouched: a shot takes exactly the block it hits.
+    expect(state.structure[1 * state.width + 17]).toBe(Structure.Wall);
+    expect(state.structure[2 * state.width + 16]).toBe(Structure.Wall);
     const impact = state.events.find((e) => e.kind === 'shot_impact');
     expect(impact).toBeDefined();
     expect(shot.impactTick).toBe(state.tick);
+  });
+
+  it('widens the crater when the ruleset asks for it', () => {
+    const state = stateFromAscii(RANGE);
+    state.ruleset = {
+      ...state.ruleset,
+      shots: { ...state.ruleset.shots, craterPattern: 'plus5' },
+    };
+    fireAndLand(state, 16, 1);
+    expect(state.structure[1 * state.width + 16]).toBe(Structure.Empty);
+    expect(state.structure[1 * state.width + 17]).toBe(Structure.Empty); // orthogonal
+    expect(state.structure[2 * state.width + 17]).toBe(Structure.Wall); // diagonal survives
   });
 
   it('frees the cannon that fired it', () => {

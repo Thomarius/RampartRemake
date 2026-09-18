@@ -17,11 +17,12 @@ Phase loop (all phases are simultaneous and real-time for every player):
 ```
 LOBBY
   -> CASTLE_SELECT      (15s)  pick 1 of the castles on your island
-  -> [auto wall ring + 2 cannons granted]
-  -> COMBAT             (30s)  click targets, cannons lob shots at enemy walls
+  -> [a wall ring is auto-built around it]
+  -> CANNON_PLACE       (12s)  place your 2 opening cannons inside that ring
+  -> COMBAT             (20s)  click targets, cannons lob shots at enemy walls
   -> BUILD              (25s)  place tetromino wall pieces on your island
   -> [enclosure resolved; players with 0 enclosed castles are eliminated]
-  -> CANNON_PLACE       (10s)  place your earned cannons inside your territory
+  -> CANNON_PLACE       (12s)  place your earned cannons inside your territory
   -> COMBAT ...
   -> GAME_OVER          last player standing; simultaneous elimination = draw
 ```
@@ -48,7 +49,9 @@ LOBBY
 
 ### 1.4 Cannons
 
-- 2x2 footprint, placed inside your own enclosed territory.
+- 2x2 footprint, placed inside your own enclosed territory. This includes the opening
+  pair: the game builds your starting wall ring, but every cannon you own you placed
+  yourself.
 - **Indestructible.** Only walls are damaged by cannon fire; castles and cannons are not.
 - Reward per build phase: `2 cannons for the first enclosed castle, +1 per additional`.
   0 enclosed castles = elimination.
@@ -61,7 +64,8 @@ LOBBY
 - Firing: click a target tile; the **nearest ready cannon** fires. A cannon is ready only
   when it has no shot in flight — there is no separate reload.
 - Flight time scales with distance: `ticks = ceil((baseMs + perTileMs * dist) / tickMs)`.
-  Unlimited range. Impact craters the target tile plus its 4 orthogonal neighbours.
+  Unlimited range. A shot destroys exactly the tile it hits — neighbours are untouched.
+  Wider craters remain available through `shots.craterPattern`.
 
 ### 1.5 Build pieces
 
@@ -142,9 +146,9 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
   },
   "phases": {
     "castleSelectMs": 15000,
-    "combatMs": 30000,
+    "combatMs": 20000,
     "buildMs": 25000,
-    "cannonPlaceMs": 10000
+    "cannonPlaceMs": 12000
   },
   "cannons": {
     "startingCount": 2,
@@ -158,7 +162,7 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
     "baseFlightMs": 350,
     "perTileFlightMs": 35,
     "maxRangeTiles": null,
-    "craterPattern": "plus5",
+    "craterPattern": "single",
     "damagesWalls": true,
     "damagesCastles": false,
     "damagesCannons": false
@@ -545,40 +549,31 @@ loop that does not work.
 
 ---
 
-## 10a. Open design question from M2
+## 10a. Decisions from M2
 
-**A one-tile-wide wall cannot absorb the piece set without spill, and the spill
-accumulates.**
+The prototype plays. Three things came out of it.
 
-Of the eleven piece shapes, only `i3` and `i4` fit entirely along a straight run of a
-one-tile-wide wall. Every other piece placed on that line must deposit blocks beside it.
-Since pieces may not overlap existing wall and the smallest is three cells, those strays
-progressively remove the free neighbours a later repair needs as anchors — until an
-isolated one-tile gap has nowhere to put the rest of the piece and simply cannot be
-filled.
+**Thin walls versus the piece set — settled, no change.** Only `i3` and `i4` fit along a
+straight run of a one-tile-wide wall, so every other piece deposits blocks beside it, and
+that litter can eventually leave a gap with no free neighbours to anchor a repair. This
+looked like a rules problem when the stopgap opponent hit it, but the stopgap hits it
+because it was told to rebuild the exact rectangle it started with. Players do not do
+that — they build whatever valid shape of wall works, thickening rather than restoring a
+line. The finding is about the opponent, not the design.
 
-The practical consequence is that **rebuilding the thin rectangular ring the game hands
-you is a losing strategy**, and the starting ring therefore teaches players the wrong
-shape. Surviving means thickening the wall into a blob, where spill is harmless and gaps
-always have free neighbours.
+**Combat was too long relative to build.** Nearly every wall was destroyed within a 30s
+combat phase and 25s was not enough to restore it. Combat is now 20s, and a shot destroys
+only the tile it hits rather than a 5-tile cross — a 5x reduction in damage per shot.
+Both are single values in `config/ruleset.default.json`.
 
-Measured with the stopgap opponent, which does rebuild the thin ring: matches last a
-median of 2 rounds. Notably, the obvious balance levers do nothing — a single-tile crater,
-a 40s build phase, a 15s combat phase and a 3.4x slower reload all produce the same
-median. This is a geometry problem, not a damage-versus-repair problem.
+Worth noting for later tuning: these changes barely move the stopgap opponent's match
+length (median 2-3 rounds either way), because that opponent is limited by its own repair
+strategy rather than by incoming damage. Bot-vs-bot numbers will not be meaningful
+evidence about pacing until M5.
 
-Options, none yet chosen:
-
-1. **Leave it.** Learning to build blobs rather than lines is legitimate depth, and the
-   original arguably worked this way too.
-2. **Add a one- or two-cell piece** to the set, so any gap is always fillable. Cheapest
-   fix, costs some tension.
-3. **Change the starting ring** to a thicker or rounder shape, so the shape players are
-   taught is the shape that works.
-4. **Allow placement over your own wall**, making spill self-correcting.
-
-This needs a human playing the M2 build before deciding — the stopgap opponent is not
-evidence about how the rule feels.
+**Opening cannons are placed by the player.** They were auto-placed, which quietly removed
+the first real decision of the match. Castle selection now leads into a cannon placement
+phase, so the only thing the game hands you is the wall ring.
 
 ## 11. Deferred (explicitly out of scope for v1)
 

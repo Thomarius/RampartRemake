@@ -256,3 +256,68 @@ body {
     monospace;
   white-space: pre-wrap;
 }
+
+/* ---------- phase announcement ---------- */
+
+#banner {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.phase-call {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  padding: 1.25rem 0;
+  border-top: 1px solid var(--accent);
+  border-bottom: 1px solid var(--accent);
+  background: #0a0a12cc;
+  color: var(--accent);
+  font-size: 2.5rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  text-align: center;
+  white-space: nowrap;
+  animation: sweep 2s ease-in forwards;
+}
+
+@keyframes sweep {
+  0% {
+    top: -20%;
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  50% {
+    top: 42%;
+    opacity: 1;
+  }
+  82% {
+    opacity: 1;
+  }
+  100% {
+    top: 110%;
+    opacity: 0;
+  }
+}
+
+.counter {
+  position: absolute;
+  bottom: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.5rem 1.25rem;
+  border: 1px solid var(--accent);
+  background: #0a0a12cc;
+  color: var(--accent);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.counter.done {
+  border-color: var(--edge);
+  color: var(--muted);
+}
