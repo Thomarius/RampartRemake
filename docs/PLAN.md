@@ -887,9 +887,9 @@ We currently ship 11 pieces: both trominoes, all seven tetrominoes, and two pent
 (P and U). Completing the set means adding the single, the domino, and the nine remaining
 qualifying pentominoes — 22 pieces in total.
 
-*Open question:* the same 3x3 rule would also exclude the I tetromino, which is 1x4 and
-which we currently ship. The feedback stated the constraint for five-cell pieces only, so
-the straight four stays unless we decide otherwise.
+**The 3x3 limit applies to five-cell pieces only.** Sizes one to four are unconstrained,
+so all seven one-sided tetrominoes are in, the straight four included. Within size five it
+still bites: the straight five is 1x5 and so is out, along with L, N and Y.
 
 ### The escalation
 
@@ -937,7 +937,6 @@ relatively stronger early and weaker late without any per-tier tuning.
   time? Round number is deterministic and simpler; elapsed time is fairer if rounds vary
   in length.
 - Should the ramp plateau, or keep tightening until the match resolves itself?
-- Does the 3x3 rule extend to the straight four, as noted above?
 
 ## 11. Deferred (explicitly out of scope for v1)
 
