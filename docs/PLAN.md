@@ -872,6 +872,73 @@ A useful piece already exists for the resilience problem: `weakestWall(state, se
 computes where an opponent would breach *this* player, which is exactly where thickening
 is worth the blocks.
 
+## 10e. The piece set should grow harder as a match goes on
+
+Recorded for later. Not yet implemented.
+
+### What is missing
+
+The original drew on pieces of one through five cells, and used every five-cell piece
+that fits inside a 3x3 box. Enumerated: of the 12 free pentominoes, **8 qualify** — I, L,
+N and Y are excluded, being the four that need a span of four. Our engine rotates pieces
+but does not reflect them, so in one-sided terms that is **11 pentominoes**.
+
+We currently ship 11 pieces: both trominoes, all seven tetrominoes, and two pentominoes
+(P and U). Completing the set means adding the single, the domino, and the nine remaining
+qualifying pentominoes — 22 pieces in total.
+
+*Open question:* the same 3x3 rule would also exclude the I tetromino, which is 1x4 and
+which we currently ship. The feedback stated the constraint for five-cell pieces only, so
+the straight four stays unless we decide otherwise.
+
+### The escalation
+
+Complexity should climb over the course of a match: the first round draws only from sizes
+one to three, larger pieces are introduced as rounds pass, the small ones become rarer,
+and eventually the draw is sizes three to five. Sealing gets progressively harder for
+everyone.
+
+### Why this matters more than it looks
+
+**It is the escalation the game currently lacks.** M5 recorded that roughly one match in
+twenty never ends, because two well-matched defenders repair everything and *nothing in
+the rules forces a resolution*. This is the original's answer to exactly that problem, and
+a better one than capping a bot's build rate: the pressure applies to every player
+equally, it is visible, and it is thematic. This should be tried before any anti-stalemate
+mechanism is invented.
+
+**It recasts the thin-wall finding from M2.** With a single-cell piece available early, any
+gap is fillable and a thin wall is a perfectly reasonable thing to maintain. As the small
+pieces disappear, a one-tile gap with no free neighbours becomes genuinely unfillable and
+thin walls stop being viable — so players are pushed from repairing lines toward building
+blobs. The geometry that looked like a flaw in M2 is the intended late-game difficulty,
+arriving on a schedule.
+
+**It gives the bots a difficulty arc for free.** The `unreachable` workaround in the
+planner exists precisely because no piece is small enough to plug an isolated gap. Early
+rounds would rarely need it and late rounds would lean on it heavily, so bots would get
+relatively stronger early and weaker late without any per-tier tuning.
+
+### Implementation notes
+
+- **Determinism is the constraint.** Clients regenerate the piece sequence from the seed
+  rather than receiving it, so the draw must stay a pure function of `(seed, round,
+  index)`. Today it is a flat array generated from the seed alone.
+- **`pieceIndex` would need to be per-round**, not the monotonic counter it is now.
+  Resetting the queue each build phase is the simplest reading and matches the original.
+- **Config shape**: either weights per round band, or an introduction and retirement curve
+  per piece. Either belongs in `ruleset.build`, alongside the existing weights.
+- The preview strip and its swatches will need to cope with a one-cell piece, and the AI's
+  placement enumeration grows slightly with five-cell shapes — both minor.
+
+### Open questions
+
+- How fast should the ramp be, and is it keyed to the round number or to elapsed match
+  time? Round number is deterministic and simpler; elapsed time is fairer if rounds vary
+  in length.
+- Should the ramp plateau, or keep tightening until the match resolves itself?
+- Does the 3x3 rule extend to the straight four, as noted above?
+
 ## 11. Deferred (explicitly out of scope for v1)
 
 Team modes (2v2), quick-match / matchmaking queue, accounts and persistence, ranking,
