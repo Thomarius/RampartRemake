@@ -612,6 +612,24 @@ decoration, and the server has to agree with the client about it.
 While shots remain in flight the intermission keeps pushing its own end tick back, so the
 announcement always plays against a settled board.
 
+### When territory is shown
+
+Territory shading is not merely a readout of the solver — when it updates is a design
+decision in itself:
+
+- **On castle selection**, immediately. The wall ring goes up with the choice rather than
+  when the last player has chosen, so the shape you committed to is visible at once.
+- **During the build phase**, on every block placed. A loop lights up as territory on the
+  tick that closes it, which is the feedback that makes building legible.
+- **Not during combat.** What is shown under a barrage is the territory you _earned_ at
+  the last resolution, and it stays put even as the walls come down. Recomputing here
+  would dissolve the map from under the player, and would also be misleading: the
+  enclosure that counts is the one at the end of the next build phase, not the one that
+  happens to exist mid-volley.
+
+The cannon placement phase also ends as soon as no player has anywhere left to put one,
+rather than running a timer that cannot change anything.
+
 ## 11. Deferred (explicitly out of scope for v1)
 
 Team modes (2v2), quick-match / matchmaking queue, accounts and persistence, ranking,

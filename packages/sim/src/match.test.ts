@@ -1,7 +1,7 @@
 import { defaultRuleset, defaultTerrainConfig } from '@rampart/config';
 import { describe, expect, it } from 'vitest';
 
-import { computeEnclosure } from './enclosure.js';
+import { applyEnclosure, computeEnclosure } from './enclosure.js';
 import {
   LogReplayer,
   applyAction,
@@ -13,7 +13,8 @@ import {
   ticksFor,
   type MatchOptions,
 } from './match.js';
-import { legalCannonPlacements } from './placement.js';
+import { canPlacePiece, currentPieceId, legalCannonPlacements } from './placement.js';
+import { pieceCells } from './pieces.js';
 import { Structure } from './types.js';
 import { recordRandomPlayout } from './playout.js';
 import { beginMatch, fastRuleset } from './testing.js';
@@ -374,5 +375,121 @@ describe('intermission', () => {
       }
     }
     expect(starts.length).toBeGreaterThan(2);
+  });
+});
+
+describe('territory feedback', () => {
+  it('raises the wall ring the moment a castle is chosen', () => {
+    const state = beginMatch(createMatch(options(3)));
+    const castle = state.castles.find((c) => c.islandId === 1)!;
+    const wallsBefore = state.structure.filter((v) => v === Structure.Wall).length;
+
+    applyAction(state, { kind: 'select_castle', player: 0, castleId: castle.id });
+
+    // This player's ring is up immediately, without waiting for the others.
+    expect(state.structure.filter((v) => v === Structure.Wall).length).toBeGreaterThan(wallsBefore);
+    expect(state.players[1]!.startingCastleId).toBeNull();
+  });
+
+  it('shows the enclosed territory as soon as the castle is chosen', () => {
+    const state = beginMatch(createMatch(options(2)));
+    const castle = state.castles.find((c) => c.islandId === 1)!;
+    expect(state.territory.some((v) => v === 1)).toBe(false);
+
+    applyAction(state, { kind: 'select_castle', player: 0, castleId: castle.id });
+    expect(state.territory.some((v) => v === 1)).toBe(true);
+    // And only for the player who has actually chosen.
+    expect(state.territory.some((v) => v === 2)).toBe(false);
+  });
+
+  it('lights up new territory the instant a block closes a loop', () => {
+    const state = beginMatch(createMatch(options(2)));
+    for (const player of state.players) {
+      const castle = state.castles.find((c) => c.islandId === player.islandId)!;
+      applyAction(state, { kind: 'select_castle', player: player.id, castleId: castle.id });
+    }
+    state.phase = 'build';
+    state.phaseEndTick = state.tick + 100_000;
+
+    // Knock a hole in the middle of a ring edge, then plug it and watch the
+    // territory come back. A corner would not do: removing the corner of a
+    // rectangle leaves the interior sealed under 4-connectivity, because the
+    // gap's inward neighbours are both still wall.
+    const castle = state.castles.find((c) => c.id === state.players[0]!.startingCastleId)!;
+    const ring = state.terrainConfig.startingWall.ringRadiusTiles;
+    const ringTile = (castle.y - ring) * state.width + castle.x + 1;
+    expect(state.structure[ringTile]).toBe(Structure.Wall);
+    state.structure[ringTile] = Structure.Empty;
+    applyEnclosure(state);
+    expect(state.territory.some((v) => v === 1)).toBe(false);
+
+    let closed = false;
+    for (let rotation = 0; rotation < 4 && !closed; rotation++) {
+      const x = ringTile % state.width;
+      const y = (ringTile - x) / state.width;
+      for (const [ox, oy] of pieceCells(currentPieceId(state, 0), rotation)) {
+        if (canPlacePiece(state, 0, rotation, x - ox, y - oy) !== null) continue;
+        expect(
+          applyAction(state, { kind: 'place_piece', player: 0, x: x - ox, y: y - oy, rotation }),
+        ).toBeNull();
+        closed = true;
+        break;
+      }
+    }
+    expect(closed).toBe(true);
+    expect(state.territory.some((v) => v === 1)).toBe(true);
+  });
+
+  it('holds territory through a barrage that breaks the wall', () => {
+    // What you see during combat is the territory you earned, not what is left of
+    // it — otherwise the map would dissolve under you as your walls came down.
+    const state = beginMatch(createMatch(options(2)));
+    for (const player of state.players) {
+      const castle = state.castles.find((c) => c.islandId === player.islandId)!;
+      applyAction(state, { kind: 'select_castle', player: player.id, castleId: castle.id });
+    }
+    beginMatch(state);
+    for (const player of state.players) {
+      for (let i = 0; i < defaultRuleset.cannons.startingCount; i++) {
+        const spot = legalCannonPlacements(state, player.id)[0];
+        if (spot) applyAction(state, { kind: 'place_cannon', player: player.id, ...spot });
+      }
+    }
+    beginMatch(state);
+    expect(state.phase).toBe('combat');
+
+    const before = state.territory.filter((v) => v === 1).length;
+    expect(before).toBeGreaterThan(0);
+    for (let i = 0; i < state.structure.length; i++) {
+      if (state.structure[i] === Structure.Wall && state.owner[i] === 1) {
+        state.structure[i] = Structure.Empty;
+      }
+    }
+    step(state);
+    expect(state.territory.filter((v) => v === 1).length).toBe(before);
+  });
+});
+
+describe('cannon placement phase', () => {
+  it('ends early when nobody has room for another cannon', () => {
+    const state = beginMatch(createMatch(options(2)));
+    for (const player of state.players) {
+      const castle = state.castles.find((c) => c.islandId === player.islandId)!;
+      applyAction(state, { kind: 'select_castle', player: player.id, castleId: castle.id });
+    }
+    beginMatch(state);
+    expect(state.phase).toBe('cannon_place');
+
+    // Hand out far more cannons than the starting enclosure can hold.
+    for (const player of state.players) player.cannonsToPlace = 500;
+    const startedAt = state.tick;
+    while (state.phase === 'cannon_place' && state.tick < startedAt + 100_000) step(state);
+
+    expect(state.phase).toBe('intermission');
+    expect(state.tick - startedAt).toBeLessThan(
+      ticksFor(defaultRuleset.phases.cannonPlaceMs, defaultRuleset.tickRateHz),
+    );
+    // It ended because there was no room, not because everything was placed.
+    expect(state.players.some((p) => p.cannonsToPlace > 0)).toBe(true);
   });
 });

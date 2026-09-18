@@ -211,6 +211,24 @@ export function legalPiecePlacements(
   return out;
 }
 
+/**
+ * Whether this player has anywhere left to put a cannon.
+ *
+ * Filters on the territory layer before the full check, so the common case exits
+ * on the first enclosed tile rather than walking the whole grid.
+ */
+export function canPlaceAnyCannon(state: MatchState, playerId: number): boolean {
+  const player = state.players[playerId];
+  if (!player) return false;
+  for (let y = 0; y < state.height; y++) {
+    for (let x = 0; x < state.width; x++) {
+      if (state.territory[y * state.width + x] !== player.islandId) continue;
+      if (canPlaceCannon(state, playerId, x, y) === null) return true;
+    }
+  }
+  return false;
+}
+
 /** Every legal cannon position for a player. */
 export function legalCannonPlacements(
   state: MatchState,

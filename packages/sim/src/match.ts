@@ -3,7 +3,7 @@ import type { Ruleset, TerrainConfig } from '@rampart/config';
 import { applyEnclosure } from './enclosure.js';
 import { Hasher } from './hash.js';
 import { generatePieceSequence } from './pieces.js';
-import { placeCannon, placePiece, type Rejection } from './placement.js';
+import { canPlaceAnyCannon, placeCannon, placePiece, type Rejection } from './placement.js';
 import { fire, resolveImpacts } from './shots.js';
 import { generateTerrain } from './terrain.js';
 import {
@@ -181,15 +181,13 @@ function buildStartingRing(state: MatchState, castle: Castle): void {
 
 function finishCastleSelect(state: MatchState): void {
   for (const player of state.players) {
-    if (player.startingCastleId === null) {
-      // Timed out: take the lowest-numbered castle on this player's island, so an
-      // absent or disconnected player still starts a valid game.
-      const fallback = state.castles.find((c) => c.islandId === player.islandId);
-      player.startingCastleId = fallback ? fallback.id : null;
-    }
-    const castle = state.castles.find((c) => c.id === player.startingCastleId);
-    if (!castle) continue;
-    buildStartingRing(state, castle);
+    if (player.startingCastleId !== null) continue;
+    // Timed out: take the lowest-numbered castle on this player's island, so an
+    // absent or disconnected player still starts a valid game.
+    const fallback = state.castles.find((c) => c.islandId === player.islandId);
+    if (!fallback) continue;
+    player.startingCastleId = fallback.id;
+    buildStartingRing(state, fallback);
   }
 
   applyEnclosure(state);
@@ -331,7 +329,11 @@ function advancePhase(state: MatchState): void {
       return;
     }
     case 'cannon_place': {
-      const done = state.players.every((p) => p.eliminated || p.cannonsToPlace === 0);
+      // A player with cannons left but nowhere to put them is done too — otherwise
+      // everyone waits out a timer that cannot change anything.
+      const done = state.players.every(
+        (p) => p.eliminated || p.cannonsToPlace === 0 || !canPlaceAnyCannon(state, p.id),
+      );
       if (done || state.tick >= state.phaseEndTick) enterIntermission(state, 'combat');
       return;
     }
@@ -377,6 +379,10 @@ export function applyAction(state: MatchState, action: Action): Rejection | null
       if (!castle) return 'unknown_castle';
       if (castle.islandId !== player.islandId) return 'wrong_island';
       player.startingCastleId = castle.id;
+      // Raise the ring straight away rather than when the last player has chosen:
+      // waiting left the player staring at an empty island for up to 15 seconds.
+      buildStartingRing(state, castle);
+      applyEnclosure(state);
       state.events.push({
         kind: 'castle_selected',
         tick: state.tick,
@@ -393,7 +399,12 @@ export function applyAction(state: MatchState, action: Action): Rejection | null
     }
     case 'place_piece': {
       const result = placePiece(state, action.player, action.rotation, action.x, action.y);
-      return 'rejection' in result ? result.rejection : null;
+      if ('rejection' in result) return result.rejection;
+      // Re-solve so a loop lights up as territory the instant the block closing it
+      // goes down. Combat deliberately does not do this: territory shown during a
+      // barrage is the territory you earned, not what is left of it.
+      applyEnclosure(state);
+      return null;
     }
     case 'place_cannon': {
       const result = placeCannon(state, action.player, action.x, action.y);

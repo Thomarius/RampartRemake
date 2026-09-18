@@ -181,7 +181,17 @@ async function runMatch(setup: Setup): Promise<void> {
           scene.noteImpact(event.x, event.y);
           if (event.destroyed.length > 0) structuresChanged = true;
           break;
+        case 'castle_selected':
+          // The ring goes up with the choice, and the enclosure it makes is
+          // territory straight away.
+          structuresChanged = true;
+          territoryChanged = true;
+          break;
         case 'piece_placed':
+          // A block that closes a loop turns it into territory on the same tick.
+          structuresChanged = true;
+          territoryChanged = true;
+          break;
         case 'cannon_placed':
           structuresChanged = true;
           break;

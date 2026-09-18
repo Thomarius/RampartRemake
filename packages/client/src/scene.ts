@@ -144,7 +144,7 @@ export class Scene {
         g.rect(originX + x * tile, originY + y * tile, tile, tile);
         any = true;
       }
-      if (any) g.fill({ color: this.playerColour(player, 'base'), alpha: 0.22 });
+      if (any) g.fill({ color: this.playerColour(player, 'light'), alpha: 0.3 });
     }
   }
 
