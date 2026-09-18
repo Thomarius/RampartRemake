@@ -791,6 +791,87 @@ different id. There is a test that tries exactly that.
 connection cannot stall the table. The seat is held, not freed: presenting the token
 reclaims it and the returning player is sent a snapshot of the board as it now stands.
 
+## 10d. Known weaknesses of the bots
+
+Recorded for the balance pass. Not yet addressed.
+
+### They repair, and then stop
+
+A bot asks for the minimum cut and builds exactly that. Two consequences follow, and
+both are structural rather than incidental.
+
+**The wall it builds is one tile thick, by construction.** A minimum cut is by definition
+the thinnest barrier that separates the castle from the sea, so the bot deliberately
+builds the most fragile wall that works. Every block of it is load-bearing: a single
+crater anywhere along it breaks the seal. A person thickens the places that keep getting
+hit; the bot has no notion that some parts of its wall are more exposed than others.
+
+**Once sealed, it stops building entirely.** `build()` returns null as soon as the plan is
+covered, so a bot that finishes its repairs in eight seconds does nothing for the
+remaining seventeen. Measured: 5-18 placements per build phase against a theoretical
+budget of 60-150. That idle time is precisely what a good player spends on everything
+below.
+
+### They never expand
+
+Nothing in the bot tries to grow. It holds what it started with, which costs it three
+different things at once:
+
+1. **Cannons.** Each further castle inside the wall is another cannon every round, so a
+   bot on one castle is permanently on the minimum income of two.
+2. **Room.** Cannons need 2x2 of sealed territory. A wall drawn tight around one castle
+   runs out of space to put the cannons it does earn — the reward becomes unspendable.
+3. **A spare life.** Elimination is at *zero* enclosed castles, so a second sealed castle
+   is literally a second life. A bot on one castle is always one breach from death, which
+   is also why widening matters more than the cannon count suggests.
+
+The three compound: more castles means more cannons, more room to place them, and more
+margin for error. A bot that never expands is playing a strictly worse game than the rules
+reward, and the gap widens every round.
+
+### They build and shoot faster than a person can
+
+| | build attempts | per 25s phase | fire attempts |
+|---|---|---|---|
+| recruit | 2.4/s | 60 | 3.0/s |
+| gunner | 4.2/s | 105 | 4.8/s |
+| marshal | 6.0/s | 150 | 6.0/s |
+
+A person places perhaps one piece a second with a mouse. Marshal is budgeted for six.
+
+This advantage is currently invisible, because the strategy above means the bot never
+uses more than a fraction of its budget — which is exactly why it must be fixed *together*
+with expansion, and not before. Improving the plan without capping the rate would hand
+the bot its full 150 placements a phase and make it unbeatable for the wrong reason.
+
+**The firing advantage arrives on a timer.** Early on a cannon cannot fire again until its
+shot lands, which at 40 tiles is 1.75s, so two cannons sustain roughly one shot a second
+whatever the bot's rate says. The rate only becomes the binding constraint once a player
+has eight to fifteen cannons — around round four to seven. So the bots are fair at the
+start of a match and progressively less fair as it goes on.
+
+### What to do about it
+
+Both dials the feedback identifies are the right ones, and they should be expressed in
+human units — **pieces per build phase** and **shots per second** — rather than the current
+per-tick probabilities, which are opaque and do not survive a change to the tick rate or
+the phase length. A hard cap per phase alongside the rate would bound total output even if
+phase timings change.
+
+Two things worth doing before tuning:
+
+- **Measure a person.** Instrument the client to record placements per build phase and
+  shots per second during a playtest. The numbers above are the bot's budget; we do not
+  actually know a human's, and guessing it is how the difficulty curve ends up wrong.
+- **Expect this to interact with the stalemate.** Roughly one match in twenty currently
+  runs forever because two defenders repair everything thrown at them. Cutting build rate
+  to human levels removes repair capacity, so it may well resolve the stalemate on its
+  own. Tuning the two independently risks over-correcting.
+
+A useful piece already exists for the resilience problem: `weakestWall(state, self)`
+computes where an opponent would breach *this* player, which is exactly where thickening
+is worth the blocks.
+
 ## 11. Deferred (explicitly out of scope for v1)
 
 Team modes (2v2), quick-match / matchmaking queue, accounts and persistence, ranking,
