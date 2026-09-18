@@ -111,7 +111,7 @@ async function runMatch(setup: Setup): Promise<void> {
 
   const match = new LocalMatch({ seed: setup.seed, playerCount: setup.players, humanPlayer: 0 });
   const scene = new Scene();
-  await scene.init(canvas, createTheme(setup.style));
+  await scene.init(canvas, createTheme(setup.style, setup.seed));
 
   const hud = new Hud(hudRoot, bannerRoot);
   const controls = new Controls(canvas, scene, match.state, match.humanPlayer, (action) => {

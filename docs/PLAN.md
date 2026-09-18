@@ -291,6 +291,11 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
 
 ### `config/art.default.json`
 
+Style selector, arcade-era base palette, per-player colours, flat-style parameters, and the
+generator parameters the pixel style draws from: tile pixel size, atlas size, terrain
+variant counts, water animation frames, wall damage states, castle battlement rhythm,
+cannon proportions and explosion frame counts.
+
 Arcade-era base palette, per-player hue rotations, tile pixel size (16), sprite generator
 parameters (tower counts, battlement rhythm, dithering thresholds, water animation frame
 count), atlas dimensions.
@@ -564,7 +569,7 @@ API as human players — they cannot cheat by construction.
 | **M1** | Sim core         | Terrain generation, enclosure solver, placement rules, shot resolution, phase state machine. Full match runs headless from a scripted input log. Determinism test green. **Done.** |
 | **M2** | Playable locally | Pixi client running the sim in-browser, no network. Placeholder rectangles. **This is the fun-check** — if the loop is not fun here, adjust rules before building anything else.   |
 | **M3a** | Style abstraction | Renderer split into a scene that owns camera, layers and dirty tracking, and a theme that owns only appearance. The minimal style becomes the reference implementation, selectable from the menu and by URL. **Done.** |
-| **M3b** | Procedural art   | Full generator suite, atlas, animation, per-player palettes, implemented as a second theme. The game looks like Rampart. |
+| **M3b** | Procedural art   | Full generator suite, atlas, animation, per-player palettes, implemented as a second theme. **Done.** |
 | **M4** | Online           | ws server, room codes, authoritative loop, clock sync, reconnect + bot takeover. 2-player online match end to end.                                                                 |
 | **M5** | AI               | 3 difficulty tiers, bots fill empty slots, headless bot-vs-bot soak runs clean.                                                                                                    |
 | **M6** | Full scope       | 3–4 players, audio integration, HUD/menu polish, Docker, deployment.                                                                                                               |
@@ -680,8 +685,19 @@ a style in its own right it is the fallback when texture generation fails or is 
 low-spec option, and by some distance the easiest thing to debug against: an enclosure or
 territory bug is obvious in flat colour and easy to miss under texture.
 
-**`pixel`** — the procedural style, built in M3b. Until it exists, selecting it falls back
-to `flat` rather than producing a black screen.
+**`pixel`** — the procedural style. Every sprite is generated at boot from the palette and
+packed into one texture, so the whole board draws in a single batch and the repository
+carries no binary art.
+
+Sprites are generated in neutral stone and grass and tinted per player at draw time. That
+keeps the atlas small, and it guarantees the two styles cannot disagree on colour, since
+both read the same palette. The land tint is deliberately faint: tinting hard enough to
+identify an island by its grass turns the ground muddy and throws away the texture, so
+ownership is carried by the tinted shoreline, the walls and the territory shading.
+
+Shore tiles are generated for all 256 neighbour combinations rather than the usual reduced
+47-tile blob set. At 16 pixels a tile the whole run is a few kilobytes, and covering every
+case outright is far less error-prone than mapping corners onto a reduced set.
 
 Chosen by `art.style` in config, overridden by `?style=` and by the menu. The palette is
 shared: the minimal style's colours are the pixel style's colours, so the two cannot drift

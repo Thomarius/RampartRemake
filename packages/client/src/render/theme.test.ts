@@ -1,4 +1,4 @@
-import { defaultArtConfig } from '@rampart/config';
+import { ArtStyleSchema, defaultArtConfig } from '@rampart/config';
 import { describe, expect, it } from 'vitest';
 
 import { createTheme } from './scene.js';
@@ -40,10 +40,14 @@ describe('theme selection', () => {
     expect(createTheme('flat').id).toBe('flat');
   });
 
-  it('falls back rather than failing on a style that is not implemented yet', () => {
-    // The pixel style arrives in M3b. Until it does, asking for it must still
-    // produce a working renderer instead of a black screen.
-    expect(() => createTheme('pixel')).not.toThrow();
-    expect(createTheme('pixel').id).toBe('flat');
+  it('builds the pixel style', () => {
+    expect(createTheme('pixel').id).toBe('pixel');
+  });
+
+  it('covers every style the config allows', () => {
+    // A style nameable in config but missing here would be a black screen.
+    for (const style of ArtStyleSchema.options) {
+      expect(createTheme(style).id).toBe(style);
+    }
   });
 });

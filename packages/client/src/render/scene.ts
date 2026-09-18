@@ -3,19 +3,18 @@ import type { MatchState } from '@rampart/sim';
 import { Application, Container } from 'pixi.js';
 
 import { FlatTheme } from './flat.js';
+import { PixelTheme } from './pixel.js';
 import { hex, type Ghost, type Theme, type ThemeLayers, type ViewTransform } from './theme.js';
 
 export type { Ghost, Theme, ViewTransform } from './theme.js';
 
 /** Every style the client can render in. */
-export function createTheme(style: ArtStyle): Theme {
+export function createTheme(style: ArtStyle, seed = 1): Theme {
   switch (style) {
     case 'flat':
       return new FlatTheme();
     case 'pixel':
-      // The procedural pixel style arrives in M3b. Until then, fall back rather
-      // than fail: a style that does not exist yet should not be a black screen.
-      return new FlatTheme();
+      return new PixelTheme(seed);
   }
 }
 
@@ -47,7 +46,8 @@ export class Scene {
     this.art = art;
     await this.app.init({
       canvas,
-      background: hex(art.palette.waterDeep),
+      // Matches the generated sea, so the map does not sit in a visible frame.
+      background: hex(art.palette.waterMid),
       antialias: false,
       resolution: Math.min(2, globalThis.devicePixelRatio || 1),
       autoDensity: true,
