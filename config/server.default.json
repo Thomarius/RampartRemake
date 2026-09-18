@@ -1,0 +1,24 @@
+{
+  "port": 8080,
+  "host": "0.0.0.0",
+  "rooms": {
+    "codeLength": 6,
+    "codeAlphabet": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
+    "maxConcurrent": 200,
+    "emptyRoomTtlMs": 300000,
+    "abandonedMatchTtlMs": 1800000
+  },
+  "limits": {
+    "maxMessagesPerSecond": 30,
+    "maxMessageBytes": 4096,
+    "maxNameLength": 16
+  },
+  "reconnect": {
+    "graceMs": 120000,
+    "botTakeoverDelayMs": 5000
+  },
+  "snapshot": {
+    "onPhaseChange": true,
+    "keepaliveIntervalMs": 15000
+  }
+}

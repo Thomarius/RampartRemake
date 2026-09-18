@@ -1,0 +1,79 @@
+import { z } from 'zod';
+
+/** Shape of the crater a landed shot punches into a wall. */
+export const CraterPatternSchema = z.enum(['single', 'plus5', 'square9']);
+export type CraterPattern = z.infer<typeof CraterPatternSchema>;
+
+const ms = z.number().int().nonnegative();
+
+export const RulesetSchema = z
+  .strictObject({
+    tickRateHz: z.number().int().positive().max(120),
+
+    players: z.strictObject({
+      min: z.number().int().min(2),
+      max: z.number().int().max(8),
+    }),
+
+    phases: z.strictObject({
+      castleSelectMs: ms,
+      combatMs: ms,
+      buildMs: ms,
+      cannonPlaceMs: ms,
+    }),
+
+    cannons: z.strictObject({
+      startingCount: z.number().int().nonnegative(),
+      /** Cannons granted for enclosing the first castle. */
+      firstCastleReward: z.number().int().nonnegative(),
+      /** Additional cannons per castle beyond the first. */
+      perAdditionalCastleReward: z.number().int().nonnegative(),
+      footprint: z.tuple([z.number().int().positive(), z.number().int().positive()]),
+      /** A cannon outside an enclosed region cannot fire, but survives. */
+      inertWhenNotEnclosed: z.boolean(),
+      /** Hard cap on total cannons per player; null = uncapped. */
+      maxTotal: z.number().int().positive().nullable(),
+    }),
+
+    shots: z.strictObject({
+      baseFlightMs: ms,
+      /** Flight time scales with distance: base + perTile * tiles. */
+      perTileFlightMs: z.number().nonnegative(),
+      maxRangeTiles: z.number().int().positive().nullable(),
+      craterPattern: CraterPatternSchema,
+      damagesWalls: z.boolean(),
+      damagesCastles: z.boolean(),
+      damagesCannons: z.boolean(),
+    }),
+
+    build: z.strictObject({
+      /** All players draw from one seeded sequence, so luck is never a factor. */
+      sharedPieceSequence: z.boolean(),
+      previewCount: z.number().int().nonnegative().max(5),
+      allowSkip: z.boolean(),
+      restrictToOwnIsland: z.boolean(),
+    }),
+
+    enclosure: z.strictObject({
+      /** False: the coastline gives you nothing, a full wall loop on land is required. */
+      shorelineCountsAsWall: z.boolean(),
+      connectivity: z.union([z.literal(4), z.literal(8)]),
+      /** One sealed region holding K castles counts as K. */
+      sharedRegionCountsAllCastles: z.boolean(),
+    }),
+
+    elimination: z.strictObject({
+      onZeroEnclosedCastles: z.boolean(),
+      simultaneousIsDraw: z.boolean(),
+    }),
+  })
+  .refine((r) => r.players.max >= r.players.min, {
+    message: 'players.max must be >= players.min',
+    path: ['players', 'max'],
+  })
+  .refine((r) => r.shots.damagesWalls, {
+    message: 'shots.damagesWalls must be true — walls are the only damageable structure',
+    path: ['shots', 'damagesWalls'],
+  });
+
+export type Ruleset = z.infer<typeof RulesetSchema>;

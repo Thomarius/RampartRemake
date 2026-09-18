@@ -1,0 +1,42 @@
+{
+  "tickRateHz": 30,
+  "players": { "min": 2, "max": 4 },
+  "phases": {
+    "castleSelectMs": 15000,
+    "combatMs": 30000,
+    "buildMs": 25000,
+    "cannonPlaceMs": 10000
+  },
+  "cannons": {
+    "startingCount": 2,
+    "firstCastleReward": 2,
+    "perAdditionalCastleReward": 1,
+    "footprint": [2, 2],
+    "inertWhenNotEnclosed": true,
+    "maxTotal": null
+  },
+  "shots": {
+    "baseFlightMs": 350,
+    "perTileFlightMs": 35,
+    "maxRangeTiles": null,
+    "craterPattern": "plus5",
+    "damagesWalls": true,
+    "damagesCastles": false,
+    "damagesCannons": false
+  },
+  "build": {
+    "sharedPieceSequence": true,
+    "previewCount": 1,
+    "allowSkip": false,
+    "restrictToOwnIsland": true
+  },
+  "enclosure": {
+    "shorelineCountsAsWall": false,
+    "connectivity": 4,
+    "sharedRegionCountsAllCastles": true
+  },
+  "elimination": {
+    "onZeroEnclosedCastles": true,
+    "simultaneousIsDraw": true
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "gridWidth": 64,
+  "gridHeight": 64,
+  "layout": "rotational",
+  "island": {
+    "targetAreaTiles": 420,
+    "areaTolerance": 0.08,
+    "noiseOctaves": 4,
+    "noiseFrequency": 0.08,
+    "coastlineRoughness": 0.55,
+    "minWaterGapTiles": 6,
+    "erosionPasses": 2
+  },
+  "castles": {
+    "perIsland": 3,
+    "footprint": [3, 3],
+    "minSpacingTiles": 8,
+    "minDistanceFromShoreTiles": 3
+  },
+  "startingWall": {
+    "ringRadiusTiles": 3
+  },
+  "generation": {
+    "maxRetries": 50
+  }
+}

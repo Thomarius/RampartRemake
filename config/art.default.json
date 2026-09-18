@@ -1,0 +1,85 @@
+{
+  "tileSizePx": 16,
+  "atlasSizePx": 2048,
+  "pixelSnap": true,
+  "scaleMode": "nearest",
+  "palette": {
+    "waterDeep": "#0b2b53",
+    "waterMid": "#14477f",
+    "waterShallow": "#1f6aa8",
+    "waterFoam": "#7fc3e0",
+    "sand": "#d9b878",
+    "grassDark": "#2c5a24",
+    "grassMid": "#3f7a2f",
+    "grassLight": "#5a9a3c",
+    "rockDark": "#4a4a52",
+    "rockMid": "#6d6d78",
+    "rockLight": "#95959f",
+    "shadow": "#0a0a12",
+    "craterDark": "#2a2016",
+    "craterMid": "#463424",
+    "emberHot": "#ffd24a",
+    "emberMid": "#f07a20",
+    "emberCool": "#a02818",
+    "uiInk": "#e8e4d8",
+    "uiPanel": "#1a1a24",
+    "uiAccent": "#d8b84a",
+    "uiValid": "#4ad86a",
+    "uiInvalid": "#d8404a"
+  },
+  "players": [
+    { "name": "crimson", "base": "#c8283c", "light": "#f0607a", "dark": "#7a1424", "hueRotate": 0 },
+    { "name": "azure", "base": "#2860c8", "light": "#60a0f0", "dark": "#143a7a", "hueRotate": 215 },
+    { "name": "amber", "base": "#d8a028", "light": "#f0d060", "dark": "#8a6014", "hueRotate": 45 },
+    {
+      "name": "viridian",
+      "base": "#28a868",
+      "light": "#60e0a0",
+      "dark": "#146840",
+      "hueRotate": 150
+    }
+  ],
+  "dither": {
+    "enabled": true,
+    "matrix": "bayer4",
+    "strength": 0.35
+  },
+  "generators": {
+    "terrain": {
+      "grassVariants": 6,
+      "rockVariants": 4,
+      "shorelineTileset": "blob47",
+      "waterAnimFrames": 8,
+      "waterAnimMsPerFrame": 140,
+      "noiseDetailFrequency": 0.6
+    },
+    "wall": {
+      "neighbourVariants": 16,
+      "damageStates": 3,
+      "blockRows": 3,
+      "mortarJitter": 0.25
+    },
+    "castle": {
+      "towerCountRange": [3, 5],
+      "battlementPeriodPx": 4,
+      "bannerWidthPx": 5,
+      "bannerWaveFrames": 4
+    },
+    "cannon": {
+      "rotationSteps": 16,
+      "barrelLengthPx": 9,
+      "recoilFrames": 3
+    },
+    "fx": {
+      "explosionFrames": 8,
+      "explosionMsPerFrame": 45,
+      "muzzleFlashFrames": 3,
+      "craterDecalVariants": 4,
+      "shotTrailLengthPx": 6
+    },
+    "reticle": {
+      "sizePx": 20,
+      "spinMsPerRevolution": 3000
+    }
+  }
+}
