@@ -21,7 +21,7 @@ npm install
 npm run check          # format, lint, typecheck, test
 ```
 
-The simulation is complete and runs headless; there is no renderer yet (see Status):
+The game is playable locally against stopgap opponents; there is no network or art yet:
 
 ```bash
 # Run bot-vs-bot matches with no renderer, and print outcomes and state hashes
@@ -31,8 +31,11 @@ npm start -w @rampart/headless -- --matches 20 --players 3
 npm start -w @rampart/headless -- --map --players 4 --seed 11
 
 npm start   -w @rampart/server     # load and cross-validate config from disk
-npm run dev -w @rampart/client     # serve the client at http://localhost:5173
+npm run dev -w @rampart/client     # play a local match at http://localhost:5173
 ```
+
+The client takes dev query parameters: `?autostart=1&players=4&seed=3` skips the menu,
+`&snapshot=build` jumps straight to a given phase, and `&speed=10` runs the clock faster.
 
 ## Layout
 

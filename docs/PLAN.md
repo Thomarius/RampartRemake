@@ -545,6 +545,41 @@ loop that does not work.
 
 ---
 
+## 10a. Open design question from M2
+
+**A one-tile-wide wall cannot absorb the piece set without spill, and the spill
+accumulates.**
+
+Of the eleven piece shapes, only `i3` and `i4` fit entirely along a straight run of a
+one-tile-wide wall. Every other piece placed on that line must deposit blocks beside it.
+Since pieces may not overlap existing wall and the smallest is three cells, those strays
+progressively remove the free neighbours a later repair needs as anchors — until an
+isolated one-tile gap has nowhere to put the rest of the piece and simply cannot be
+filled.
+
+The practical consequence is that **rebuilding the thin rectangular ring the game hands
+you is a losing strategy**, and the starting ring therefore teaches players the wrong
+shape. Surviving means thickening the wall into a blob, where spill is harmless and gaps
+always have free neighbours.
+
+Measured with the stopgap opponent, which does rebuild the thin ring: matches last a
+median of 2 rounds. Notably, the obvious balance levers do nothing — a single-tile crater,
+a 40s build phase, a 15s combat phase and a 3.4x slower reload all produce the same
+median. This is a geometry problem, not a damage-versus-repair problem.
+
+Options, none yet chosen:
+
+1. **Leave it.** Learning to build blobs rather than lines is legitimate depth, and the
+   original arguably worked this way too.
+2. **Add a one- or two-cell piece** to the set, so any gap is always fillable. Cheapest
+   fix, costs some tension.
+3. **Change the starting ring** to a thicker or rounder shape, so the shape players are
+   taught is the shape that works.
+4. **Allow placement over your own wall**, making spill self-correcting.
+
+This needs a human playing the M2 build before deciding — the stopgap opponent is not
+evidence about how the rule feels.
+
 ## 11. Deferred (explicitly out of scope for v1)
 
 Team modes (2v2), quick-match / matchmaking queue, accounts and persistence, ranking,

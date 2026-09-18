@@ -19,7 +19,14 @@ export interface PlayoutBehaviour {
   checkpointEvery?: number;
 }
 
-function randomAction(
+/**
+ * One legal-but-unthinking move for a player, or null to do nothing this tick.
+ *
+ * Exported so the client can field opponents before the AI package exists: a match
+ * against opponents that at least shoot back tells you far more about whether the
+ * loop works than an empty map does.
+ */
+export function scriptedAction(
   state: MatchState,
   playerId: number,
   rng: Rng,
@@ -102,7 +109,7 @@ export function recordRandomPlayout(
 
   while (state.tick < maxTicks && state.phase !== 'game_over') {
     for (const player of state.players) {
-      const action = randomAction(state, player.id, rng, settings);
+      const action = scriptedAction(state, player.id, rng, settings);
       if (action === null) continue;
       if (applyAction(state, action) === null) log.push({ tick: state.tick, action });
     }
