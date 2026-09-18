@@ -20,6 +20,16 @@ export const RulesetSchema = z
       combatMs: ms,
       buildMs: ms,
       cannonPlaceMs: ms,
+      /**
+       * Breathing room after a phase's clock runs out, before the announcement
+       * for the next one begins. Shots still in the air land during it.
+       */
+      endOfPhasePauseMs: ms,
+      /**
+       * How long the phase announcement takes to cross the screen. The next phase
+       * does not begin until it has left, so this is match timing, not decoration.
+       */
+      transitionBannerMs: ms,
     }),
 
     cannons: z.strictObject({

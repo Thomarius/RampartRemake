@@ -6,9 +6,11 @@
   },
   "phases": {
     "castleSelectMs": 15000,
-    "combatMs": 20000,
+    "combatMs": 10000,
     "buildMs": 25000,
-    "cannonPlaceMs": 12000
+    "cannonPlaceMs": 25000,
+    "endOfPhasePauseMs": 1000,
+    "transitionBannerMs": 4000
   },
   "cannons": {
     "startingCount": 2,

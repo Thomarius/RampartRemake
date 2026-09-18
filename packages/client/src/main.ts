@@ -138,6 +138,7 @@ async function runMatch(setup: Setup): Promise<void> {
 
     const events = match.advance(delta * timeScale);
     applyEvents(events);
+    announceWhenDue();
     hud.update(match.state, match.humanPlayer);
 
     scene.drawEffects(match.state, match.tickFraction, delta);
@@ -146,6 +147,30 @@ async function runMatch(setup: Setup): Promise<void> {
 
     frame = requestAnimationFrame(loop);
   };
+
+  const bannerTicks = Math.ceil(
+    (match.state.ruleset.phases.transitionBannerMs * match.state.ruleset.tickRateHz) / 1000,
+  );
+  let announcedAt: number | null = null;
+
+  /**
+   * Fires the announcement once the end-of-phase pause is over, and once only.
+   *
+   * Keyed off the intermission's end tick rather than its start: while shots are
+   * still in the air the simulation keeps pushing that end back, and the banner
+   * should play against the settled clock, not the moment combat stopped.
+   */
+  function announceWhenDue(): void {
+    const state = match.state;
+    if (state.phase !== 'intermission' || state.pendingPhase === null) {
+      announcedAt = null;
+      return;
+    }
+    if (announcedAt === state.phaseEndTick) return;
+    if (state.tick < state.phaseEndTick - bannerTicks) return;
+    announcedAt = state.phaseEndTick;
+    hud.announce(state.pendingPhase, state.ruleset.phases.transitionBannerMs);
+  }
 
   function applyEvents(events: readonly MatchEvent[]): void {
     let structuresChanged = false;
@@ -167,7 +192,6 @@ async function runMatch(setup: Setup): Promise<void> {
           break;
         case 'phase_changed':
           controls.resetRotation();
-          hud.announce(event.phase);
           territoryChanged = true;
           // The starting wall ring is laid down as castle selection ends, so a
           // phase change can carry grid changes with it. Without this the rings

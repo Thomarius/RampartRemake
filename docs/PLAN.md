@@ -15,16 +15,28 @@ from the start so 2v2 can be added later without a refactor, but no team mode sh
 Phase loop (all phases are simultaneous and real-time for every player):
 
 ```
+Every phase is preceded by an INTERMISSION, and nothing is playable during one:
+
+```
+
+INTERMISSION shots still in the air land -> 1s pause -> announcement crosses
+the screen (4s). The next phase begins only once it has left.
+
+```
+
+```
+
 LOBBY
-  -> CASTLE_SELECT      (15s)  pick 1 of the castles on your island
-  -> [a wall ring is auto-built around it]
-  -> CANNON_PLACE       (12s)  place your 2 opening cannons inside that ring
-  -> COMBAT             (20s)  click targets, cannons lob shots at enemy walls
-  -> BUILD              (25s)  place tetromino wall pieces on your island
-  -> [enclosure resolved; players with 0 enclosed castles are eliminated]
-  -> CANNON_PLACE       (12s)  place your earned cannons inside your territory
-  -> COMBAT ...
-  -> GAME_OVER          last player standing; simultaneous elimination = draw
+-> CASTLE_SELECT (15s) pick 1 of the castles on your island
+-> [a wall ring is auto-built around it]
+-> CANNON_PLACE (25s) place your 2 opening cannons inside that ring
+-> COMBAT (10s) click targets, cannons lob shots at enemy walls
+-> BUILD (25s) place tetromino wall pieces on your island
+-> [enclosure resolved; players with 0 enclosed castles are eliminated]
+-> CANNON_PLACE (25s) place your earned cannons, ending early once done
+-> COMBAT ...
+-> GAME_OVER last player standing; simultaneous elimination = draw
+
 ```
 
 ### 1.2 Map
@@ -96,27 +108,29 @@ twitchy, and a shot's 0.5–1.5s flight time absorbs RTT entirely.
 ## 3. Repository layout
 
 ```
+
 RampartRemake/
 ├── config/
-│   ├── ruleset.default.json     # all game rules & timings
-│   ├── terrain.default.json     # map generation parameters
-│   ├── art.default.json         # palettes, sprite generator parameters
-│   ├── audio.manifest.json      # audio cue -> file mapping
-│   └── server.default.json      # ports, room limits, rate limits
+│ ├── ruleset.default.json # all game rules & timings
+│ ├── terrain.default.json # map generation parameters
+│ ├── art.default.json # palettes, sprite generator parameters
+│ ├── audio.manifest.json # audio cue -> file mapping
+│ └── server.default.json # ports, room limits, rate limits
 ├── assets/
-│   └── audio/                   # user-supplied audio files (gitignored placeholders)
+│ └── audio/ # user-supplied audio files (gitignored placeholders)
 ├── packages/
-│   ├── config/                  # zod schemas, typed defaults, cross-file validation
-│   ├── sim/                     # deterministic game core — no DOM, no Node
-│   ├── protocol/                # wire message types + zod schemas
-│   ├── ai/                      # bot logic against the sim interface
-│   ├── server/                  # ws server, rooms, tick loop
-│   └── client/                  # Pixi renderer, UI, procedural asset generators
+│ ├── config/ # zod schemas, typed defaults, cross-file validation
+│ ├── sim/ # deterministic game core — no DOM, no Node
+│ ├── protocol/ # wire message types + zod schemas
+│ ├── ai/ # bot logic against the sim interface
+│ ├── server/ # ws server, rooms, tick loop
+│ └── client/ # Pixi renderer, UI, procedural asset generators
 ├── docs/
-│   └── PLAN.md
+│ └── PLAN.md
 └── tools/
-    └── headless/                # CLI match driver for testing & AI tuning
-```
+└── headless/ # CLI match driver for testing & AI tuning
+
+````
 
 `packages/sim` is the entire game. Everything else is I/O.
 
@@ -146,15 +160,20 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
   },
   "phases": {
     "castleSelectMs": 15000,
-    "combatMs": 20000,
+    "combatMs": 10000,
     "buildMs": 25000,
-    "cannonPlaceMs": 12000
+    "cannonPlaceMs": 25000,
+    "endOfPhasePauseMs": 1000,
+    "transitionBannerMs": 4000
   },
   "cannons": {
     "startingCount": 2,
     "firstCastleReward": 2,
     "perAdditionalCastleReward": 1,
-    "footprint": [2, 2],
+    "footprint": [
+      2,
+      2
+    ],
     "inertWhenNotEnclosed": true,
     "maxTotal": null
   },
@@ -230,7 +249,7 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
     "simultaneousIsDraw": true
   }
 }
-```
+````
 
 ### `config/terrain.default.json`
 
@@ -574,6 +593,24 @@ evidence about pacing until M5.
 **Opening cannons are placed by the player.** They were auto-placed, which quietly removed
 the first real decision of the match. Castle selection now leads into a cannon placement
 phase, so the only thing the game hands you is the wall ring.
+
+### Intermissions
+
+Phases used to change instantly, which made them easy to miss and meant the build phase
+could begin while the previous volley was still landing on it. Every transition now runs
+through an intermission, which holds until three things have happened:
+
+1. every shot still in the air has landed and played its impact,
+2. a pause of `endOfPhasePauseMs` has elapsed,
+3. the announcement has crossed the screen, taking `transitionBannerMs`.
+
+The banner travels at constant speed and does not dwell — it sweeps past rather than
+stopping to be read. Its duration is a ruleset value rather than a stylesheet constant,
+because the simulation holds the next phase until it has gone: this is match timing, not
+decoration, and the server has to agree with the client about it.
+
+While shots remain in flight the intermission keeps pushing its own end tick back, so the
+announcement always plays against a settled board.
 
 ## 11. Deferred (explicitly out of scope for v1)
 

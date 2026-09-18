@@ -16,7 +16,7 @@ import {
 import { legalCannonPlacements } from './placement.js';
 import { Structure } from './types.js';
 import { recordRandomPlayout } from './playout.js';
-import { fastRuleset } from './testing.js';
+import { beginMatch, fastRuleset } from './testing.js';
 
 function options(playerCount: number, seed = 42, ruleset = fastRuleset()): MatchOptions {
   return {
@@ -28,8 +28,14 @@ function options(playerCount: number, seed = 42, ruleset = fastRuleset()): Match
 }
 
 describe('match setup', () => {
-  it('starts in castle selection with every castle placed and nothing built', () => {
+  it('opens with an announcement rather than straight into play', () => {
     const state = createMatch(options(3));
+    expect(state.phase).toBe('intermission');
+    expect(state.pendingPhase).toBe('castle_select');
+  });
+
+  it('starts in castle selection with every castle placed and nothing built', () => {
+    const state = beginMatch(createMatch(options(3)));
     expect(state.phase).toBe('castle_select');
     expect(state.castles).toHaveLength(3 * defaultTerrainConfig.castles.perIsland);
     expect(state.cannons).toHaveLength(0);
@@ -46,7 +52,7 @@ describe('match setup', () => {
   });
 
   it('refuses a castle on another island', () => {
-    const state = createMatch(options(2));
+    const state = beginMatch(createMatch(options(2)));
     const theirs = state.castles.find((c) => c.islandId === 2);
     expect(applyAction(state, { kind: 'select_castle', player: 0, castleId: theirs!.id })).toBe(
       'wrong_island',
@@ -56,7 +62,7 @@ describe('match setup', () => {
 
 describe('castle selection', () => {
   it('grants a sealed ring and hands the player cannons to place', () => {
-    const state = createMatch(options(2));
+    const state = beginMatch(createMatch(options(2)));
     for (const player of state.players) {
       const castle = state.castles.find((c) => c.islandId === player.islandId)!;
       expect(
@@ -65,6 +71,7 @@ describe('castle selection', () => {
     }
 
     // The opening cannons are placed by the player, not dropped in automatically.
+    beginMatch(state);
     expect(state.phase).toBe('cannon_place');
     expect(state.cannons).toHaveLength(0);
     for (const player of state.players) {
@@ -80,17 +87,22 @@ describe('castle selection', () => {
   });
 
   it('starts round 1 once the opening cannons are down', () => {
-    const state = createMatch(options(2));
+    const state = beginMatch(createMatch(options(2)));
     for (const player of state.players) {
       const castle = state.castles.find((c) => c.islandId === player.islandId)!;
       applyAction(state, { kind: 'select_castle', player: player.id, castleId: castle.id });
     }
+    beginMatch(state);
     for (const player of state.players) {
       for (let i = 0; i < defaultRuleset.cannons.startingCount; i++) {
         const spot = legalCannonPlacements(state, player.id)[0]!;
         expect(applyAction(state, { kind: 'place_cannon', player: player.id, ...spot })).toBeNull();
       }
     }
+    // The announcement has to clear before combat starts.
+    expect(state.phase).toBe('intermission');
+    expect(state.pendingPhase).toBe('combat');
+    beginMatch(state);
     expect(state.phase).toBe('combat');
     expect(state.round).toBe(1);
     expect(state.cannons).toHaveLength(2 * defaultRuleset.cannons.startingCount);
@@ -99,7 +111,7 @@ describe('castle selection', () => {
 
   it('picks a castle for anyone who runs out the clock', () => {
     const state = createMatch(options(2));
-    stepTo(state, ticksFor(fastRuleset().phases.castleSelectMs, defaultRuleset.tickRateHz) + 1);
+    while (state.phase !== 'cannon_place' && state.tick < 5000) step(state);
     expect(state.phase).toBe('cannon_place');
     for (const player of state.players) expect(player.startingCastleId).not.toBeNull();
   });
@@ -107,7 +119,7 @@ describe('castle selection', () => {
 
 describe('round resolution', () => {
   function startedMatch(playerCount = 2) {
-    const state = createMatch(options(playerCount));
+    const state = beginMatch(createMatch(options(playerCount)));
     for (const player of state.players) {
       const castle = state.castles.find((c) => c.islandId === player.islandId)!;
       applyAction(state, { kind: 'select_castle', player: player.id, castleId: castle.id });
@@ -271,5 +283,96 @@ describe('full match', () => {
     // build phase should therefore outlast them.
     const { state } = recordRandomPlayout(options(2, 17), 3, 60_000);
     expect(state.phase).toBe('game_over');
+  });
+});
+
+describe('intermission', () => {
+  function intoCombat(playerCount = 2) {
+    const state = beginMatch(createMatch(options(playerCount, 42, defaultRuleset)));
+    for (const player of state.players) {
+      const castle = state.castles.find((c) => c.islandId === player.islandId)!;
+      applyAction(state, { kind: 'select_castle', player: player.id, castleId: castle.id });
+    }
+    beginMatch(state); // announcement before cannon placement
+    for (const player of state.players) {
+      for (let i = 0; i < defaultRuleset.cannons.startingCount; i++) {
+        const spot = legalCannonPlacements(state, player.id)[0];
+        if (spot) applyAction(state, { kind: 'place_cannon', player: player.id, ...spot });
+      }
+    }
+    beginMatch(state); // announcement before combat
+    expect(state.phase).toBe('combat');
+    return state;
+  }
+
+  it('lasts the configured pause plus the announcement', () => {
+    const state = intoCombat();
+    while (state.phase === 'combat') step(state);
+
+    expect(state.phase).toBe('intermission');
+    expect(state.pendingPhase).toBe('build');
+    const expected =
+      ticksFor(defaultRuleset.phases.endOfPhasePauseMs, defaultRuleset.tickRateHz) +
+      ticksFor(defaultRuleset.phases.transitionBannerMs, defaultRuleset.tickRateHz);
+    expect(state.phaseEndTick - state.tick).toBe(expected);
+  });
+
+  it('holds until the last shot has landed', () => {
+    // A cannonball fired as the clock runs out must land, and be seen to land,
+    // before the next phase starts under it.
+    const state = intoCombat();
+    stepTo(state, state.phaseEndTick - 1);
+    const target = state.castles.find((c) => c.islandId === 2)!;
+    expect(
+      applyAction(state, { kind: 'fire', player: 0, x: target.x, y: target.y - 4 }),
+    ).toBeNull();
+    const shot = state.shots[0]!;
+    expect(shot.impactTick).toBeGreaterThan(state.phaseEndTick);
+
+    step(state);
+    expect(state.phase).toBe('intermission');
+
+    // The intermission cannot end while the shot is still in the air.
+    stepTo(state, shot.impactTick - 1);
+    expect(state.phase).toBe('intermission');
+    expect(state.shots).toHaveLength(1);
+
+    // Once it lands, the full pause and announcement still have to play out.
+    stepTo(state, shot.impactTick);
+    expect(state.shots).toHaveLength(0);
+    const remaining = state.phaseEndTick - state.tick;
+    expect(remaining).toBeGreaterThan(
+      ticksFor(defaultRuleset.phases.transitionBannerMs, defaultRuleset.tickRateHz) - 2,
+    );
+    stepTo(state, state.phaseEndTick);
+    expect(state.phase).toBe('build');
+  });
+
+  it('blocks play while it runs', () => {
+    const state = intoCombat();
+    while (state.phase === 'combat') step(state);
+    expect(state.phase).toBe('intermission');
+    const target = state.castles.find((c) => c.islandId === 2)!;
+    expect(applyAction(state, { kind: 'fire', player: 0, x: target.x, y: target.y })).toBe(
+      'wrong_phase',
+    );
+    expect(applyAction(state, { kind: 'place_piece', player: 0, x: 5, y: 5, rotation: 0 })).toBe(
+      'wrong_phase',
+    );
+  });
+
+  it('precedes every phase, so no phase begins unannounced', () => {
+    const state = beginMatch(createMatch(options(2, 9, defaultRuleset)));
+    let previous = state.phase;
+    const starts: string[] = [];
+    for (let i = 0; i < 40_000 && state.phase !== 'game_over'; i++) {
+      step(state);
+      if (state.phase !== previous) {
+        if (previous === 'intermission') starts.push(state.phase);
+        else expect(state.phase).toBe('intermission');
+        previous = state.phase;
+      }
+    }
+    expect(starts.length).toBeGreaterThan(2);
   });
 });

@@ -80,8 +80,9 @@ export function createMatch(options: MatchOptions): MatchState {
     height: generated.height,
     tick: 0,
     round: 0,
-    phase: 'castle_select',
-    phaseEndTick: ticksFor(ruleset.phases.castleSelectMs, ruleset.tickRateHz),
+    phase: 'intermission',
+    phaseEndTick: intermissionTicks(ruleset),
+    pendingPhase: 'castle_select',
     players,
     terrain: generated.terrain,
     islandId: generated.islandId,
@@ -105,12 +106,21 @@ export function createMatch(options: MatchOptions): MatchState {
     phase: state.phase,
     round: 0,
     phaseEndTick: state.phaseEndTick,
+    pendingPhase: state.pendingPhase,
   });
   return state;
 }
 
+function intermissionTicks(ruleset: Ruleset): number {
+  return (
+    ticksFor(ruleset.phases.endOfPhasePauseMs, ruleset.tickRateHz) +
+    ticksFor(ruleset.phases.transitionBannerMs, ruleset.tickRateHz)
+  );
+}
+
 function enterPhase(state: MatchState, phase: Phase, durationMs: number): void {
   state.phase = phase;
+  state.pendingPhase = null;
   state.phaseEndTick = state.tick + ticksFor(durationMs, state.ruleset.tickRateHz);
   state.events.push({
     kind: 'phase_changed',
@@ -118,6 +128,29 @@ function enterPhase(state: MatchState, phase: Phase, durationMs: number): void {
     phase,
     round: state.round,
     phaseEndTick: state.phaseEndTick,
+    pendingPhase: null,
+  });
+}
+
+/**
+ * Steps out of a phase and into the gap before the next one.
+ *
+ * Nothing is playable here. Shots still in the air land and play out, then a pause,
+ * then the announcement crosses the screen — and only once it has left does the next
+ * phase begin. Without this the build phase would start under a banner the player is
+ * still reading, with cannonballs from the last volley still landing on it.
+ */
+function enterIntermission(state: MatchState, next: Phase): void {
+  state.phase = 'intermission';
+  state.pendingPhase = next;
+  state.phaseEndTick = state.tick + intermissionTicks(state.ruleset);
+  state.events.push({
+    kind: 'phase_changed',
+    tick: state.tick,
+    phase: 'intermission',
+    round: state.round,
+    phaseEndTick: state.phaseEndTick,
+    pendingPhase: next,
   });
 }
 
@@ -167,7 +200,7 @@ function finishCastleSelect(state: MatchState): void {
   for (const player of state.players) {
     player.cannonsToPlace = state.ruleset.cannons.startingCount;
   }
-  enterPhase(state, 'cannon_place', state.ruleset.phases.cannonPlaceMs);
+  enterIntermission(state, 'cannon_place');
 }
 
 /** Clears an eliminated player's cannons and leaves their walls as neutral rubble. */
@@ -193,6 +226,7 @@ function stripEliminated(state: MatchState, playerId: number): void {
 function checkGameOver(state: MatchState): boolean {
   const alive = alivePlayers(state);
   if (alive.length > 1) return false;
+  state.pendingPhase = null;
   state.winner = alive.length === 1 ? (alive[0] as PlayerState).id : null;
   state.draw = alive.length === 0 && state.ruleset.elimination.simultaneousIsDraw;
   state.phase = 'game_over';
@@ -261,14 +295,24 @@ function resolveRound(state: MatchState): void {
   if (checkGameOver(state)) return;
 
   const anyToPlace = state.players.some((p) => !p.eliminated && p.cannonsToPlace > 0);
-  if (anyToPlace) enterPhase(state, 'cannon_place', state.ruleset.phases.cannonPlaceMs);
-  else startNextCombat(state);
+  enterIntermission(state, anyToPlace ? 'cannon_place' : 'combat');
 }
 
-function startNextCombat(state: MatchState): void {
-  state.round++;
-  for (const player of state.players) player.cannonsToPlace = 0;
-  enterPhase(state, 'combat', state.ruleset.phases.combatMs);
+/** Begins the phase an intermission was holding. */
+function beginPendingPhase(state: MatchState): void {
+  const next = state.pendingPhase ?? 'combat';
+  if (next === 'combat') {
+    state.round++;
+    for (const player of state.players) player.cannonsToPlace = 0;
+    enterPhase(state, 'combat', state.ruleset.phases.combatMs);
+    return;
+  }
+  const durations: Partial<Record<Phase, number>> = {
+    castle_select: state.ruleset.phases.castleSelectMs,
+    build: state.ruleset.phases.buildMs,
+    cannon_place: state.ruleset.phases.cannonPlaceMs,
+  };
+  enterPhase(state, next, durations[next] ?? 0);
 }
 
 function advancePhase(state: MatchState): void {
@@ -279,8 +323,7 @@ function advancePhase(state: MatchState): void {
       return;
     }
     case 'combat': {
-      if (state.tick >= state.phaseEndTick)
-        enterPhase(state, 'build', state.ruleset.phases.buildMs);
+      if (state.tick >= state.phaseEndTick) enterIntermission(state, 'build');
       return;
     }
     case 'build': {
@@ -289,7 +332,18 @@ function advancePhase(state: MatchState): void {
     }
     case 'cannon_place': {
       const done = state.players.every((p) => p.eliminated || p.cannonsToPlace === 0);
-      if (done || state.tick >= state.phaseEndTick) startNextCombat(state);
+      if (done || state.tick >= state.phaseEndTick) enterIntermission(state, 'combat');
+      return;
+    }
+
+    case 'intermission': {
+      // Hold while anything is still in the air, so the last volley lands and plays
+      // out before the announcement starts rather than under it.
+      if (state.shots.length > 0) {
+        state.phaseEndTick = state.tick + intermissionTicks(state.ruleset);
+        return;
+      }
+      if (state.tick >= state.phaseEndTick) beginPendingPhase(state);
       return;
     }
     case 'lobby':
@@ -403,6 +457,7 @@ export function hashMatchState(state: MatchState): string {
   h.i32(state.tick);
   h.i32(state.round);
   h.u32(PHASES.indexOf(state.phase));
+  h.u32(state.pendingPhase === null ? 0xffff : PHASES.indexOf(state.pendingPhase));
   h.i32(state.phaseEndTick);
   h.i32(state.width);
   h.i32(state.height);

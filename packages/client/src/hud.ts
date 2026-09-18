@@ -10,6 +10,7 @@ import {
 
 const PHASE_LABEL: Record<Phase, string> = {
   lobby: 'Waiting',
+  intermission: 'Stand by',
   castle_select: 'Choose your castle',
   combat: 'Fire!',
   build: 'Rebuild your walls',
@@ -19,6 +20,7 @@ const PHASE_LABEL: Record<Phase, string> = {
 
 const PHASE_HINT: Record<Phase, string> = {
   lobby: '',
+  intermission: '',
   castle_select: 'Click a castle on your island',
   combat: 'Click to fire the nearest ready cannon',
   build: 'Click to place · R / wheel / right-click to rotate',
@@ -48,6 +50,7 @@ function pieceSwatch(pieceId: number, colour: string, scale: number): string {
 /** Short, shouted names for the sweeping phase announcement. */
 const PHASE_CALL: Record<Phase, string> = {
   lobby: '',
+  intermission: '',
   castle_select: 'Choose your castle',
   combat: 'Fire!',
   build: 'Rebuild',
@@ -66,17 +69,22 @@ export class Hud {
    * did. Phases change without warning otherwise, and a player who does not notice
    * that combat has ended spends the first seconds of the build phase shooting.
    */
-  announce(phase: Phase): void {
+  announce(phase: Phase, durationMs: number): void {
     const text = PHASE_CALL[phase];
     if (text === '') return;
     const banner = document.createElement('div');
     banner.className = 'phase-call';
     banner.textContent = text;
+    // The simulation holds the next phase until this has left the screen, so the
+    // travel time comes from the ruleset rather than the stylesheet.
+    banner.style.animationDuration = `${durationMs}ms`;
     banner.addEventListener('animationend', () => banner.remove());
     this.bannerRoot.replaceChildren(banner);
   }
 
   update(state: MatchState, humanPlayer: number): void {
+    const waiting = state.phase === 'intermission';
+    const shown = waiting ? (state.pendingPhase ?? state.phase) : state.phase;
     const secondsLeft = Math.max(0, (state.phaseEndTick - state.tick) / state.ruleset.tickRateHz);
     const human = state.players[humanPlayer];
     const colour = playerColour(humanPlayer);
@@ -130,8 +138,8 @@ export class Hud {
     this.root.innerHTML = `
       <div class="bar">
         <div class="phase">
-          <strong>${PHASE_LABEL[state.phase]}</strong>
-          <span class="timer">${secondsLeft.toFixed(1)}s</span>
+          <strong>${waiting ? `Next: ${PHASE_LABEL[shown]}` : PHASE_LABEL[shown]}</strong>
+          <span class="timer">${waiting ? '&nbsp;' : `${secondsLeft.toFixed(1)}s`}</span>
           <span class="round">round ${state.round}</span>
         </div>
         <ul class="roster">${roster}</ul>

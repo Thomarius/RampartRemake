@@ -9,6 +9,8 @@ export type StructureKind = (typeof Structure)[keyof typeof Structure];
 export const PHASES = [
   'lobby',
   'castle_select',
+  /** Between phases: shots land, then the next phase is announced. */
+  'intermission',
   'combat',
   'build',
   'cannon_place',
@@ -86,7 +88,14 @@ export interface LoggedAction {
 }
 
 export type MatchEvent =
-  | { kind: 'phase_changed'; tick: number; phase: Phase; round: number; phaseEndTick: number }
+  | {
+      kind: 'phase_changed';
+      tick: number;
+      phase: Phase;
+      round: number;
+      phaseEndTick: number;
+      pendingPhase: Phase | null;
+    }
   | { kind: 'castle_selected'; tick: number; player: number; castleId: number }
   | { kind: 'shot_fired'; tick: number; shot: Shot }
   | { kind: 'shot_impact'; tick: number; shotId: number; x: number; y: number; destroyed: number[] }
@@ -122,6 +131,8 @@ export interface MatchState {
   round: number;
   phase: Phase;
   phaseEndTick: number;
+  /** During an intermission, the phase that begins once it ends. */
+  pendingPhase: Phase | null;
 
   players: PlayerState[];
 

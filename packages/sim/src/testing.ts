@@ -1,5 +1,6 @@
 import { defaultRuleset, defaultTerrainConfig, type Ruleset } from '@rampart/config';
 
+import { step } from './match.js';
 import { generatePieceSequence } from './pieces.js';
 import {
   Structure,
@@ -110,6 +111,7 @@ export function stateFromAscii(art: string, ruleset: Ruleset = defaultRuleset): 
     round: 1,
     phase: 'combat',
     phaseEndTick: 1000,
+    pendingPhase: null,
     players: players.length > 0 ? players : [],
     terrain,
     islandId,
@@ -128,10 +130,26 @@ export function stateFromAscii(art: string, ruleset: Ruleset = defaultRuleset): 
   };
 }
 
+/**
+ * Steps past the opening intermission to the first playable phase. Every match now
+ * begins with the announcement, so tests that want to act need to get past it.
+ */
+export function beginMatch(state: MatchState): MatchState {
+  while (state.phase === 'intermission') step(state);
+  return state;
+}
+
 /** A ruleset with compressed phases, so a whole match runs in a test in milliseconds. */
 export function fastRuleset(ruleset: Ruleset = defaultRuleset): Ruleset {
   return {
     ...ruleset,
-    phases: { castleSelectMs: 400, combatMs: 1500, buildMs: 1200, cannonPlaceMs: 600 },
+    phases: {
+      castleSelectMs: 400,
+      combatMs: 1500,
+      buildMs: 1200,
+      cannonPlaceMs: 600,
+      endOfPhasePauseMs: 100,
+      transitionBannerMs: 200,
+    },
   };
 }

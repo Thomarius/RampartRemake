@@ -14,18 +14,20 @@ import {
   placePiece,
   upcomingPieceIds,
 } from './placement.js';
-import { fastRuleset } from './testing.js';
+import { beginMatch, fastRuleset } from './testing.js';
 import { Structure } from './types.js';
 
 /** A match advanced to a build phase, with everyone holding an intact starting ring. */
 function buildPhaseMatch(playerCount = 2) {
   const ruleset = fastRuleset();
-  const state = createMatch({
-    seed: 3,
-    ruleset,
-    terrainConfig: defaultTerrainConfig,
-    players: Array.from({ length: playerCount }, (_, i) => ({ name: `p${i}`, isBot: true })),
-  });
+  const state = beginMatch(
+    createMatch({
+      seed: 3,
+      ruleset,
+      terrainConfig: defaultTerrainConfig,
+      players: Array.from({ length: playerCount }, (_, i) => ({ name: `p${i}`, isBot: true })),
+    }),
+  );
   for (const player of state.players) {
     const castle = state.castles.find((c) => c.islandId === player.islandId)!;
     applyAction(state, { kind: 'select_castle', player: player.id, castleId: castle.id });

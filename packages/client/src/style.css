@@ -280,27 +280,17 @@ body {
   text-transform: uppercase;
   text-align: center;
   white-space: nowrap;
-  animation: sweep 2s ease-in forwards;
+  /* Constant speed, no dwell: the banner sweeps past rather than stopping to be
+     read. Duration is set inline from the ruleset. */
+  animation: sweep 4s linear forwards;
 }
 
 @keyframes sweep {
-  0% {
-    top: -20%;
-    opacity: 0;
+  from {
+    top: -12%;
   }
-  18% {
-    opacity: 1;
-  }
-  50% {
-    top: 42%;
-    opacity: 1;
-  }
-  82% {
-    opacity: 1;
-  }
-  100% {
-    top: 110%;
-    opacity: 0;
+  to {
+    top: 100%;
   }
 }
 
