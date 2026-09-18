@@ -1,6 +1,9 @@
 {
   "tickRateHz": 30,
-  "players": { "min": 2, "max": 4 },
+  "players": {
+    "min": 2,
+    "max": 4
+  },
   "phases": {
     "castleSelectMs": 15000,
     "combatMs": 30000,
@@ -28,7 +31,54 @@
     "sharedPieceSequence": true,
     "previewCount": 1,
     "allowSkip": false,
-    "restrictToOwnIsland": true
+    "restrictToOwnIsland": true,
+    "sequenceLength": 4096,
+    "pieces": [
+      {
+        "name": "i3",
+        "weight": 8
+      },
+      {
+        "name": "l3",
+        "weight": 10
+      },
+      {
+        "name": "o4",
+        "weight": 10
+      },
+      {
+        "name": "i4",
+        "weight": 8
+      },
+      {
+        "name": "t4",
+        "weight": 10
+      },
+      {
+        "name": "s4",
+        "weight": 7
+      },
+      {
+        "name": "z4",
+        "weight": 7
+      },
+      {
+        "name": "j4",
+        "weight": 9
+      },
+      {
+        "name": "l4",
+        "weight": 9
+      },
+      {
+        "name": "p5",
+        "weight": 5
+      },
+      {
+        "name": "u5",
+        "weight": 4
+      }
+    ]
   },
   "enclosure": {
     "shorelineCountsAsWall": false,

@@ -28,7 +28,7 @@ LOBBY
 
 ### 1.2 Map
 
-- Square tile grid, default 64x64.
+- Square tile grid, default 80x80.
 - Each player owns one **island**, fully separated by water. Islands are **rotational
   copies** of a single procedurally generated shape, placed at `360/N` degree intervals
   around the map centre. This guarantees identical area, castle layout and sightlines.
@@ -133,15 +133,18 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
 
 ### `config/ruleset.default.json`
 
-```jsonc
+```json
 {
   "tickRateHz": 30,
-  "players": { "min": 2, "max": 4 },
+  "players": {
+    "min": 2,
+    "max": 4
+  },
   "phases": {
     "castleSelectMs": 15000,
     "combatMs": 30000,
     "buildMs": 25000,
-    "cannonPlaceMs": 10000,
+    "cannonPlaceMs": 10000
   },
   "cannons": {
     "startingCount": 2,
@@ -149,7 +152,7 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
     "perAdditionalCastleReward": 1,
     "footprint": [2, 2],
     "inertWhenNotEnclosed": true,
-    "maxTotal": null,
+    "maxTotal": null
   },
   "shots": {
     "baseFlightMs": 350,
@@ -158,49 +161,101 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
     "craterPattern": "plus5",
     "damagesWalls": true,
     "damagesCastles": false,
-    "damagesCannons": false,
+    "damagesCannons": false
   },
   "build": {
     "sharedPieceSequence": true,
     "previewCount": 1,
     "allowSkip": false,
     "restrictToOwnIsland": true,
+    "sequenceLength": 4096,
+    "pieces": [
+      {
+        "name": "i3",
+        "weight": 8
+      },
+      {
+        "name": "l3",
+        "weight": 10
+      },
+      {
+        "name": "o4",
+        "weight": 10
+      },
+      {
+        "name": "i4",
+        "weight": 8
+      },
+      {
+        "name": "t4",
+        "weight": 10
+      },
+      {
+        "name": "s4",
+        "weight": 7
+      },
+      {
+        "name": "z4",
+        "weight": 7
+      },
+      {
+        "name": "j4",
+        "weight": 9
+      },
+      {
+        "name": "l4",
+        "weight": 9
+      },
+      {
+        "name": "p5",
+        "weight": 5
+      },
+      {
+        "name": "u5",
+        "weight": 4
+      }
+    ]
   },
   "enclosure": {
     "shorelineCountsAsWall": false,
     "connectivity": 4,
-    "sharedRegionCountsAllCastles": true,
+    "sharedRegionCountsAllCastles": true
   },
   "elimination": {
     "onZeroEnclosedCastles": true,
-    "simultaneousIsDraw": true,
-  },
+    "simultaneousIsDraw": true
+  }
 }
 ```
 
 ### `config/terrain.default.json`
 
-```jsonc
+```json
 {
-  "gridWidth": 64,
-  "gridHeight": 64,
+  "gridWidth": 80,
+  "gridHeight": 80,
   "layout": "rotational",
   "island": {
     "targetAreaTiles": 420,
+    "areaTolerance": 0.08,
     "noiseOctaves": 4,
     "noiseFrequency": 0.08,
     "coastlineRoughness": 0.55,
     "minWaterGapTiles": 6,
-    "erosionPasses": 2,
+    "erosionPasses": 2
   },
   "castles": {
     "perIsland": 3,
     "footprint": [3, 3],
-    "minSpacingTiles": 8,
-    "minDistanceFromShoreTiles": 3,
+    "minSpacingTiles": 7,
+    "minDistanceFromShoreTiles": 3
   },
-  "startingWall": { "ringRadiusTiles": 3 },
-  "generation": { "maxRetries": 50 },
+  "startingWall": {
+    "ringRadiusTiles": 3
+  },
+  "generation": {
+    "maxRetries": 50
+  }
 }
 ```
 
@@ -274,7 +329,7 @@ resolveEnclosure(state):
   for each player: enclosedCastles = count -> reward or elimination
 ```
 
-Complexity O(W*H) per resolution, run once per build phase. Trivial at 64x64.
+Complexity O(W*H) per resolution, run once per build phase. Trivial at 80x80.
 
 **Placement validation**
 
@@ -297,14 +352,37 @@ tick matching `impactTick`, apply the crater pattern to wall tiles only and free
 
 **Terrain generation**
 
-1. Seeded fBm noise → threshold → largest connected land blob near a template centre.
-2. Erosion passes to smooth the coastline; reject if area is outside tolerance.
-3. Place castles: Poisson-disc candidates respecting `minSpacingTiles` and shore distance;
-   reject the island if fewer than `perIsland` valid sites exist.
-4. Rotate the accepted island N times around the map centre; verify `minWaterGapTiles`.
-5. Retry up to `maxRetries` with a derived seed, else fall back to a known-good template.
+1. Seeded fBm noise, thresholded by binary search so the island hits the requested area.
+2. Largest connected component only, then erosion passes to smooth the coast and fill pinholes.
+3. Castle siting by farthest-point sampling, respecting `minSpacingTiles`, shore distance, and
+   requiring the whole starting-ring block to be solid ground — every castle must be a viable
+   opening choice, or a player could pick a coastal one and begin the match already breached.
+4. Replicate: rotate the finished raster into N copies about the map centre.
+5. Re-validate and repair (see below), then check island areas, connectivity and the water gap.
+   Reject the seed and draw another if any constraint fails.
 
----
+**Rotation is exact for 2 and 4 players, approximate for 3.** Quarter turns map grid points to
+grid points, so those islands are pixel-identical copies with zero area difference. 120 degrees
+has no exact representation on a square grid, so the rotated copies are rasterised independently
+and differ by a few tiles.
+
+That rounding can drop a tile of a castle's starting-ring block into the water. Two ways to
+prevent it were measured:
+
+- _Guarantee it from the canonical island_ — demand a clear region large enough to survive any
+  rotation. The preimage of a rotated 9x9 block is a rotated square spanning a disc of radius
+  5.7, so three castles would need islands roughly twice the size. Measured: every seed rejected
+  at the shipped island size, and only a 96x96 grid with 700-tile islands succeeded.
+- _Rotate, then repair_ — fill the handful of water tiles that land inside a ring block.
+  Measured: 3-player maps repair about 6 tiles of 420, a worst-case area spread of 2.4%, well
+  inside the 8% tolerance. 2- and 4-player maps repair nothing at all.
+
+The second is implemented. It keeps the map at 80x80 and guarantees what actually matters —
+every castle is playable — at the cost of islands that are congruent rather than identical for
+3 players, which is what "almost equal" was always going to mean on a square grid.
+
+The generator tallies _why_ it rejected each seed and reports the breakdown if it gives up, so
+an impossible configuration is distinguishable from an unlucky one.
 
 ## 6. Netcode
 
@@ -450,16 +528,16 @@ API as human players — they cannot cheat by construction.
 
 ## 10. Milestones
 
-| #      | Goal             | Done when                                                                                                                                                                        |
-| ------ | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **M0** | Scaffold         | npm workspace, per-package tsconfigs, eslint/prettier, vitest, CI, all config files + zod schemas. **Done.**                                                                     |
-| **M1** | Sim core         | Terrain generation, enclosure solver, placement rules, shot resolution, phase state machine. Full match runs headless from a scripted input log. Determinism test green.         |
-| **M2** | Playable locally | Pixi client running the sim in-browser, no network. Placeholder rectangles. **This is the fun-check** — if the loop is not fun here, adjust rules before building anything else. |
-| **M3** | Procedural art   | Full generator suite, atlas, animation, per-player palettes. The game looks like Rampart.                                                                                        |
-| **M4** | Online           | ws server, room codes, authoritative loop, clock sync, reconnect + bot takeover. 2-player online match end to end.                                                               |
-| **M5** | AI               | 3 difficulty tiers, bots fill empty slots, headless bot-vs-bot soak runs clean.                                                                                                  |
-| **M6** | Full scope       | 3–4 players, audio integration, HUD/menu polish, Docker, deployment.                                                                                                             |
-| **M7** | Balance          | Tuning pass driven by the headless harness; ruleset defaults finalised.                                                                                                          |
+| #      | Goal             | Done when                                                                                                                                                                          |
+| ------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **M0** | Scaffold         | npm workspace, per-package tsconfigs, eslint/prettier, vitest, CI, all config files + zod schemas. **Done.**                                                                       |
+| **M1** | Sim core         | Terrain generation, enclosure solver, placement rules, shot resolution, phase state machine. Full match runs headless from a scripted input log. Determinism test green. **Done.** |
+| **M2** | Playable locally | Pixi client running the sim in-browser, no network. Placeholder rectangles. **This is the fun-check** — if the loop is not fun here, adjust rules before building anything else.   |
+| **M3** | Procedural art   | Full generator suite, atlas, animation, per-player palettes. The game looks like Rampart.                                                                                          |
+| **M4** | Online           | ws server, room codes, authoritative loop, clock sync, reconnect + bot takeover. 2-player online match end to end.                                                                 |
+| **M5** | AI               | 3 difficulty tiers, bots fill empty slots, headless bot-vs-bot soak runs clean.                                                                                                    |
+| **M6** | Full scope       | 3–4 players, audio integration, HUD/menu polish, Docker, deployment.                                                                                                               |
+| **M7** | Balance          | Tuning pass driven by the headless harness; ruleset defaults finalised.                                                                                                            |
 
 Milestone M2 is deliberately early and ugly: the cheapest possible answer to "is this
 actually fun with these rules?" is worth more than any amount of art built on top of a

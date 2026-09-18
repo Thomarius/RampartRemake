@@ -21,10 +21,15 @@ npm install
 npm run check          # format, lint, typecheck, test
 ```
 
-Current smoke targets (the game itself is not playable yet — see Status):
+The simulation is complete and runs headless; there is no renderer yet (see Status):
 
 ```bash
-npm start   -w @rampart/headless   # validate config, print match parameters
+# Run bot-vs-bot matches with no renderer, and print outcomes and state hashes
+npm start -w @rampart/headless -- --matches 20 --players 3
+
+# Print a generated map as ASCII
+npm start -w @rampart/headless -- --map --players 4 --seed 11
+
 npm start   -w @rampart/server     # load and cross-validate config from disk
 npm run dev -w @rampart/client     # serve the client at http://localhost:5173
 ```

@@ -13,7 +13,7 @@ export interface ConfigBundle {
 }
 
 /** Fraction of the map that may be land once every island is placed. */
-const MAX_LAND_FRACTION = 0.5;
+const MAX_LAND_FRACTION = 0.35;
 
 /**
  * Constraints that span more than one config file, and so cannot be expressed

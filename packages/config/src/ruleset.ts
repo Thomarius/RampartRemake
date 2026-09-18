@@ -52,6 +52,17 @@ export const RulesetSchema = z
       previewCount: z.number().int().nonnegative().max(5),
       allowSkip: z.boolean(),
       restrictToOwnIsland: z.boolean(),
+      /** Length of the generated sequence; it wraps, keeping match state bounded. */
+      sequenceLength: z.number().int().positive(),
+      /** Piece names must exist in the simulation's catalogue. Weights are relative. */
+      pieces: z
+        .array(
+          z.strictObject({
+            name: z.string().min(1),
+            weight: z.number().positive(),
+          }),
+        )
+        .min(1),
     }),
 
     enclosure: z.strictObject({

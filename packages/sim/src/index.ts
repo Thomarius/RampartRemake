@@ -1,7 +1,15 @@
-// The deterministic game core. No DOM, no Node, no I/O — everything else in the
-// repository is I/O around this package.
-//
-// Invariant: (seed, ruleset, ordered input log) -> identical final state hash.
-// See docs/PLAN.md section 5. Implemented in M1.
-
-export type { Ruleset, TerrainConfig, CraterPattern } from '@rampart/config';
+export * from './types.js';
+export * from './rng.js';
+export * from './hash.js';
+export * from './math.js';
+export * from './noise.js';
+export * from './trig.js';
+export * from './grid.js';
+export * from './terrain.js';
+export * from './enclosure.js';
+export * from './pieces.js';
+export * from './placement.js';
+export * from './shots.js';
+export * from './match.js';
+export * from './playout.js';
+export * from './debug.js';
