@@ -97,12 +97,12 @@ describe('audio manifest', () => {
   });
 
   it('reports a missing cue through bundle validation', () => {
-    const { victory: _dropped, ...sfx } = defaultAudioManifest.sfx;
+    const { cannon_fire: _dropped, ...sfx } = defaultAudioManifest.sfx;
     const problems = validateConfigBundle({
       ...defaultConfigBundle,
       audio: { ...defaultAudioManifest, sfx: sfx as AudioManifest['sfx'] },
     });
-    expect(problems).toContain('audio: missing sfx cue "victory".');
+    expect(problems).toContain('audio: missing sfx cue "cannon_fire".');
   });
 });
 

@@ -31,9 +31,18 @@ const GUN_REACH = 12;
  * Ground the wall must take in around each castle.
  *
  * Without it the planner returns the tightest wall that works, which is the wall with
- * no room inside for a gun. Three tiles leaves a comfortable band for several.
+ * no room inside for a gun.
+ *
+ * Two, not three, and the difference is not small. Three tiles buys a band with room
+ * for about fourteen cannons against a reward of three a round — ground that has to be
+ * walled and then repaired every round under fire, for guns that will never be built.
+ * Marshal matches went from never finishing to finishing in 2.3 rounds, all three
+ * players wiped out together in a barrage none of them could out-repair. At two the
+ * band holds six or seven, the wall is short enough to maintain, and matches run four
+ * rounds with nobody idle. Room is worth paying for; more room than the reward can
+ * spend is just a longer bill.
  */
-const ROOM_RADIUS = 3;
+const ROOM_RADIUS = 2;
 
 export const DIFFICULTIES = ['recruit', 'gunner', 'marshal'] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
@@ -207,10 +216,22 @@ export class Bot {
       this.plannedAt = state.tick;
     }
 
-    const wanted = this.plan.filter((i) => state.structure[i] === Structure.Empty);
+    let wanted = this.plan.filter((i) => state.structure[i] === Structure.Empty);
     if (wanted.length === 0) {
-      this.pause(state);
-      return null;
+      // The plan is already standing, and a bot that stops here watches the rest of
+      // the phase go by. Measured: gunner and recruit laid 65% of the pieces they had
+      // time for where marshal, which keeps finding expansions to afford, laid 106%.
+      // Every piece not laid is wall they will wish they had when the barrage starts,
+      // so spend the remainder thickening the thinnest part of what they hold.
+      // Outward only, which `thickenTargets` already guarantees — a second layer laid
+      // on the inside stands where a cannon could have stood.
+      wanted = thickenTargets(state, this.playerId).filter(
+        (i) => state.structure[i] === Structure.Empty,
+      );
+      if (wanted.length === 0) {
+        this.pause(state);
+        return null;
+      }
     }
 
     const placement = this.fit(state, pieceId, wanted);
@@ -229,6 +250,40 @@ export class Bot {
     this.nextPlacementTick =
       state.tick + this.ticks(this.placementMs(pieceById(pieceId).size), state);
     return { kind: 'place_piece', player: this.playerId, ...placement };
+  }
+
+  /**
+   * The widest wall this phase can pay for, rather than the tightest one that works.
+   *
+   * This is the correction to the planner's central bias. A minimum cut is by
+   * definition the *tightest* wall that works, so asking it for a wall and taking what
+   * it returns means always choosing the one with nowhere to put a gun — a bot that
+   * defends perfectly, cannot spend a single cannon it earns, and cannot win. Measured
+   * before this existed: gunner and marshal held room for 0.3 cannons behind a 37-tile
+   * ring, with half their guns idle.
+   *
+   * So room is asked for first and surrendered only to the budget, one tile of band at
+   * a time. A tight wall is still reachable, as the last rung rather than the first.
+   */
+  private widestAffordable(
+    state: MatchState,
+    atLeastCastles: number,
+    keepCannons: boolean,
+    budget: number,
+  ): SealPlan | null {
+    for (let radius = ROOM_RADIUS; radius >= 0; radius--) {
+      const plan = cheapestPlanFor(
+        state,
+        this.playerId,
+        atLeastCastles,
+        this.profile.maxCastles,
+        this.unreachable,
+        keepCannons,
+        radius,
+      );
+      if (plan !== null && plan.cost / 3.5 <= budget) return plan;
+    }
+    return null;
   }
 
   /**
@@ -251,14 +306,8 @@ export class Bot {
       // Reaching for two castles while unenclosed is the real gamble: it is more
       // cannons if it lands and elimination if it does not. Only when it clearly fits.
       if (this.profile.maxCastles > 1) {
-        const bold = cheapestPlanFor(
-          state,
-          this.playerId,
-          2,
-          this.profile.maxCastles,
-          this.unreachable,
-        );
-        if (affordable(bold)) return (bold as SealPlan).tiles;
+        const bold = this.widestAffordable(state, 2, false, budget);
+        if (bold !== null) return bold.tiles;
       }
       return this.reseal(state, budget);
     }
@@ -319,14 +368,12 @@ export class Bot {
       if (thicken.length > 0) return thicken;
     }
 
-    // Still standing, nowhere obvious to improve: hold the current wall.
-    const hold = cheapestPlanFor(
-      state,
-      this.playerId,
-      1,
-      this.profile.maxCastles,
-      this.unreachable,
-    );
+    // Still standing, nowhere obvious to improve: hold the current wall — but hold the
+    // roomy version of it. This is the branch a settled bot spends most of the match in,
+    // so a tight plan here is not one bad round, it is the shape the bot converges on.
+    const hold =
+      this.widestAffordable(state, 1, true, budget) ??
+      cheapestPlanFor(state, this.playerId, 1, this.profile.maxCastles, this.unreachable);
     return hold?.tiles ?? [];
   }
 
@@ -343,37 +390,20 @@ export class Bot {
    * more for.
    */
   private reseal(state: MatchState, budget: number): number[] {
-    // First ask for a wall that keeps the guns. If that is more than this phase can
-    // build, fall back to merely surviving — a silent cannon still beats elimination.
-    const withGuns = sealOptions(
-      state,
-      this.playerId,
-      this.profile.maxCastles,
-      this.unreachable,
-      true,
-    )
-      .filter((plan) => plan.cost / 3.5 <= budget)
-      .sort((a, b) => a.cost - b.cost);
-    if (withGuns.length > 0) return (withGuns[0] as SealPlan).tiles;
+    // First ask for a wall that keeps the guns, with room inside it for the ones this
+    // round is about to earn. Taking the cheapest gun-keeping plan instead was the
+    // same mistake in a different place: it saved the artillery it had and left
+    // nowhere to stand the artillery it was owed. If even a tight version is more
+    // than this phase can build, fall back to merely surviving — a silent cannon
+    // still beats elimination.
+    const withGuns = this.widestAffordable(state, 1, true, budget);
+    if (withGuns !== null) return withGuns.tiles;
 
-    const options = sealOptions(
-      state,
-      this.playerId,
-      this.profile.maxCastles,
-      this.unreachable,
-      false,
-      ROOM_RADIUS,
-    );
-    if (options.length === 0) return [];
-
-    let best = options[0] as SealPlan;
-    let bestValue = -Infinity;
-    for (const plan of options) {
-      if (plan.cost / 3.5 > budget) continue;
-      // Which of this bot's guns stand near the castles this wall would take in.
-      // Not which castles were sealed last round: after a breach that is nothing at
-      // all, which is exactly the moment the choice matters most.
-      const keeps = state.cannons.filter(
+    // Which of this bot's guns stand near the castles a wall would take in. Not which
+    // castles were sealed last round: after a breach that is nothing at all, which is
+    // exactly the moment the choice matters most.
+    const gunsKept = (plan: SealPlan): number =>
+      state.cannons.filter(
         (cannon) =>
           cannon.owner === this.playerId &&
           plan.castleIds.some((id) => {
@@ -385,14 +415,41 @@ export class Bot {
             );
           }),
       ).length;
-      // Each gun recovered is worth a few extra blocks of wall.
-      const value = keeps * 3 - plan.cost / 3.5;
-      if (value > bestValue) {
-        bestValue = value;
-        best = plan;
+
+    // Widest first here too, so giving up room is a concession to the budget rather
+    // than the default. Within a radius the choice is between castles, and a gun
+    // recovered is worth a few extra blocks of wall.
+    let cheapest: SealPlan | null = null;
+    for (let radius = ROOM_RADIUS; radius >= 0; radius--) {
+      const options = sealOptions(
+        state,
+        this.playerId,
+        this.profile.maxCastles,
+        this.unreachable,
+        false,
+        radius,
+      );
+      let best: SealPlan | null = null;
+      let bestValue = -Infinity;
+      for (const plan of options) {
+        // sealOptions is sorted by cost, so the first plan at radius 0 is the
+        // cheapest wall that exists — the last resort below.
+        if (cheapest === null || plan.cost < cheapest.cost) cheapest = plan;
+        if (plan.cost / 3.5 > budget) continue;
+        const value = gunsKept(plan) * 3 - plan.cost / 3.5;
+        if (value > bestValue) {
+          bestValue = value;
+          best = plan;
+        }
       }
+      if (best !== null) return best.tiles;
     }
-    return best.tiles;
+
+    // Nothing fits the budget at any width. Build toward the cheapest wall on the
+    // board anyway rather than the roomiest: an unfinished wall encloses nothing, the
+    // sweep takes the lot, and a phase spent on a plan that could never close is how
+    // a bot ends a round with fourteen pieces laid and no wall at all.
+    return cheapest?.tiles ?? [];
   }
 
   /** The placement that covers most of what is wanted, proposed from the tiles themselves. */
@@ -451,21 +508,32 @@ export class Bot {
       return pick ? { kind: 'select_castle', player: this.playerId, castleId: pick.id } : null;
     }
 
-    let best = mine[0] as (typeof mine)[number];
-    let bestCost = Number.MAX_SAFE_INTEGER;
-    for (const castle of mine) {
-      const plan = cheapestPlanFor(
-        { ...state, castles: [castle] } as MatchState,
-        this.playerId,
-        1,
-        1,
-      );
-      const cost = plan?.cost ?? Number.MAX_SAFE_INTEGER;
-      if (cost < bestCost) {
-        bestCost = cost;
+    // Cheapest to wall is the obvious measure and a trap: it scores a castle by how
+    // tightly it can be strangled, and so picks the one with the least ground around
+    // it. Costing the wall that leaves room for guns instead picks a castle worth
+    // holding. Falls back to the bare cost only if no castle has room at all, since
+    // an unwallable start is worse than a cramped one.
+    const pick = (roomRadius: number): (typeof mine)[number] | null => {
+      let best: (typeof mine)[number] | null = null;
+      let bestCost = Number.MAX_SAFE_INTEGER;
+      for (const castle of mine) {
+        const plan = cheapestPlanFor(
+          { ...state, castles: [castle] } as MatchState,
+          this.playerId,
+          1,
+          1,
+          undefined,
+          false,
+          roomRadius,
+        );
+        if (plan === null || plan.cost >= bestCost) continue;
+        bestCost = plan.cost;
         best = castle;
       }
-    }
+      return best;
+    };
+
+    const best = pick(ROOM_RADIUS) ?? pick(0) ?? (mine[0] as (typeof mine)[number]);
     return { kind: 'select_castle', player: this.playerId, castleId: best.id };
   }
 

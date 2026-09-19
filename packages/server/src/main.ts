@@ -24,7 +24,16 @@ const MIME: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
+  // Audio cues may be supplied in any format the browser can decode, so the manifest
+  // names whatever file exists and this has to be able to describe it. `decodeAudioData`
+  // reads the bytes and ignores the content type, so getting one of these wrong is not
+  // fatal — but serving a sound as an unknown binary blob confuses caches and anything
+  // else that looks at the response before the game does.
   '.ogg': 'audio/ogg',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.flac': 'audio/flac',
 };
 
 /** Serves the built client, so one process is the whole deployment. */
@@ -143,9 +152,26 @@ setInterval(() => {
   last = now;
 }, TICK_MS);
 
-http.listen(bundle.server.port, bundle.server.host, () => {
+/**
+ * Where to listen, which is the one thing the environment is allowed to say.
+ *
+ * Every game rule lives in `config/*.json` behind a strict schema and is reachable
+ * from nowhere else — a rule that could be changed by an environment variable is a
+ * rule two clients could disagree about, which is a desync rather than a setting. A
+ * port is not a rule: it is where this process binds, and hosts like Fly and Railway
+ * hand it to us in `$PORT` rather than letting us choose. So these two read the
+ * environment first and the config file second, and nothing else does.
+ */
+const port = Number(process.env['PORT'] ?? bundle.server.port);
+const host = process.env['HOST'] ?? bundle.server.host;
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  console.error(`PORT must be a port number, got ${JSON.stringify(process.env['PORT'])}`);
+  process.exit(1);
+}
+
+http.listen(port, host, () => {
   console.error(
-    `rampart server on http://${bundle.server.host}:${bundle.server.port} ` +
+    `rampart server on http://${host}:${port} ` +
       `(protocol ${PROTOCOL_VERSION}, ${bundle.ruleset.tickRateHz}Hz)`,
   );
 });

@@ -1,31 +1,27 @@
 {
-  "basePath": "assets/audio",
+  "basePath": "audio",
   "masterVolume": 0.8,
   "missingFilesAreSilent": true,
   "sfx": {
+    "select": { "file": "sfx/select.wav", "volume": 0.5 },
     "cannon_fire": { "file": "sfx/cannon_fire.ogg", "volume": 0.7, "variants": 3 },
     "shot_impact": { "file": "sfx/shot_impact.ogg", "volume": 0.8, "variants": 3 },
-    "wall_destroyed": { "file": "sfx/wall_destroyed.ogg", "volume": 0.6 },
-    "piece_rotate": { "file": "sfx/piece_rotate.ogg", "volume": 0.4 },
-    "piece_place": { "file": "sfx/piece_place.ogg", "volume": 0.5 },
-    "piece_invalid": { "file": "sfx/piece_invalid.ogg", "volume": 0.4 },
-    "cannon_place": { "file": "sfx/cannon_place.ogg", "volume": 0.6 },
-    "phase_start_combat": { "file": "sfx/phase_start_combat.ogg", "volume": 0.8 },
-    "phase_start_build": { "file": "sfx/phase_start_build.ogg", "volume": 0.8 },
-    "phase_start_cannon": { "file": "sfx/phase_start_cannon.ogg", "volume": 0.8 },
-    "countdown_tick": { "file": "sfx/countdown_tick.ogg", "volume": 0.5 },
+    "wall_destroyed": { "file": "sfx/wall_destroyed.ogg", "volume": 0.6, "variants": 2 },
+    "voice_fire": { "file": "sfx/voice_fire.ogg", "volume": 1.0 },
+    "voice_cease_fire": { "file": "sfx/voice_cease_fire.ogg", "volume": 1.0 },
     "enclosure_success": { "file": "sfx/enclosure_success.ogg", "volume": 0.9 },
     "enclosure_failed": { "file": "sfx/enclosure_failed.ogg", "volume": 0.9 },
     "player_eliminated": { "file": "sfx/player_eliminated.ogg", "volume": 0.9 },
-    "victory": { "file": "sfx/victory.ogg", "volume": 1.0 },
-    "defeat": { "file": "sfx/defeat.ogg", "volume": 1.0 },
-    "ui_click": { "file": "sfx/ui_click.ogg", "volume": 0.4 },
-    "ui_back": { "file": "sfx/ui_back.ogg", "volume": 0.4 }
+    "piece_place": { "file": "sfx/piece_place.ogg", "volume": 0.45, "variants": 3 },
+    "piece_rotate": { "file": "sfx/piece_rotate.ogg", "volume": 0.35 },
+    "piece_invalid": { "file": "sfx/piece_invalid.ogg", "volume": 0.4 },
+    "countdown_tick": { "file": "sfx/countdown_tick.ogg", "volume": 0.5 }
   },
   "music": {
-    "music_lobby": { "file": "music/lobby.ogg", "volume": 0.5, "loop": true },
-    "music_combat": { "file": "music/combat.ogg", "volume": 0.5, "loop": true },
-    "music_build": { "file": "music/build.ogg", "volume": 0.5, "loop": true },
-    "music_gameover": { "file": "music/gameover.ogg", "volume": 0.6, "loop": false }
+    "music_menu": { "file": "music/menu.mp3", "volume": 0.5, "loop": true },
+    "music_admin": { "file": "music/admin.ogg", "volume": 0.5, "loop": true },
+    "music_battle": { "file": "music/battle.ogg", "volume": 0.5, "loop": true },
+    "music_victory": { "file": "music/victory.ogg", "volume": 0.6, "loop": false },
+    "music_defeat": { "file": "music/defeat.ogg", "volume": 0.6, "loop": false }
   }
 }

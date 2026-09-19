@@ -6,28 +6,40 @@ import { z } from 'zod';
  * so code and manifest cannot drift apart.
  */
 export const SFX_CUES = [
+  /** Committing a choice: a castle at the start, a cannon onto sealed ground. */
+  'select',
   'cannon_fire',
   'shot_impact',
+  /** The shot hit wall rather than open ground — the shooter's fire is working. */
   'wall_destroyed',
-  'piece_rotate',
-  'piece_place',
-  'piece_invalid',
-  'cannon_place',
-  'phase_start_combat',
-  'phase_start_build',
-  'phase_start_cannon',
-  'countdown_tick',
+  /** Spoken. Opens the combat phase. */
+  'voice_fire',
+  /** Spoken. Closes it: no further shots can be started. */
+  'voice_cease_fire',
+  /** Fanfare: a wall closed this round that took in a castle the player did not hold. */
   'enclosure_success',
+  /** Its counterpart: ground held last round that is no longer sealed. */
   'enclosure_failed',
   'player_eliminated',
-  'victory',
-  'defeat',
-  'ui_click',
-  'ui_back',
+  'piece_place',
+  'piece_rotate',
+  'piece_invalid',
+  'countdown_tick',
 ] as const;
 export type SfxCue = (typeof SFX_CUES)[number];
 
-export const MUSIC_CUES = ['music_lobby', 'music_combat', 'music_build', 'music_gameover'] as const;
+/**
+ * One track per mood rather than per phase. Castle select, cannon placement and
+ * building are all the same thing from the player's side — laying out a position with
+ * nothing incoming — so they share a track, and only the barrage gets its own.
+ */
+export const MUSIC_CUES = [
+  'music_menu',
+  'music_admin',
+  'music_battle',
+  'music_victory',
+  'music_defeat',
+] as const;
 export type MusicCue = (typeof MUSIC_CUES)[number];
 
 const SfxEntrySchema = z.strictObject({

@@ -125,7 +125,7 @@ RampartRemake/
 │ ├── audio.manifest.json # audio cue -> file mapping
 │ └── server.default.json # ports, room limits, rate limits
 ├── assets/
-│ └── audio/ # user-supplied audio files (gitignored placeholders)
+│ └── audio/ # audio cues, committed — the image is built from a clean checkout
 ├── packages/
 │ ├── config/ # zod schemas, typed defaults, cross-file validation
 │ ├── sim/ # deterministic game core — no DOM, no Node
@@ -1194,6 +1194,315 @@ re-observe before acting on them — set every seat to a bot and watch.
 **Next lever, untried:** three castles rather than four, closer together, so a single
 barrage threatens more than one at a time. Four spread-out castles give a near-optimal
 planner four independent chances to seal something, and it only needs one.
+
+## 10h. The planner asked for the tightest wall, and got what it asked for
+
+Implemented. This is the answer to the two things recorded at the end of 10g, and it
+turned out to be one thing wearing two hats.
+
+### First, the harness had to be able to see it
+
+Every diagnosis from 10d onwards was made by watching a match, which is why each of
+those sections ends by asking the next session to go and watch again. The harness
+printed rounds, ticks and a winner — none of the quantities the open questions were
+actually about.
+
+`--stats FILE` now writes a row per player per round, sampled at the resolution that
+ends a build phase and nowhere else: `enclosedCastles` is live during a build phase and
+the sweep runs inside the same step, so that instant is the only one where the numbers
+mean what they look like. It records castles sealed, cannons owned and active, cannon
+room, wall tiles, pieces placed against the pieces the tier had time for, and shots
+fired. A summary of the same goes to the console, because a number nobody reads is not
+instrumentation.
+
+`--difficulty` also takes a comma-separated list now, one tier per seat. It could not
+mix tiers before, which means the head-to-head records in sections 8 and 10d could not
+have come from it and cannot be reproduced by it.
+
+### What it said, immediately
+
+Three players, eight seeds, averaged over every surviving player-round:
+
+| | recruit | gunner | marshal |
+| --- | --- | --- | --- |
+| castles sealed | 1.0 | 1.42 | 1.39 |
+| cannons owned | 7.1 | 7.2 | 7.1 |
+| cannons **active** | 4.3 | 3.9 | 3.3 |
+| **room for another cannon** | **0.8** | **0.3** | **0.3** |
+| wall tiles | 45 | 41 | 37 |
+
+Room 0.3 is the whole story. A gunner or marshal at a typical resolution had space for
+**zero** more cannons, behind a ring of 37 tiles, with half the guns it owned standing
+outside and silent. It was not that the bots sometimes walled themselves in too tightly.
+It was that they always did, and had no way to do anything else.
+
+### The cause is the thing that made the planner good
+
+Sealing is a minimum cut, and a minimum cut is by definition the *tightest* wall that
+works. Hand a planner the cut and tell it to build, and every round it asks for the wall
+with nowhere to put a gun — and then the sweep takes the old, wider wall away, so the
+room is not merely unbought, it is actively demolished. Section 10f called this the
+bot strangling its own artillery and fixed it for one code path. There were six, and
+`ROOM_RADIUS` reached three of them. The three it missed were the ones that matter most:
+
+- the preferred branch of `reseal`, which is what runs after a breach — the exact
+  moment the wall is redrawn from scratch,
+- `hold`, which is where a settled bot spends most of a match,
+- and `chooseCastle`, which scores a castle by how cheaply it can be walled. That is a
+  measure of how tightly a castle can be strangled, so it reliably picked the castle
+  with the least ground around it, before a single piece was placed.
+
+### Ask for the widest wall you can pay for, not the tightest that works
+
+`widestAffordable` asks at `ROOM_RADIUS` and steps the band down a tile at a time until
+a plan fits the phase's budget. Room is what gets asked for first and surrendered last,
+which is the exact inversion of the old behaviour, and a tight wall is still reachable
+as the bottom rung. The same ladder now runs through `reseal`'s fallback, ending in the
+cheapest wall on the board — because a bot that cannot afford any plan should build
+toward one it can finish. Without that last rung a bot spent a phase laying fourteen
+pieces of a wall that could never close, the sweep took the lot, and it died with
+nothing standing.
+
+**`ROOM_RADIUS` is two, and three was actively harmful.** Three tiles buys room for
+about fourteen cannons against a reward of three a round — ground that must be walled
+and then repaired every round under fire, for guns that will never exist. At three,
+marshal matches went from never finishing to finishing in 2.3 rounds, all three players
+eliminated together in a barrage none could out-repair. At two the band holds six or
+seven and the wall is short enough to maintain.
+
+**And a bot that has finished its plan thickens rather than stops.** Recruit laid 69% of
+the pieces it had time for; marshal, which keeps finding expansions to afford, laid 106%.
+The gap was simply standing still. This is the late-phase idling left open in 10d.
+
+### What it fixed
+
+Three players, eight seeds, same measurements:
+
+| | gunner before | gunner after | marshal before | marshal after |
+| --- | --- | --- | --- | --- |
+| room for another cannon | 0.3 | **1.1** | 0.3 | **5.5** |
+| cannons idle | 46% | **19%** | 54% | **10%** |
+| cannons active | 3.9 | **5.8** | 3.3 | **6.3** |
+| build phase used | 65% | 69% | 65% | **108%** |
+| matches unfinished | 2 of 3 | **1 of 8** | 3 of 3 | **0 of 8** |
+| rounds | 26.7 | 12.1 | 33+ | 4.5 |
+
+Marshal, which could not finish a single match on any seed tried, now finishes all of
+them with essentially every gun it owns firing.
+
+Two players, six seeds, marshal against marshal — a case none of the above touched, and
+the one the unit tests run:
+
+| | before | after |
+| --- | --- | --- |
+| matches unfinished | **4 of 6** | **0 of 6** |
+| rounds | 27.3 | 4.2 |
+| cannons idle | — | 4% |
+| room for another cannon | — | 4.9 |
+
+**Measure a change against a worktree with its own `node_modules`.** The first attempt at
+that baseline pointed the worktree's `node_modules` at the main checkout's, and npm
+workspace links are relative — so `@rampart/ai` resolved back through the symlink into
+the working tree and the "before" run was the after code. It reported hashes identical to
+the new run, which read as "the change does nothing" rather than as the setup error it
+was. Identical state hashes across a code change are evidence the code did not load, not
+evidence it did nothing.
+
+### What it exposed, which is a rules question and not a bot one
+
+For the whole of 10f and 10g the binding constraint was that nobody's artillery worked,
+and section 10f records raising fire rates to human clicking speed changing nothing.
+That was never a test of the rules — it was a test of guns that were inert whatever
+their rate. **Now that the guns fire, damage is the constraint, and there is nothing in
+the rules that bounds it.** Cannons are indestructible and accumulate at two or three a
+round forever, while repair capacity is fixed by the length of a build phase. The two
+curves cross, and with three players they cross for everyone at once: marshal draws two
+of eight now, both of them every surviving player eliminated in the same resolution.
+
+`cannons.maxTotal` already exists in the ruleset and is `null`. That is the first thing
+to try in the balance pass, ahead of the combat-to-build phase ratio and the reward
+schedule.
+
+### Still open
+
+- **Gunner holds room for 1.1 cannons where marshal holds 5.5.** The tiers differ in
+  budget, so a poorer bot correctly settles for a tighter wall — but 1.1 is close enough
+  to the old failure that it is probably not only that. One of its eight seeds still did
+  not finish.
+- **Seat bias.** Eight seeds of three identical recruits went six wins to seat 2; the
+  baseline runs skewed to a seat as well. The map is meant to be rotationally symmetric,
+  so either it is not, or something in the turn order or in three-player targeting
+  favours a seat. The stats dump is the tool for this and it has not been pointed at it.
+- The **three-castle lever from 10g has now been tried, and it is worse.** Three castles
+  a sector at spacing six, three players, six seeds: gunner went from one unfinished match
+  in eight to **five in six**, its room from 1.1 to 0.2, and marshal's room from 5.5 to
+  1.2 with idle guns back up from 10% to 28%. Fewer castles means fewer candidate walls,
+  and the ones that remain are tighter — so it pushes on exactly the thing 10h had to
+  correct. Reverted, and it should not be retried without a reason beyond the one in 10g,
+  which was that matches never ended. They end now.
+- **Matches may now be too short.** Two-player marshal runs 4.2 rounds and three-player
+  4.5, against an original whose matches were brisk but not that brisk. This is the same
+  finding as the balance note above seen from the other side, and the two should be tuned
+  together rather than separately.
+
+## 10i. Deployment is one image and one process
+
+Implemented. `Dockerfile` builds the client, bundles the server, and ships a runtime
+stage holding three directories and no `node_modules`.
+
+### The environment may set a port and nothing else
+
+Section 4's rule is that no game rule is hardcoded — every tunable lives in
+`config/*.json` behind a strict schema. The tempting extension is a general environment
+override, and it is the wrong one: **a rule an environment variable could change is a
+rule two clients could disagree about**, which is a desync rather than a setting, and the
+snapshot carries the ruleset precisely so that cannot happen.
+
+A port is not a rule. It is where the process binds, and managed hosts assign it rather
+than asking. So `PORT` and `HOST` are read from the environment ahead of the config file
+in `main.ts`, with a validity check, and nothing else is. The narrowness is the point and
+is worth defending if it is ever proposed to widen it.
+
+### The server is bundled, and the no-build-step design survives
+
+The image runs plain JavaScript rather than TypeScript through tsx, which keeps a dev
+toolchain out of production and the image at a few megabytes. The obvious way to get
+there — emit configs for `server`, `sim`, `ai`, `protocol` and `config`, each with a
+`dist` and a `package.json` exports map pointing at it — would have contradicted
+section 3's "internal packages export TypeScript source directly, so there is no build
+step between them", and left five build graphs to keep in step.
+
+`packages/server/build.js` instead has esbuild resolve the workspace links itself and
+emit one file. No package gains a build config, dev is untouched, and the bundle is a
+deployment artefact rather than a new layer in the architecture.
+
+Three things it cost, all of them worth recording:
+
+- **`ws` is CommonJS**, and its `require` of Node builtins does not survive ESM
+  bundling: the server started and then died with `Dynamic require of "events" is not
+  supported`. The bundle needs a `createRequire` banner. That same banner is what lets
+  `ws` probe for `bufferutil` and `utf-8-validate`, find them absent, and carry on — so
+  the image can ship with no `node_modules` at all.
+- **The output must live at `packages/server/dist/`.** `paths.ts` finds the repository
+  root by walking three directories up from itself, and that is how both `config/` and
+  the built client are located; `dist` sits at the same depth as `src`, so nothing
+  changes. Somewhere tidier would have needed a code change, and a silent one — the
+  server would start and then fail to find its rules.
+- **There is no Docker on the development machine.** Everything above was verified by
+  assembling the runtime stage's three directories by hand and running the bundle from
+  them with no `node_modules` on the path: it served the client, served a hashed asset
+  with the right MIME type, answered the healthcheck, and completed a WebSocket room
+  creation. That is a good test of the bundle and no test at all of the Dockerfile, so
+  CI now builds the image and curls it. **That job is where the Dockerfile is actually
+  exercised.**
+
+### Not done here
+
+`assets/audio/` is not copied into the image and the static handler would not serve it
+if it were — it serves only from the client's `dist`. Whether audio files ship as static
+assets beside the client or go through Vite's `publicDir` is a decision for the audio
+work, and guessing at it now would have meant wiring half of it.
+
+## 10j. Audio
+
+Implemented. `packages/client/src/audio.ts` plays; `matchAudio.ts` decides what and
+when. No audio files exist yet, so the game still runs and sounds exactly as it did —
+which is the property section 7.4 asked for and is now load-bearing rather than
+aspirational.
+
+### The cue list is smaller and differently cut than 7.4's
+
+Eighteen effects and four tracks became thirteen and five, and the music is organised by
+mood rather than by phase: **castle select, cannon placement and building share one
+track**, because they are one experience from the player's side — arranging a position
+with nothing incoming — and only the barrage gets its own. Victory and defeat are
+separate tracks where there was one game-over cue.
+
+Two of the effects are spoken, and they are the phase boundaries that matter: `voice_fire`
+opens combat and `voice_cease_fire` closes it. "Closes" means the step into the
+intermission, not the last impact — shots already in the air still land, but no further
+one can be started, which is exactly what the call means.
+
+### What the sound is allowed to know
+
+Every cue but one is driven by a simulation event rather than by the client's own
+guess, so what a player hears is what the authoritative server actually did: a shot
+confirmed, a wall that really came down, a castle genuinely sealed. The exception is
+the countdown, which is a clock reading and has no event behind it.
+
+**Nothing in audio may reach the simulation.** Choosing among a cue's variants is
+random and uses `Math.random`, never the match `Rng` — drawing from the seeded stream
+would make two clients with different audio settings produce different matches. That is
+the same rule as everywhere else in `sim`, arriving from an unexpected direction.
+
+The fanfare is deliberately not "you are enclosed". It fires when a wall closes around a
+castle the player **was not already holding**, because still holding one castle is true
+of every round they survive and is not news. Its counterpart fires when they hold less
+than they did. An elimination has its own cue and is left uncrowded.
+
+### Anything the browser can decode
+
+`decodeAudioData` takes bytes and does not consult the extension or the content type, so
+the manifest may name any format and cues need not agree with one another. The server's
+MIME table knows `.ogg`, `.mp3`, `.wav`, `.m4a` and `.flac`; an unlisted extension is
+served as an unknown binary, which still plays but is worth adding.
+
+The one to think about is Ogg, which section 7.4 assumed throughout: Safari's support for
+Vorbis and Opus arrived late and older iOS does not have it. `.wav` for short effects and
+`.mp3` or `.m4a` for music is the combination with no such asterisk.
+
+### Where the files live, and why that needed no server change
+
+`assets/audio/` is now the client's Vite `publicDir`. The dev server hands the files
+straight out and `vite build` copies them into `dist/`, which is already what the
+production server serves and what the Dockerfile already copies — so audio needed no
+change to the server, the static handler or the image. The manifest's `basePath` is
+`audio` because a public directory's *contents* are served at the site root.
+
+**A missing file cannot be recognised from its HTTP status.** The static handler answers
+an unknown path with the client's `index.html` and a **200**, which was measured
+directly: `/audio/sfx/cannon_fire.ogg` returns 823 bytes of `text/html`. So an absent
+cue arrives as a perfectly successful response, and what identifies it is that it will
+not decode. The consequence worth knowing is that **a corrupt or truncated file is
+indistinguishable from a missing one and will be silent rather than noisy.**
+
+### Two things that are about taste, and were decided by arithmetic
+
+Identical cues starting within **60ms** of each other are dropped. Three players with ten
+guns each put dozens of shots in the air over a ten-second combat phase; twenty copies of
+one sample a few milliseconds apart do not sound like twenty cannons, they sound like
+distortion.
+
+A browser will not start an `AudioContext` without a user gesture, so the first click or
+keypress anywhere switches sound on. Calls made before that are **dropped rather than
+queued** — a burst of everything that was missed, arriving at once the moment audio
+unlocks, is worse than having missed it. Music is the one exception: the last requested
+track is remembered, so the right one is playing when sound arrives rather than whatever
+the next phase change happens to ask for.
+
+### What is verified, and what cannot be
+
+`matchAudio.test.ts` covers the translation — twelve cases over the calls in and out of
+combat, the shared admin track, wall-versus-ground impacts, own-versus-rival placements,
+the fanfare's "new castle" condition, elimination, victory against defeat, silence in a
+watched match, and the countdown. It runs without a browser, an audio context or a sound
+file, which is what the two-method `Cues` interface is for.
+
+The built client was loaded headless in Chrome, at the menu and through a watched match
+at ten times speed, with no runtime error.
+
+The loading and decoding path was then verified against real files. Driving the actual
+`Audio` class in headless Chrome with `missingFilesAreSilent` turned off makes every
+failure a warning, so the set of warnings is exactly the set of cues that did not decode.
+With one `.wav` and one `.mp3` supplied, the context reached `running`, twenty-three of
+the twenty-five paths in the manifest warned — every file that does not exist, which is
+the negative control that the capture works at all — and **the two real files were absent
+from that list**, meaning both fetched and decoded. The server served them as `audio/wav`
+and `audio/mpeg`.
+
+So format support is whatever the browser decodes, and both of the formats most worth
+having are confirmed. What is still unverified is subjective rather than structural: the
+mix. Every `volume` in the manifest is a guess until somebody listens.
 
 ## 11. Deferred (explicitly out of scope for v1)
 

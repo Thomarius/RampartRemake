@@ -13,6 +13,7 @@ changing rules, terrain or bots. This file is the orientation.
 ```bash
 npm install
 npm run check                       # format, lint, typecheck, test — must pass before committing
+npm run build                       # client bundle + server bundle, both needed by the image
 npm run dev   -w @rampart/client    # play offline at http://localhost:5173
 npm run build -w @rampart/client    # required before the server can serve it
 npm start     -w @rampart/server    # play online at http://localhost:8080
@@ -86,8 +87,14 @@ with the sender's seat, so a client cannot act for someone else.
 ## Status
 
 M0-M5 are done: scaffold, simulation, local play, two visual styles, online multiplayer,
-and bots. **M6 is next** — audio has a manifest and schema but _no playback code at all_,
-there is no Dockerfile, and the lobby is functional but bare. M7 is the balance pass.
+and bots. **M6 is in progress**: deployment is done (`Dockerfile`, one process serving
+the built client and the WebSocket, verified by a CI job because there is no Docker on
+this machine — PLAN.md 10i), and audio is wired end to end (PLAN.md 10j). **No audio
+files exist yet**; the user is producing them, and missing files are silent by design, so
+the game plays exactly as before until they land. `assets/audio/README.md` lists every
+cue and what fires it. **The lobby is what remains** — functional but bare. M7 is the
+balance pass, and it now has a real question waiting for it: see "What is now the top
+priority" below.
 
 ## Bots: how they work, and why they are still weak
 
@@ -103,23 +110,50 @@ ask for a move the rules refuse.
   scaling with piece size, so a bot lays ~20 pieces in an early build phase and ~8 late,
   against a person's 25-then-15.
 
-### Known weaknesses, observed by the user while watching matches
+### The minimal-enclosure problem, and how it was fixed
 
-These are the current top priority and are **not yet fixed**:
+The weaknesses watched matches showed — bots walling a castle as tightly as possible,
+with no room for cannons, and standing idle once sealed — were real, and section 10h of
+`docs/PLAN.md` records the fix and the measurements. The short version:
 
-1. **Recruit** encloses its starting castle and cannons correctly, but **does not expand**,
-   and **stops placing tiles entirely once its enclosure is valid** — wasting most of the
-   build phase.
-2. **Gunner and marshal** tend to enclose _a different_ castle with minimal tile
-   placement, **leaving no room for cannons at all**. With no firepower on either side,
-   matches stalemate.
-3. Consequence: recruit matches finish in ~3 rounds, but gunner and marshal matches
-   frequently do not finish at all.
+Sealing is a minimum cut, and a minimum cut is the _tightest_ wall that works. So a
+planner handed the cut always asks for the wall with nowhere to put a gun. `ROOM_RADIUS`
+had been added to three of the six planning call sites; the three it missed were the
+ones that matter — reseal after a breach, the steady-state hold, and the castle choice
+itself. **`widestAffordable` now asks for room first and gives it up a tile at a time
+until the plan fits the phase's budget**, so a tight wall is the last rung rather than
+the first. A bot that has finished its plan thickens rather than stops.
 
-Note these observations predate the most recent fixes (`ROOM_RADIUS` in `bot.ts`, which
-makes the planner demand a band of ground around each castle, and the stranded-gun
-recovery path). **Re-observe before acting** — set every seat to a bot and use
-`&watch=1`.
+Measured, three players, eight seeds, per surviving player-round:
+
+|                         | gunner before | gunner after | marshal before | marshal after |
+| ----------------------- | ------------- | ------------ | -------------- | ------------- |
+| room for another cannon | 0.3           | 1.1          | 0.3            | 5.5           |
+| cannons idle            | 46%           | 19%          | 54%            | 10%           |
+| matches unfinished      | 2 of 3        | 1 of 8       | 3 of 3         | 0 of 8        |
+
+**`ROOM_RADIUS` is 2, and 3 was worse than either** — it buys room for fourteen cannons
+against a reward of three a round, and the wall is too long to repair.
+
+### What is now the top priority
+
+Guns work, so **damage is the binding constraint for the first time**, and nothing in the
+rules bounds it: cannons are indestructible and accumulate every round while repair
+capacity is fixed by the build phase. Matches now run 4-5 rounds and marshal draws two in
+eight, both of them every surviving player eliminated in the same resolution.
+`cannons.maxTotal` exists in the ruleset and is `null`; that is the first thing to try.
+
+Still open: gunner holds room for 1.1 cannons where marshal holds 5.5, and eight seeds of
+identical recruits went six wins to seat 2 on a map that is meant to be rotationally
+symmetric.
+
+### Measuring the bots
+
+`npm start -w @rampart/headless -- --stats FILE` writes a row per player per round,
+sampled at the resolution that ends each build phase — castles sealed, cannons owned and
+active, cannon room, wall tiles, pieces placed against the pieces the tier had time for.
+A summary goes to the console. `--difficulty marshal,gunner,recruit` sets each seat
+separately. Prefer this to watching; watching is for forming the hypothesis.
 
 ### What has already been tried, so it is not tried again
 
@@ -131,9 +165,10 @@ recovery path). **Re-observe before acting** — set every seat to a bot and use
   hard to kill.
 - **Raising fire rates to human clicking speed** changed nothing about stalemates; damage
   is not the constraint.
-- The **next untried lever** is three castles rather than four, closer together, so one
-  barrage threatens more than one at a time. Four spread-out castles give a near-optimal
-  planner four independent chances and it only needs one.
+- **Three castles rather than four, closer together** — the lever section 10g proposed
+  next. Measured and reverted: gunner went from one unfinished match in eight to five in
+  six, and room for a cannon fell for both tiers. Fewer castles means fewer candidate
+  walls and the survivors are tighter, which is the opposite of what 10h needed.
 
 ## Hard-won gotchas
 
@@ -152,6 +187,13 @@ recovery path). **Re-observe before acting** — set every seat to a bot and use
   generates fine and produces the _same map for every seed_.
 - **Prettier reflows code, so string-replace patches silently miss.** Assert on every
   replacement.
+- **The static handler answers an unknown path with `index.html` and a 200.** So a
+  missing asset is not a 404 — audio decides a file is absent by its failure to decode,
+  and anything else fetched at runtime needs the same care.
+- **A/B a change in a git worktree with its own `node_modules`.** Workspace links are
+  relative, so a worktree pointed at the main checkout's `node_modules` resolves
+  `@rampart/*` back into the working tree and silently measures the new code twice.
+  Identical state hashes either side of a change mean the code did not load.
 - Removing a rectangle's **corner** does not breach it under 4-connectivity; use a
   mid-edge tile in tests.
 

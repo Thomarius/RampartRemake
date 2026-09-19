@@ -19,3 +19,22 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Builds the deployment image and nothing else. There is no Docker on the
+      # development machine, so this job is where the Dockerfile is actually
+      # exercised — treat a failure here as a real one.
+      - run: docker build -t rampart:ci .
+      - name: Server starts and serves the client
+        run: |
+          docker run -d --name rampart -e PORT=8080 -p 8080:8080 rampart:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/ > /dev/null; then
+              echo "serving after ${i}s"; docker rm -f rampart; exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not answer within 30s"; docker logs rampart; exit 1

@@ -10,6 +10,9 @@ import {
 
 import type { Ghost, Scene } from './render/scene.js';
 
+/** The two cues the simulation never sees, because neither changes the match. */
+type InputCue = 'piece_rotate' | 'piece_invalid';
+
 /**
  * Pointer and keyboard handling.
  *
@@ -28,6 +31,7 @@ export class Controls {
     private readonly state: MatchState,
     private readonly humanPlayer: number,
     private readonly submit: (action: Action) => void,
+    private readonly cue: (cue: InputCue) => void = () => {},
   ) {}
 
   attach(): void {
@@ -44,7 +48,7 @@ export class Controls {
     };
     const down = (event: PointerEvent): void => {
       if (event.button === 2) {
-        this.rotation++;
+        this.rotate(1);
         event.preventDefault();
         return;
       }
@@ -52,12 +56,12 @@ export class Controls {
       this.commit();
     };
     const wheel = (event: WheelEvent): void => {
-      this.rotation += event.deltaY > 0 ? 1 : -1;
+      this.rotate(event.deltaY > 0 ? 1 : -1);
       event.preventDefault();
     };
     const key = (event: KeyboardEvent): void => {
-      if (event.key === 'r' || event.key === 'R') this.rotation++;
-      else if (event.key === 'e' || event.key === 'E') this.rotation--;
+      if (event.key === 'r' || event.key === 'R') this.rotate(1);
+      else if (event.key === 'e' || event.key === 'E') this.rotate(-1);
       else return;
       event.preventDefault();
     };
@@ -90,6 +94,12 @@ export class Controls {
     this.rotation = 0;
   }
 
+  /** Rotation is only a verb during the build phase, so only there does it speak. */
+  private rotate(by: number): void {
+    this.rotation += by;
+    if (this.state.phase === 'build') this.cue('piece_rotate');
+  }
+
   private commit(): void {
     const tile = this.hover;
     if (tile === null) return;
@@ -99,15 +109,20 @@ export class Controls {
       case 'castle_select': {
         const castle = this.castleAt(tile.x, tile.y);
         if (castle) this.submit({ kind: 'select_castle', player, castleId: castle.id });
+        else this.cue('piece_invalid');
         return;
       }
       case 'combat':
         this.submit({ kind: 'fire', player, x: tile.x, y: tile.y });
         return;
       case 'build':
+        if (canPlacePiece(this.state, player, this.rotation, tile.x, tile.y) !== null) {
+          this.cue('piece_invalid');
+        }
         this.submit({ kind: 'place_piece', player, x: tile.x, y: tile.y, rotation: this.rotation });
         return;
       case 'cannon_place':
+        if (canPlaceCannon(this.state, player, tile.x, tile.y) !== null) this.cue('piece_invalid');
         this.submit({ kind: 'place_cannon', player, x: tile.x, y: tile.y });
         return;
       default:

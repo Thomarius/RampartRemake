@@ -1,0 +1,20 @@
+# The build stage runs `npm ci` from the lockfile and builds from source, so a local
+# install or a stale dist must not be copied over the top of either.
+node_modules
+**/node_modules
+packages/*/dist
+coverage
+*.tsbuildinfo
+.vite
+
+.git
+.github
+.claude
+docs
+*.md
+!README.md
+
+.env
+.env.*
+!.env.example
+.DS_Store

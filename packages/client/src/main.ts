@@ -9,8 +9,10 @@ import { DIFFICULTIES, type Difficulty } from '@rampart/ai';
 import type { Seat } from '@rampart/protocol';
 import { PHASES, type Action, type MatchEvent, type MatchState, type Phase } from '@rampart/sim';
 
+import { Audio } from './audio.js';
 import { Controls } from './controls.js';
 import { Hud } from './hud.js';
+import { MatchAudio } from './matchAudio.js';
 import { LocalMatch } from './localMatch.js';
 import { ServerConnection } from './net/connection.js';
 import { NetworkMatch } from './net/networkMatch.js';
@@ -48,6 +50,23 @@ globalThis.addEventListener('error', (event) =>
 globalThis.addEventListener('unhandledrejection', (event) =>
   showError('Unhandled rejection', event.reason),
 );
+
+/**
+ * Sound, shared by the menu and every match.
+ *
+ * A browser will not start an audio context without a user gesture, so the first
+ * click or keypress anywhere is what switches it on — the menu's own buttons are
+ * usually that gesture, but `?autostart=1` skips the menu entirely and then the first
+ * input in the match does it instead.
+ */
+const audio = new Audio(defaultConfigBundle.audio);
+const unlock = (): void => audio.unlock();
+globalThis.addEventListener('pointerdown', unlock, { capture: true });
+globalThis.addEventListener('keydown', unlock, { capture: true });
+
+globalThis.addEventListener('keydown', (event) => {
+  if (event.key === 'm' || event.key === 'M') audio.setMuted(!audio.isMuted);
+});
 
 const params = new URLSearchParams(globalThis.location.search);
 const preferredStyle: ArtStyle = ArtStyleSchema.catch(defaultArtConfig.style).parse(
@@ -111,6 +130,7 @@ function readSeats(): (Difficulty | null)[] {
 }
 
 function showMenu(): void {
+  audio.music('music_menu');
   app!.innerHTML = `
     <div class="menu">
       <h1>Rampart</h1>
@@ -182,6 +202,7 @@ function showMenu(): void {
   drawSeats([null, DEFAULT_BOT, DEFAULT_BOT]);
 
   document.querySelector('#solo')?.addEventListener('click', () => {
+    audio.play('select');
     const setup: Setup = { ...readCommon(), seats: readSeats() };
     void runSession(
       localSession(new LocalMatch({ seed: setup.seed, seats: setup.seats })),
@@ -190,11 +211,13 @@ function showMenu(): void {
   });
 
   document.querySelector('#host')?.addEventListener('click', () => {
+    audio.play('select');
     void startOnline({ ...readCommon(), seats: readSeats() }, null).catch((e: unknown) =>
       showError('Could not host', e),
     );
   });
   document.querySelector('#join')?.addEventListener('click', () => {
+    audio.play('select');
     const code = document.querySelector<HTMLInputElement>('#code')?.value.trim() ?? '';
     if (code.length === 0) return;
     void startOnline({ ...readCommon(), seats: readSeats() }, code).catch((e: unknown) =>
@@ -368,9 +391,19 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
   await scene.init(canvas, createTheme(setup.style, setup.seed));
 
   const hud = new Hud(hudRoot, bannerRoot);
-  const controls = new Controls(canvas, scene, session.state, session.humanPlayer, (action) => {
-    session.submit(action);
-  });
+  const matchAudio = new MatchAudio(audio, session.humanPlayer);
+  const controls = new Controls(
+    canvas,
+    scene,
+    session.state,
+    session.humanPlayer,
+    (action) => {
+      session.submit(action);
+    },
+    // Rotating and a refused placement are the two things the player does that the
+    // simulation never hears about, so they are cued here rather than from an event.
+    (cue) => audio.play(cue),
+  );
   // Nobody at the keyboard in a watched match, so there is nothing to listen for.
   if (session.humanPlayer >= 0) controls.attach();
 
@@ -459,7 +492,10 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     const delta = now - last;
     last = now;
 
-    applyEvents(session.advance(delta));
+    const events = session.advance(delta);
+    applyEvents(events);
+    matchAudio.handle(events);
+    matchAudio.frame(session.state);
     announceWhenDue();
     hud.update(session.state, session.humanPlayer, session.status());
 

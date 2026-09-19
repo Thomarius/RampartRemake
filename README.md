@@ -21,7 +21,8 @@ npm install
 npm run check          # format, lint, typecheck, test
 ```
 
-The game is playable locally against stopgap opponents; there is no network or art yet:
+The game is playable offline against bots, online through the bundled server, and in
+either of two visual styles:
 
 ```bash
 # Run bot-vs-bot matches with no renderer, and print outcomes and state hashes
@@ -39,6 +40,29 @@ The client takes dev query parameters: `?autostart=1&players=4&seed=3` skips the
 `&snapshot=build` jumps straight to a given phase, `&speed=10` runs the clock faster,
 `&style=flat` picks a visual style, and `&watch=1&bots=marshal` fills every seat with a
 bot so a match can be observed rather than played. All are available from the menu too.
+
+## Deployment
+
+One image, one process: it serves the built client over HTTP and runs the authoritative
+match loop over the same port's WebSocket.
+
+```bash
+docker build -t rampart .
+docker run -p 8080:8080 rampart          # http://localhost:8080
+docker run -e PORT=3000 -p 3000:3000 rampart
+```
+
+`PORT` and `HOST` are the only settings the environment may change, because they are the
+only ones that are not game rules — a rule an environment variable could alter is a rule
+two clients could disagree about, which is a desync rather than a setting. Everything else
+comes from `config/*.json` and is baked into the image. Hosts that assign a port (Fly,
+Railway) set `PORT` themselves and need no further configuration.
+
+The runtime image carries three directories and no `node_modules`: the config files, the
+built client, and a single bundled `main.js` holding the server, simulation, AI and
+protocol. Development is unaffected — internal packages still export TypeScript source
+with no build step between them, and `npm start -w @rampart/server` still runs it directly
+through tsx. The bundle exists only for the image.
 
 ## Layout
 
@@ -64,16 +88,16 @@ copy.
 
 ## Status
 
-| Milestone                              | State |
-| -------------------------------------- | ----- |
-| M0 — scaffold, config schemas, CI      | Done  |
-| M1 — simulation core                   | Next  |
-| M2 — locally playable, placeholder art |       |
-| M3 — procedural art                    |       |
-| M4 — online multiplayer                |       |
-| M5 — AI opponents                      |       |
-| M6 — full scope, audio, deployment     |       |
-| M7 — balance pass                      |       |
+| Milestone                              | State               |
+| -------------------------------------- | ------------------- |
+| M0 — scaffold, config schemas, CI      | Done                |
+| M1 — simulation core                   | Done                |
+| M2 — locally playable, placeholder art | Done                |
+| M3 — procedural art                    | Done                |
+| M4 — online multiplayer                | Done                |
+| M5 — AI opponents                      | Done                |
+| M6 — full scope, audio, deployment     | In progress — audio |
+| M7 — balance pass                      |                     |
 
 ## License
 
