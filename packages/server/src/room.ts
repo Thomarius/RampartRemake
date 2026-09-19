@@ -78,12 +78,17 @@ export class Room {
   private accumulatorMs = 0;
   private pending: { seat: Seat; action: Action }[] = [];
   private hostId = 0;
+  /** Skill of the bot in each seat, which the host may change before the match starts. */
+  private readonly botDifficulties: Difficulty[];
   private idle = 0;
 
   constructor(options: RoomOptions) {
     this.options = options;
     this.code = options.code;
     this.rng = new Rng(options.seed ?? Math.floor(Math.random() * 0xffffffff));
+    this.botDifficulties = new Array<Difficulty>(options.playerCount).fill(
+      options.server.botDifficulty as Difficulty,
+    );
   }
 
   get started(): boolean {
@@ -169,6 +174,16 @@ export class Room {
       case 'start':
         if (seat.playerId === this.hostId) this.start();
         return;
+      case 'configure': {
+        // Only the host, and only while the table is still being set.
+        if (seat.playerId !== this.hostId || this.state !== null) return;
+        for (let i = 0; i < this.botDifficulties.length; i++) {
+          const wanted = message.bots[i];
+          if (wanted !== undefined) this.botDifficulties[i] = wanted as Difficulty;
+        }
+        this.broadcastRoom();
+        return;
+      }
       case 'action': {
         // The seat decides who acted, never the message: otherwise a client could
         // move on another player's behalf simply by writing a different id.
@@ -209,8 +224,9 @@ export class Room {
       players: this.seats.map((seat) => ({ name: seat.name, isBot: seat.bot })),
     });
 
-    const difficulty = this.options.server.botDifficulty as Difficulty;
     for (const seat of this.seats) {
+      // A seat a person holds still gets a bot, ready to cover them if they drop.
+      const difficulty = this.botDifficulties[seat.playerId] ?? 'gunner';
       this.bots.set(seat.playerId, new Bot(seat.playerId, difficulty, this.options.ai));
     }
 
@@ -310,6 +326,8 @@ export class Room {
       type: 'room',
       code: this.code,
       seats: this.wireSeats(),
+      playerCount: this.options.playerCount,
+      bots: [...this.botDifficulties],
       hostId: this.hostId,
       started: this.started,
     });

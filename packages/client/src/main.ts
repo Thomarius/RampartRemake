@@ -5,6 +5,7 @@ import {
   validateConfigBundle,
   type ArtStyle,
 } from '@rampart/config';
+import { DIFFICULTIES, type Difficulty } from '@rampart/ai';
 import type { Seat } from '@rampart/protocol';
 import { PHASES, type Action, type MatchEvent, type MatchState, type Phase } from '@rampart/sim';
 
@@ -69,21 +70,44 @@ interface Session {
 // ------------------------------------------------------------------------ menu
 
 interface Setup {
-  players: number;
+  /** One per seat: null for the person, otherwise the bot's skill. */
+  seats: (Difficulty | null)[];
   seed: number;
   style: ArtStyle;
   name: string;
 }
 
-function readSetup(): Setup {
+const DEFAULT_BOT: Difficulty = 'gunner';
+
+function difficultyOptions(selected: string, includeHuman: boolean): string {
+  const options = DIFFICULTIES.map(
+    (d) => `<option value="${d}"${selected === d ? ' selected' : ''}>${label(d)}</option>`,
+  );
+  if (includeHuman) {
+    options.unshift(`<option value="human"${selected === 'human' ? ' selected' : ''}>You</option>`);
+  }
+  return options.join('');
+}
+
+function label(difficulty: string): string {
+  return difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+}
+
+function readCommon(): Omit<Setup, 'seats'> {
   return {
-    players: Number(document.querySelector<HTMLSelectElement>('#players')?.value ?? 3),
     seed: Number(document.querySelector<HTMLInputElement>('#seed')?.value ?? 1),
     style: ArtStyleSchema.catch(defaultArtConfig.style).parse(
       document.querySelector<HTMLSelectElement>('#style')?.value,
     ),
     name: document.querySelector<HTMLInputElement>('#name')?.value.trim() || 'Player',
   };
+}
+
+/** The seat list as the menu currently shows it. */
+function readSeats(): (Difficulty | null)[] {
+  return [...document.querySelectorAll<HTMLSelectElement>('.seat-select')].map((field) =>
+    field.value === 'human' ? null : (field.value as Difficulty),
+  );
 }
 
 function showMenu(): void {
@@ -93,9 +117,6 @@ function showMenu(): void {
       <p>Shoot down their walls. Rebuild yours before the next barrage.
          Fail to seal a castle and you are out.</p>
       <label>Name <input id="name" type="text" maxlength="16" value="Player" /></label>
-      <label>Players
-        <select id="players"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select>
-      </label>
       <label>Seed <input id="seed" type="number" value="1" min="0" step="1" /></label>
       <label>Style
         <select id="style">
@@ -103,6 +124,10 @@ function showMenu(): void {
           <option value="flat">Minimal</option>
         </select>
       </label>
+      <label>Players
+        <select id="players"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select>
+      </label>
+      <div id="seats" class="seats-config"></div>
       <button id="solo">Play offline</button>
       <div class="split">
         <button id="host">Host online</button>
@@ -110,43 +135,90 @@ function showMenu(): void {
         <input id="code" type="text" maxlength="8" placeholder="room code" />
         <button id="join">Join</button>
       </div>
-      <p class="note">Empty seats are filled by bots.</p>
+      <p class="note">Set every seat to a bot to watch a match instead of playing one.</p>
     </div>
   `;
   const styleField = document.querySelector<HTMLSelectElement>('#style');
   if (styleField) styleField.value = preferredStyle;
 
+  const seatsRoot = document.querySelector<HTMLElement>('#seats');
+  const playersField = document.querySelector<HTMLSelectElement>('#players');
+
+  /** Redraws the seat rows, keeping choices where the count allows. */
+  const drawSeats = (seats: (Difficulty | null)[]): void => {
+    if (!seatsRoot) return;
+    seatsRoot.innerHTML = seats
+      .map((seat, i) => {
+        const value = seat === null ? 'human' : seat;
+        return `<label>Seat ${i + 1}
+          <select class="seat-select" data-seat="${i}">${difficultyOptions(value, true)}</select>
+        </label>`;
+      })
+      .join('');
+
+    for (const field of seatsRoot.querySelectorAll<HTMLSelectElement>('.seat-select')) {
+      field.addEventListener('change', () => {
+        // Only one seat can be yours; taking a new one hands the old one to a bot.
+        if (field.value === 'human') {
+          for (const other of seatsRoot.querySelectorAll<HTMLSelectElement>('.seat-select')) {
+            if (other !== field && other.value === 'human') other.value = DEFAULT_BOT;
+          }
+        }
+      });
+    }
+  };
+
+  const resize = (): void => {
+    const count = Number(playersField?.value ?? 3);
+    const existing = readSeats();
+    const seats: (Difficulty | null)[] = Array.from(
+      { length: count },
+      (_, i) => existing[i] ?? DEFAULT_BOT,
+    );
+    if (!seats.includes(null)) seats[0] = null;
+    drawSeats(seats);
+  };
+  playersField?.addEventListener('change', resize);
+  drawSeats([null, DEFAULT_BOT, DEFAULT_BOT]);
+
   document.querySelector('#solo')?.addEventListener('click', () => {
-    const setup = readSetup();
-    const match = new LocalMatch({ seed: setup.seed, playerCount: setup.players, humanPlayer: 0 });
+    const setup: Setup = { ...readCommon(), seats: readSeats() };
     void runSession(
-      {
-        get state() {
-          return match.state;
-        },
-        humanPlayer: match.humanPlayer,
-        get tickFraction() {
-          return match.tickFraction;
-        },
-        get finished() {
-          return match.finished;
-        },
-        advance: (ms) => match.advance(ms * timeScale),
-        submit: (action) => void match.submit(action),
-        status: () => '',
-      },
+      localSession(new LocalMatch({ seed: setup.seed, seats: setup.seats })),
       setup,
     ).catch((error: unknown) => showError('Failed to start match', error));
   });
 
   document.querySelector('#host')?.addEventListener('click', () => {
-    void startOnline(readSetup(), null).catch((e: unknown) => showError('Could not host', e));
+    void startOnline({ ...readCommon(), seats: readSeats() }, null).catch((e: unknown) =>
+      showError('Could not host', e),
+    );
   });
   document.querySelector('#join')?.addEventListener('click', () => {
     const code = document.querySelector<HTMLInputElement>('#code')?.value.trim() ?? '';
     if (code.length === 0) return;
-    void startOnline(readSetup(), code).catch((e: unknown) => showError('Could not join', e));
+    void startOnline({ ...readCommon(), seats: readSeats() }, code).catch((e: unknown) =>
+      showError('Could not join', e),
+    );
   });
+}
+
+function localSession(match: LocalMatch): Session {
+  return {
+    get state() {
+      return match.state;
+    },
+    humanPlayer: match.humanPlayer,
+    get tickFraction() {
+      return match.tickFraction;
+    },
+    get finished() {
+      return match.finished;
+    },
+    advance: (ms) => match.advance(ms * timeScale),
+    submit: (action) => void match.submit(action),
+    status: () => (match.humanPlayer < 0 ? 'watching' : ''),
+  };
 }
 
 // ----------------------------------------------------------------------- lobby
@@ -158,6 +230,8 @@ async function startOnline(setup: Setup, code: string | null): Promise<void> {
   const match = new NetworkMatch(connection);
 
   let seats: Seat[] = [];
+  let bots: Difficulty[] = [];
+  let playerCount = setup.seats.length;
   let hostId = -1;
   let roomCode = code ?? '';
   let started = false;
@@ -172,6 +246,8 @@ async function startOnline(setup: Setup, code: string | null): Promise<void> {
         break;
       case 'room':
         seats = message.seats;
+        bots = [...message.bots];
+        playerCount = message.playerCount;
         hostId = message.hostId;
         if (!message.started) renderLobby();
         break;
@@ -194,22 +270,43 @@ async function startOnline(setup: Setup, code: string | null): Promise<void> {
   function renderLobby(): void {
     if (started) return;
     const isHost = match.humanPlayer === hostId;
+
+    // One row per seat at the table: the people who have joined, then the bots that
+    // will fill the rest. Only the host may change a bot.
+    const rows = Array.from({ length: playerCount }, (_, i) => {
+      const seat = seats.find((s) => s.playerId === i);
+      if (seat) {
+        const you = seat.playerId === match.humanPlayer ? ' class="you"' : '';
+        const tags = [seat.playerId === hostId ? 'host' : '', seat.connected ? '' : 'away']
+          .filter(Boolean)
+          .map((t) => ` <em>${t}</em>`)
+          .join('');
+        return `<li${you}>${seat.name}${tags}</li>`;
+      }
+      const value = bots[i] ?? 'gunner';
+      const control = isHost
+        ? `<select class="bot-select" data-seat="${i}">${difficultyOptions(value, false)}</select>`
+        : `<em>${label(value)}</em>`;
+      return `<li class="bot">Bot ${i + 1} ${control}</li>`;
+    }).join('');
+
     app!.innerHTML = `
       <div class="menu lobby">
         <h1>Room ${roomCode}</h1>
-        <p>Share this code. Empty seats are filled by bots when the match starts.</p>
-        <ul class="seats">${seats
-          .map(
-            (seat) =>
-              `<li${seat.playerId === match.humanPlayer ? ' class="you"' : ''}>${seat.name}${
-                seat.playerId === hostId ? ' <em>host</em>' : ''
-              }${seat.connected ? '' : ' <em>away</em>'}</li>`,
-          )
-          .join('')}</ul>
+        <p>Share this code. Every seat nobody takes is played by a bot.</p>
+        <ul class="seats">${rows}</ul>
         ${isHost ? '<button id="begin">Start match</button>' : '<p class="note">Waiting for the host to start.</p>'}
         <button id="leave" class="quiet">Leave</button>
       </div>
     `;
+
+    for (const field of document.querySelectorAll<HTMLSelectElement>('.bot-select')) {
+      field.addEventListener('change', () => {
+        const next = [...bots];
+        next[Number(field.dataset.seat)] = field.value as Difficulty;
+        connection.send({ type: 'configure', bots: next });
+      });
+    }
     document
       .querySelector('#begin')
       ?.addEventListener('click', () => connection.send({ type: 'start' }));
@@ -223,7 +320,7 @@ async function startOnline(setup: Setup, code: string | null): Promise<void> {
   await connection.connect();
 
   const stored = sessionStorage.getItem(TOKEN_KEY)?.split(':') ?? [];
-  if (code === null) connection.createRoom(setup.name, setup.players);
+  if (code === null) connection.createRoom(setup.name, setup.seats.length);
   else if (stored[0] === code.toUpperCase() && stored[1])
     connection.joinRoom(setup.name, code, stored[1]);
   else connection.joinRoom(setup.name, code);
@@ -274,7 +371,8 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
   const controls = new Controls(canvas, scene, session.state, session.humanPlayer, (action) => {
     session.submit(action);
   });
-  controls.attach();
+  // Nobody at the keyboard in a watched match, so there is nothing to listen for.
+  if (session.humanPlayer >= 0) controls.attach();
 
   const fit = (): void => {
     scene.resize(session.state, globalThis.innerWidth, globalThis.innerHeight);
@@ -286,6 +384,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
   globalThis.addEventListener('resize', fit);
 
   const restart = (event: KeyboardEvent): void => {
+    // R returns to the menu once a match is over, whether it was played or watched.
     if ((event.key === 'r' || event.key === 'R') && session.finished) {
       cleanup();
       showMenu();
@@ -374,33 +473,25 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
 }
 
 if (params.get('autostart') === '1') {
+  const count = Number(params.get('players') ?? 3);
+  // ?watch=1 fills every seat with a bot, which is how a match is observed rather
+  // than played.
+  const watching = params.get('watch') === '1';
+  const difficulty = (DIFFICULTIES as readonly string[]).includes(params.get('bots') ?? '')
+    ? (params.get('bots') as Difficulty)
+    : DEFAULT_BOT;
   const setup: Setup = {
-    players: Number(params.get('players') ?? 3),
+    seats: Array.from({ length: count }, (_, i) => (i === 0 && !watching ? null : difficulty)),
     seed: Number(params.get('seed') ?? 1),
     style: preferredStyle,
     name: 'Player',
   };
-  const match = new LocalMatch({ seed: setup.seed, playerCount: setup.players, humanPlayer: 0 });
+  const match = new LocalMatch({ seed: setup.seed, seats: setup.seats });
   const phase = params.get('snapshot');
   if (phase !== null && PHASES.includes(phase as Phase)) match.fastForwardTo(phase as Phase);
-  void runSession(
-    {
-      get state() {
-        return match.state;
-      },
-      humanPlayer: match.humanPlayer,
-      get tickFraction() {
-        return match.tickFraction;
-      },
-      get finished() {
-        return match.finished;
-      },
-      advance: (ms) => match.advance(ms * timeScale),
-      submit: (action) => void match.submit(action),
-      status: () => '',
-    },
-    setup,
-  ).catch((error: unknown) => showError('Failed to start match', error));
+  void runSession(localSession(match), setup).catch((error: unknown) =>
+    showError('Failed to start match', error),
+  );
 } else {
   showMenu();
 }

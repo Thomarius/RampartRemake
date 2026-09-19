@@ -200,6 +200,74 @@ describe('replicated simulation', () => {
   });
 });
 
+describe('bot difficulty', () => {
+  function lastRoom(client: TestClient) {
+    const message = client.received.filter((m) => m.type === 'room').at(-1);
+    if (message?.type !== 'room') throw new Error('no room message');
+    return message;
+  }
+
+  it('reports a seat for every place at the table, bots included', () => {
+    const r = room(4);
+    const a = new TestClient('a');
+    r.join(a, 'Ada');
+
+    const roster = lastRoom(a);
+    expect(roster.playerCount).toBe(4);
+    expect(roster.seats).toHaveLength(1);
+    // Three seats nobody has taken, each with a bot waiting behind it.
+    expect(roster.bots).toHaveLength(4);
+  });
+
+  it('lets the host set the skill of each bot', () => {
+    const r = room(3);
+    const host = new TestClient('host');
+    r.join(host, 'Ada');
+
+    r.handle(host, { type: 'configure', bots: ['recruit', 'marshal', 'marshal'] });
+    expect(lastRoom(host).bots).toEqual(['recruit', 'marshal', 'marshal']);
+  });
+
+  it('ignores a guest trying to set them', () => {
+    const r = room(3);
+    const host = new TestClient('host');
+    const guest = new TestClient('guest');
+    r.join(host, 'Ada');
+    r.join(guest, 'Bo');
+    const before = lastRoom(guest).bots;
+
+    r.handle(guest, { type: 'configure', bots: ['marshal', 'marshal', 'marshal'] });
+    expect(lastRoom(guest).bots).toEqual(before);
+  });
+
+  it('ignores a change once the match is under way', () => {
+    const r = room(3);
+    const host = new TestClient('host');
+    r.join(host, 'Ada');
+    r.start();
+    const before = lastRoom(host).bots;
+
+    r.handle(host, { type: 'configure', bots: ['marshal', 'marshal', 'marshal'] });
+    expect(lastRoom(host).bots).toEqual(before);
+  });
+
+  it('starts a match that plays on with the configured bots', () => {
+    const r = room(3);
+    const host = new TestClient('host');
+    r.join(host, 'Ada');
+    r.handle(host, { type: 'configure', bots: ['recruit', 'recruit', 'recruit'] });
+    r.start();
+    run(r, 600);
+
+    // Bots took their seats and got on with it.
+    expect(host.state).not.toBeNull();
+    expect(host.state!.players.filter((p) => p.startingCastleId !== null).length).toBeGreaterThan(
+      1,
+    );
+    expect(host.desyncs).toEqual([]);
+  });
+});
+
 describe('disconnect and reconnect', () => {
   it('hands a dropped seat to a bot so the match does not stall', () => {
     const r = room(2, 3);

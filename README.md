@@ -36,8 +36,9 @@ npm run dev -w @rampart/client     # play a local match at http://localhost:5173
 ```
 
 The client takes dev query parameters: `?autostart=1&players=4&seed=3` skips the menu,
-`&snapshot=build` jumps straight to a given phase, `&speed=10` runs the clock faster, and
-`&style=flat` picks a visual style (also available from the menu).
+`&snapshot=build` jumps straight to a given phase, `&speed=10` runs the clock faster,
+`&style=flat` picks a visual style, and `&watch=1&bots=marshal` fills every seat with a
+bot so a match can be observed rather than played. All are available from the menu too.
 
 ## Layout
 

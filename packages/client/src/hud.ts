@@ -124,7 +124,12 @@ export class Hud {
     }
 
     let banner = '';
-    if (state.phase === 'game_over') {
+    if (state.phase === 'game_over' && humanPlayer < 0) {
+      const text = state.draw
+        ? 'Draw — nobody held a castle'
+        : `${state.players[state.winner ?? 0]?.name ?? 'Nobody'} wins`;
+      banner = `<div class="banner">${text}<small>press R for the menu</small></div>`;
+    } else if (state.phase === 'game_over') {
       const text = state.draw
         ? 'Draw — nobody held a castle'
         : state.winner === humanPlayer
@@ -146,7 +151,7 @@ export class Hud {
       </div>
       ${queue}
       ${cannonCount}
-      <div class="hint">${PHASE_HINT[state.phase]}</div>
+      <div class="hint">${humanPlayer < 0 ? '' : PHASE_HINT[state.phase]}</div>
       ${status ? `<div class="net">${status}</div>` : ''}
       ${banner}
     `;

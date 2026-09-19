@@ -16,11 +16,13 @@ import {
 
 export interface LocalMatchOptions {
   seed: number;
-  playerCount: number;
-  /** Which seat the person at the keyboard occupies. */
-  humanPlayer: number;
+  /**
+   * One entry per seat: `null` for the person at the keyboard, otherwise the skill
+   * of the bot playing it. Every entry being a difficulty is a watching match, which
+   * is the clearest way to see how the bots actually play.
+   */
+  seats: readonly (Difficulty | null)[];
   ruleset?: Ruleset;
-  difficulty?: Difficulty;
 }
 
 /**
@@ -33,6 +35,7 @@ export interface LocalMatchOptions {
  */
 export class LocalMatch {
   readonly state: MatchState;
+  /** Seat the person holds, or -1 when nobody is playing and the match is watched. */
   readonly humanPlayer: number;
   private readonly rng: Rng;
   private readonly bots = new Map<number, Bot>();
@@ -42,19 +45,21 @@ export class LocalMatch {
 
   constructor(options: LocalMatchOptions) {
     const ruleset = options.ruleset ?? defaultRuleset;
+    const seats = options.seats;
+    this.humanPlayer = seats.findIndex((seat) => seat === null);
+
     this.state = createMatch({
       seed: options.seed,
       ruleset,
       terrainConfig: defaultTerrainConfig,
-      players: Array.from({ length: options.playerCount }, (_, i) => ({
-        name: i === options.humanPlayer ? 'You' : `Bot ${i}`,
-        isBot: i !== options.humanPlayer,
+      players: seats.map((seat, i) => ({
+        name: seat === null ? 'You' : `${seat[0]?.toUpperCase()}${seat.slice(1)} ${i + 1}`,
+        isBot: seat !== null,
       })),
     });
-    this.humanPlayer = options.humanPlayer;
-    for (const player of this.state.players) {
-      if (player.id === options.humanPlayer) continue;
-      this.bots.set(player.id, new Bot(player.id, options.difficulty ?? 'gunner'));
+
+    for (const [id, seat] of seats.entries()) {
+      if (seat !== null) this.bots.set(id, new Bot(id, seat));
     }
     this.rng = new Rng(options.seed ^ 0x5f3759df);
     this.tickMs = 1000 / ruleset.tickRateHz;
@@ -99,9 +104,7 @@ export class LocalMatch {
     while (this.state.phase !== phase && this.state.tick < maxTicks && !this.finished) {
       for (const player of this.state.players) {
         if (player.eliminated) continue;
-        const action =
-          this.bots.get(player.id)?.think(this.state, this.rng) ??
-          new Bot(player.id, 'gunner').think(this.state, this.rng);
+        const action = this.botFor(player.id).think(this.state, this.rng);
         if (action !== null) applyAction(this.state, action);
       }
       step(this.state);
@@ -117,6 +120,16 @@ export class LocalMatch {
     }
     step(this.state);
     this.events.push(...drainEvents(this.state));
+  }
+
+  /** Fast-forwarding drives every seat, including the person's. */
+  private botFor(playerId: number): Bot {
+    let bot = this.bots.get(playerId);
+    if (!bot) {
+      bot = new Bot(playerId, 'gunner');
+      this.bots.set(playerId, bot);
+    }
+    return bot;
   }
 
   private takeEvents(): MatchEvent[] {

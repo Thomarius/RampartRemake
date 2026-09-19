@@ -1,3 +1,4 @@
+import { DifficultySchema } from '@rampart/config';
 import { z } from 'zod';
 
 import { SnapshotSchema } from './snapshot.js';
@@ -61,6 +62,11 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
     token: z.string().optional(),
   }),
   z.strictObject({ type: z.literal('ready'), ready: z.boolean() }),
+  /**
+   * Host only, before the match starts: the skill of the bots filling the empty
+   * seats, indexed by seat. Entries for seats a person holds are ignored.
+   */
+  z.strictObject({ type: z.literal('configure'), bots: z.array(DifficultySchema) }),
   z.strictObject({ type: z.literal('start') }),
   z.strictObject({ type: z.literal('action'), action: ActionSchema }),
   z.strictObject({ type: z.literal('ping'), t: z.number() }),
@@ -81,6 +87,10 @@ export const ServerMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('room'),
     code: z.string(),
     seats: z.array(SeatSchema),
+    /** Total seats at the table; any beyond the joined players are filled by bots. */
+    playerCount: z.number().int().min(2).max(8),
+    /** Skill of the bot in each seat, so everyone can see what they are about to face. */
+    bots: z.array(DifficultySchema),
     hostId: z.number().int().nonnegative(),
     started: z.boolean(),
   }),

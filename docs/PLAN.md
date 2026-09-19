@@ -1045,6 +1045,24 @@ more than they cost a bot, so the escalation's real effect cannot be judged unti
 build at human speed. **Re-measure this after 10d, before adding anything more
 sophisticated here.**
 
+### Setting the table
+
+Both the offline menu and the online lobby configure seats individually rather than
+just counting players.
+
+**Offline**, each seat is either the person or a bot of a named skill, so a match can mix
+tiers — a recruit and a marshal against you — instead of facing three of the same. Setting
+*every* seat to a bot gives a **watched match**: no input is attached and the HUD drops the
+control hints, which is much the clearest way to see how the bots actually play.
+
+**Online**, the room reports a row for every place at the table: the people who have
+joined, then the bots waiting behind the seats nobody took. Only the host may change a
+bot, and only before the match starts — both enforced on the server, since a guest could
+otherwise reconfigure the table by sending the message directly.
+
+Seats a person holds still get a bot built for them, which is what covers them if they
+drop mid-match.
+
 ## 11. Deferred (explicitly out of scope for v1)
 
 Team modes (2v2), quick-match / matchmaking queue, accounts and persistence, ranking,
