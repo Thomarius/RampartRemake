@@ -7,7 +7,7 @@
   "phases": {
     "castleSelectMs": 15000,
     "combatMs": 10000,
-    "buildMs": 25000,
+    "buildMs": 20000,
     "cannonPlaceMs": 25000,
     "endOfPhasePauseMs": 1000,
     "transitionBannerMs": 4000
@@ -150,7 +150,8 @@
   "enclosure": {
     "shorelineCountsAsWall": false,
     "connectivity": 8,
-    "sharedRegionCountsAllCastles": true
+    "sharedRegionCountsAllCastles": true,
+    "sweepOrphanedWalls": true
   },
   "elimination": {
     "onZeroEnclosedCastles": true,

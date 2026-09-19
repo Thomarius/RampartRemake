@@ -1,6 +1,7 @@
 import type { Ruleset, TerrainConfig } from '@rampart/config';
 
 import { applyEnclosure } from './enclosure.js';
+import { sweepOrphanedWalls } from './sweep.js';
 import { Hasher } from './hash.js';
 import { canPlaceAnyCannon, placeCannon, placePiece, type Rejection } from './placement.js';
 import { fire, resolveImpacts } from './shots.js';
@@ -287,6 +288,16 @@ function resolveRound(state: MatchState): void {
 
   // Territory changes once eliminated players are stripped from the board.
   applyEnclosure(state);
+
+  // Then clear the wall that is doing no work. A loop that encloses anything is
+  // safe from this by construction, so it can only take what was already useless.
+  if (state.ruleset.enclosure.sweepOrphanedWalls) {
+    const swept = sweepOrphanedWalls(state);
+    if (swept.length > 0) {
+      state.events.push({ kind: 'walls_swept', tick: state.tick, tiles: swept });
+      applyEnclosure(state);
+    }
+  }
 
   if (checkGameOver(state)) return;
 

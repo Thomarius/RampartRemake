@@ -190,18 +190,17 @@ describe('terrain determinism', () => {
 });
 
 describe('island layout', () => {
-  it('spaces islands evenly around the map centre', () => {
+  it('divides the map into equal sectors meeting at the centre', () => {
     const layout = computeIslandLayout(defaultTerrainConfig, 4);
     expect(layout.centres).toHaveLength(4);
     const cx = (defaultTerrainConfig.gridWidth - 1) / 2;
     const cy = (defaultTerrainConfig.gridHeight - 1) / 2;
     for (const centre of layout.centres) {
-      const d = Math.hypot(centre.x - cx, centre.y - cy);
-      expect(d).toBeCloseTo(layout.radius, 6);
+      expect(Math.hypot(centre.x - cx, centre.y - cy)).toBeCloseTo(layout.radius, 6);
     }
   });
 
-  it('explains itself when a single island is larger than the map', () => {
+  it('explains itself when an island cannot fit in its sector', () => {
     const config = TerrainConfigSchema.parse({
       ...defaultTerrainConfig,
       gridWidth: 40,
@@ -209,31 +208,58 @@ describe('island layout', () => {
       island: { ...defaultTerrainConfig.island, targetAreaTiles: 900 },
     });
     expect(() => computeIslandLayout(config, 4)).toThrow(TerrainGenerationError);
-    expect(() => computeIslandLayout(config, 4)).toThrow(/does not fit on a 40x40 grid/);
+    expect(() => computeIslandLayout(config, 4)).toThrow(/does not fit in one of 4 sectors/);
   });
 
-  it('explains itself when islands fit alone but not together', () => {
-    // The M0 defaults: each island fits the grid on its own, but four of them plus
-    // the water between them do not. Caught only once terrain generation was real.
+  it('explains itself when the grid has no room for the channels', () => {
     const config = TerrainConfigSchema.parse({
       ...defaultTerrainConfig,
-      gridWidth: 64,
-      gridHeight: 64,
-      island: { ...defaultTerrainConfig.island, targetAreaTiles: 420 },
+      gridWidth: 16,
+      gridHeight: 16,
+      island: { ...defaultTerrainConfig.island, targetAreaTiles: 20, minWaterGapTiles: 8 },
     });
-    expect(() => computeIslandLayout(config, 4)).toThrow(/Shrink island.targetAreaTiles/);
+    expect(() => computeIslandLayout(config, 3)).toThrow(/no room for 3 sectors/);
   });
 
-  it('places 2 and 4 players at the same packing cost', () => {
-    // A consequence of offsetting the ring by half a sector: 4 players sit on the
-    // diagonals, where both the water gap and the fit to a square map scale by the
-    // same factor. Putting them on the axes instead would not fit at these sizes.
-    for (const config of [defaultTerrainConfig]) {
-      expect(() => computeIslandLayout(config, 2)).not.toThrow();
-      expect(() => computeIslandLayout(config, 4)).not.toThrow();
-      const two = computeIslandLayout(config, 2);
-      const four = computeIslandLayout(config, 4);
-      expect(four.radius).toBeCloseTo(two.radius * Math.SQRT2, 6);
+  it('gives every sector the same share of the map', () => {
+    // The whole map turns onto itself by a third or a quarter, so no seat is better
+    // placed than another.
+    for (const players of [2, 3, 4]) {
+      const map = generateTerrain(defaultTerrainConfig, players, 12);
+      const min = Math.min(...map.islandAreas);
+      const max = Math.max(...map.islandAreas);
+      expect((max - min) / max).toBeLessThan(0.05);
     }
+  });
+});
+
+describe('the channel between players', () => {
+  it('is a narrow strip, not an ocean', () => {
+    // The point of sectors rather than islands: ground sits side by side with a
+    // channel down the middle. A shot's flight time scales with distance, so an ocean
+    // between players means slow artillery and matches that will not end.
+    const map = generateTerrain(defaultTerrainConfig, 3, 4);
+    const gap = defaultTerrainConfig.island.minWaterGapTiles;
+
+    let shared = 0;
+    for (let y = 0; y < map.height; y++) {
+      for (let x = 0; x < map.width; x++) {
+        if (map.islandId[y * map.width + x] !== 0) continue;
+        const near = new Set<number>();
+        for (let oy = -3; oy <= 3; oy++) {
+          for (let ox = -3; ox <= 3; ox++) {
+            const nx = x + ox;
+            const ny = y + oy;
+            if (nx < 0 || ny < 0 || nx >= map.width || ny >= map.height) continue;
+            const id = map.islandId[ny * map.width + nx] as number;
+            if (id !== 0) near.add(id);
+          }
+        }
+        // Water within reach of two different players is channel, not ocean.
+        if (near.size >= 2) shared++;
+      }
+    }
+    expect(shared).toBeGreaterThan(80);
+    expect(gap).toBeLessThanOrEqual(4);
   });
 });

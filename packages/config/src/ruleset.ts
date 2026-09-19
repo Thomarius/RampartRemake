@@ -103,6 +103,12 @@ export const RulesetSchema = z
       connectivity: z.union([z.literal(4), z.literal(8)]),
       /** One sealed region holding K castles counts as K. */
       sharedRegionCountsAllCastles: z.boolean(),
+      /**
+       * Between the build phase and the next barrage, clear wall that is doing no
+       * work: loose ends, and anything not linked to sealed ground. Without it the
+       * board silts up with stray blocks, and the space a cannon needs goes with it.
+       */
+      sweepOrphanedWalls: z.boolean(),
     }),
 
     elimination: z.strictObject({

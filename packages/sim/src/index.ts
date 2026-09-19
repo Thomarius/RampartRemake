@@ -7,6 +7,7 @@ export * from './trig.js';
 export * from './grid.js';
 export * from './terrain.js';
 export * from './enclosure.js';
+export * from './sweep.js';
 export * from './pieces.js';
 export * from './placement.js';
 export * from './shots.js';

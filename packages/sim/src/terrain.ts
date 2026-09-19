@@ -17,11 +17,11 @@ import { Terrain } from './types.js';
 
 export interface IslandLayout {
   playerCount: number;
-  /** Distance from map centre to each island centre, in tiles. */
+  /** Distance from the map centre to a representative point in each sector. */
   radius: number;
-  /** Angle of the canonical island, in turns. */
+  /** Angle bisecting the canonical sector, in turns. */
   angleOffset: number;
-  /** Nominal island extent used for the packing constraints. */
+  /** How far the land may reach from the map centre. */
   extent: number;
   centres: readonly { readonly x: number; readonly y: number }[];
 }
@@ -63,63 +63,47 @@ export type RejectReason =
 
 export class TerrainGenerationError extends Error {}
 
-/**
- * Irregular islands reach further than a circle of equal area. Island packing is
- * checked against this inflated radius so coastlines do not touch.
- */
-const EXTENT_FACTOR = 1.25;
-/** Keep islands clear of the map border by this many tiles. */
+/** Keep land clear of the map border by this many tiles. */
 const BORDER_MARGIN = 2;
 
 /**
- * Places island centres on a ring so the whole map is invariant under rotation by
- * 1/N of a turn — the only arrangement in which no player has a positional advantage.
+ * Divides the map into N equal sectors meeting at its centre.
  *
- * The 1/(2N) turn offset matters: for 4 players it puts islands on the diagonals
- * rather than the axes, which is what makes them fit a square map at all.
+ * The players' ground sits side by side, separated by a straight channel a couple of
+ * tiles wide, rather than as islands scattered across an ocean. That is both how the
+ * original reads and what makes the game work: a shot's flight time scales with
+ * distance, so an ocean between players means slow, weak artillery and matches that
+ * will not end.
+ *
+ * The whole map is still invariant under a 1/N turn, so no player has a positional
+ * advantage.
  */
 export function computeIslandLayout(config: TerrainConfig, playerCount: number): IslandLayout {
-  const extent = EXTENT_FACTOR * Math.sqrt(config.island.targetAreaTiles / Math.PI);
-  const angleOffset = 0.5 / playerCount;
-
   const halfW = config.gridWidth / 2;
   const halfH = config.gridHeight / 2;
-  const limitX = halfW - BORDER_MARGIN - extent;
-  const limitY = halfH - BORDER_MARGIN - extent;
-  if (limitX <= 0 || limitY <= 0) {
+  const reach = Math.min(halfW, halfH) - BORDER_MARGIN;
+  if (reach <= config.island.minWaterGapTiles) {
     throw new TerrainGenerationError(
-      `an island of ${config.island.targetAreaTiles} tiles does not fit on a ` +
-        `${config.gridWidth}x${config.gridHeight} grid`,
+      `a ${config.gridWidth}x${config.gridHeight} grid has no room for ${playerCount} sectors ` +
+        `separated by ${config.island.minWaterGapTiles} tiles of water`,
     );
   }
 
-  // Adjacent centres must be far enough apart to leave the required water gap.
-  const separation = 2 * extent + config.island.minWaterGapTiles;
-  const chord = 2 * Math.abs(sinTurns(0.5 / playerCount));
-  const minRadius = playerCount === 1 ? 0 : separation / chord;
-
-  // And close enough in that every island still fits on the map.
-  let maxRadius = Infinity;
-  for (let i = 0; i < playerCount; i++) {
-    const turns = angleOffset + i / playerCount;
-    const sx = Math.abs(sinTurns(turns));
-    const sy = Math.abs(cosTurns(turns));
-    if (sx > 1e-9) maxRadius = Math.min(maxRadius, limitX / sx);
-    if (sy > 1e-9) maxRadius = Math.min(maxRadius, limitY / sy);
-  }
-
-  if (minRadius > maxRadius) {
+  // Rough check that a sector could hold the requested area at all: a wedge of the
+  // inscribed circle, less the channels down each side.
+  const wedge = (Math.PI * reach * reach) / playerCount;
+  if (config.island.targetAreaTiles > wedge) {
     throw new TerrainGenerationError(
-      `cannot place ${playerCount} islands of ${config.island.targetAreaTiles} tiles on a ` +
-        `${config.gridWidth}x${config.gridHeight} grid with a ${config.island.minWaterGapTiles}-tile ` +
-        `water gap: they would need a ring radius of at least ${minRadius.toFixed(1)} tiles but ` +
-        `at most ${maxRadius.toFixed(1)} fits. Shrink island.targetAreaTiles or grow the grid.`,
+      `an island of ${config.island.targetAreaTiles} tiles does not fit in one of ` +
+        `${playerCount} sectors of a ${config.gridWidth}x${config.gridHeight} grid ` +
+        `(about ${Math.floor(wedge)} tiles each). Shrink island.targetAreaTiles or grow the grid.`,
     );
   }
 
-  const radius = playerCount === 1 ? 0 : (minRadius + maxRadius) / 2;
+  const angleOffset = 0.5 / playerCount;
   const cx = (config.gridWidth - 1) / 2;
   const cy = (config.gridHeight - 1) / 2;
+  const radius = reach * 0.6;
 
   const centres = [];
   for (let i = 0; i < playerCount; i++) {
@@ -127,32 +111,76 @@ export function computeIslandLayout(config: TerrainConfig, playerCount: number):
     centres.push({ x: cx + radius * sinTurns(turns), y: cy - radius * cosTurns(turns) });
   }
 
-  return { playerCount, radius, angleOffset, extent, centres };
+  return { playerCount, radius, angleOffset, extent: reach, centres };
 }
 
-/** Noise field for the canonical island: high in the middle, falling off radially. */
-function buildField(config: TerrainConfig, layout: IslandLayout, seed: number): Float64Array {
+/** Unit vector along an angle given in turns, in screen coordinates. */
+function direction(turns: number): { x: number; y: number } {
+  return { x: sinTurns(turns), y: -cosTurns(turns) };
+}
+
+/**
+ * The canonical sector's field: high in the middle of the wedge, falling away at the
+ * outer edge, and hard-cut along the two channels.
+ *
+ * The channel is a hard cut rather than part of the noise, so its width is exactly
+ * what the configuration asks for. The noise only roughens the outer coastline, which
+ * is the edge nobody has to fight across.
+ */
+function buildField(
+  config: TerrainConfig,
+  layout: IslandLayout,
+  seed: number,
+  slack: number,
+): Float64Array {
   const { gridWidth: w, gridHeight: h } = config;
-  const centre = layout.centres[0] as { x: number; y: number };
+  const cx = (w - 1) / 2;
+  const cy = (h - 1) / 2;
   const field = new Float64Array(w * h);
-  const roughness = config.island.coastlineRoughness;
+
+  const half = 0.5 / layout.playerCount;
+  const inward = direction(layout.angleOffset);
+  // Inward normals of the two channel edges, oriented to point into the sector.
+  const edges = [layout.angleOffset - half, layout.angleOffset + half].map((turns) => {
+    const along = direction(turns);
+    const normal = { x: -along.y, y: along.x };
+    const facing = normal.x * inward.x + normal.y * inward.y;
+    return facing >= 0 ? normal : { x: -normal.x, y: -normal.y };
+  });
+
+  // Half the channel on each side, plus slack when the rotation is not a quarter
+  // turn: 120 degrees rounds, and rounding a channel edge inward would close the gap
+  // below what was asked for.
+  const clearance = config.island.minWaterGapTiles / 2 + slack;
+  const roughness = config.island.coastlineRoughness * 6;
+  const reach = layout.extent;
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const dx = (x - centre.x) / layout.extent;
-      const dy = (y - centre.y) / layout.extent;
-      const d2 = dx * dx + dy * dy;
-      if (d2 > 2.56) {
-        field[y * w + x] = -1e9; // well outside the island; never land
+      const dx = x - cx;
+      const dy = y - cy;
+
+      // Inside the wedge, and clear of both channels?
+      let toEdge = Infinity;
+      for (const normal of edges) toEdge = Math.min(toEdge, dx * normal.x + dy * normal.y);
+      if (layout.playerCount === 2)
+        toEdge =
+          dx * (edges[0] as { x: number; y: number }).x +
+          dy * (edges[0] as { x: number; y: number }).y;
+
+      const radial = Math.sqrt(dx * dx + dy * dy);
+      if (toEdge < clearance || radial > reach) {
+        field[y * w + x] = -1e9;
         continue;
       }
+
       const raw = fbm2D(x, y, seed, {
         octaves: config.island.noiseOctaves,
         frequency: config.island.noiseFrequency,
       });
-      // roughness 0 gives a perfect disc; 1 lets the noise dominate the coastline.
-      const n = 0.5 + (raw - 0.5) * roughness;
-      field[y * w + x] = n - d2;
+      // Distance from the outer rim, roughened. Higher is further inland, so raising
+      // the sea level pulls the coastline in from the outside only.
+      field[y * w + x] = reach - radial + (raw - 0.5) * roughness;
     }
   }
   return field;
@@ -160,8 +188,19 @@ function buildField(config: TerrainConfig, layout: IslandLayout, seed: number): 
 
 /** Chooses the sea level that yields an island closest to the requested area. */
 function thresholdForArea(field: Float64Array, targetArea: number): number {
-  let lo = -2;
-  let hi = 2;
+  // Bounds come from the data: the field is a distance in tiles, so a fixed range
+  // would either never reach the target or spend every iteration outside it.
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < field.length; i++) {
+    const value = field[i] as number;
+    if (value <= -1e8) continue;
+    if (value < lo) lo = value;
+    if (value > hi) hi = value;
+  }
+  if (lo === Infinity) return 0;
+  lo -= 1;
+  hi += 1;
   for (let iteration = 0; iteration < 48; iteration++) {
     const mid = (lo + hi) / 2;
     let area = 0;
@@ -440,7 +479,10 @@ function tryGenerate(
   const w = config.gridWidth;
   const h = config.gridHeight;
 
-  const field = buildField(config, layout, seed);
+  // Quarter turns are exact, so the rotated copies are pixel-identical. A third of a
+  // turn is not, and the difference has to be absorbed somewhere.
+  const exactRotation = playerCount === 1 || playerCount === 2 || playerCount === 4;
+  const field = buildField(config, layout, seed, exactRotation ? 0 : 1);
   const threshold = thresholdForArea(field, config.island.targetAreaTiles);
 
   const canonical = new Uint8Array(w * h);

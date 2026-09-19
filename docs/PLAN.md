@@ -42,10 +42,14 @@ LOBBY
 ### 1.2 Map
 
 - Square tile grid, default 80x80.
-- Each player owns one **island**, fully separated by water. Islands are **rotational
-  copies** of a single procedurally generated shape, placed at `360/N` degree intervals
-  around the map centre. This guarantees identical area, castle layout and sightlines.
-- Each island carries the same number of castles (default 3).
+- The map is divided into N equal **sectors** meeting at its centre, one per player,
+  separated by a **channel two tiles wide**. Sectors are rotational copies of one
+  generated shape, so the whole map turns onto itself by 1/N and no seat is better
+  placed than another.
+- The players sit side by side rather than across an ocean, and that is a rule about
+  pacing as much as looks: flight time scales with distance, so an ocean between
+  players means slow, weak artillery and matches that will not end.
+- Each sector carries the same number of castles (default 4, each 2x2).
 - No fog of war; every island is fully visible to everyone.
 
 ### 1.3 Walls and enclosure
@@ -165,7 +169,7 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
   "phases": {
     "castleSelectMs": 15000,
     "combatMs": 10000,
-    "buildMs": 25000,
+    "buildMs": 20000,
     "cannonPlaceMs": 25000,
     "endOfPhasePauseMs": 1000,
     "transitionBannerMs": 4000
@@ -333,7 +337,8 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
   "enclosure": {
     "shorelineCountsAsWall": false,
     "connectivity": 8,
-    "sharedRegionCountsAllCastles": true
+    "sharedRegionCountsAllCastles": true,
+    "sweepOrphanedWalls": true
   },
   "elimination": {
     "onZeroEnclosedCastles": true,
@@ -346,25 +351,25 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
 
 ```json
 {
-  "gridWidth": 80,
-  "gridHeight": 80,
+  "gridWidth": 88,
+  "gridHeight": 88,
   "layout": "rotational",
   "island": {
-    "targetAreaTiles": 420,
+    "targetAreaTiles": 1100,
     "areaTolerance": 0.08,
     "noiseOctaves": 4,
     "noiseFrequency": 0.08,
     "coastlineRoughness": 0.55,
-    "minWaterGapTiles": 6,
+    "minWaterGapTiles": 2,
     "erosionPasses": 2
   },
   "castles": {
-    "perIsland": 3,
+    "perIsland": 4,
     "footprint": [
-      3,
-      3
+      2,
+      2
     ],
-    "minSpacingTiles": 6,
+    "minSpacingTiles": 9,
     "minDistanceFromShoreTiles": 3
   },
   "startingWall": {
@@ -1062,6 +1067,70 @@ otherwise reconfigure the table by sending the message directly.
 
 Seats a person holds still get a bot built for them, which is what covers them if they
 drop mid-match.
+
+## 10f. Sweeping, sectors, and what they exposed
+
+Five changes from a session of watching bot matches, plus the bug that watching found.
+
+### Wall that is doing no work is swept away
+
+Between the build phase and the next barrage, two rules run until nothing more falls:
+
+1. **A block needs two orthogonal neighbours.** Fewer makes it a loose end, and removing
+   it can strand the block behind it, so this repeats — it is the 2-core of the wall
+   graph. Trees and stray blocks vanish; only loops and the runs joining them remain.
+   This applies inside your own ground too, so a block dropped in the middle of your
+   territory cannot sit there eating the space a cannon needs.
+2. **A wall must reach territory.** What survives still has to be linked, through other
+   wall, to something adjacent to a sealed region. A tidy loop enclosing nothing is
+   still swept.
+
+Orthogonal, deliberately: a wall seals only when it is 4-connected, so this is exactly
+the connectivity that makes a wall a wall — and it means a loop that does enclose
+something can never be swept, since every block of it has two neighbours and touches
+the ground it encloses. A test asserts that property directly.
+
+Connectivity is through other walls rather than strict adjacency, so a wall built two
+thick survives: thickening stays a legitimate investment rather than being shaved back
+every round.
+
+### Smaller castles, more of them, closer together
+
+Castles are 2x2 and there are four per sector, on the larger ground the channels free up.
+Build phase 25s to 20s.
+
+### The bug watching found
+
+Bots were laying blocks inside their own sealed ground, which is the one place a cannon
+may go. Three causes, all now fixed: thickening worked inward as readily as outward,
+spill into territory was scored as merely wasted rather than harmful, and the test for
+"do I have room for my cannons" compared against `cannonsToPlace` — which is zero for
+the whole build phase, because it is set at the resolution that ends it.
+
+### And the bug that was underneath it
+
+Measured while fixing the above: bots owned 15 cannons apiece and had **two active
+between them**. A cannon fires only from sealed ground, and a minimum cut is by
+definition the *tightest* wall that works, so each round the planner drew the wall in
+closer to the castle — and the new sweep then removed the old outer wall, leaving the
+guns outside and silent. The bot was strangling its own artillery, one round at a time.
+
+The fix is to make the player's cannons **sinks in the cut** alongside the castle, so a
+valid wall has to enclose them. It costs more wall, which is simply what they are worth.
+With it, a bot holds 12 to 18 active guns where it held none.
+
+### Still unresolved
+
+Bot-vs-bot matches now run long and often do not finish inside a tick budget that used
+to cover several matches. Nobody is eliminated, because a near-optimal defender with four
+castles on a large sector can almost always seal *something*. Damage is not the
+constraint: raising fire rates to a person's clicking speed changed nothing.
+
+This wants a human's judgement rather than more tuning, and the seat configuration added
+alongside it is what makes that possible — set every seat to a bot and watch. Candidate
+levers, in the order I would try them: fewer castles per sector, castles closer together
+so one barrage threatens several, and a smaller sector so there is less ground to retreat
+into.
 
 ## 11. Deferred (explicitly out of scope for v1)
 

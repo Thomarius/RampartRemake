@@ -48,6 +48,13 @@ export function planSeal(
    * that depends on it is worthless, and the wall has to go around instead.
    */
   blocked?: ReadonlySet<number>,
+  /**
+   * Also keep this player's cannons inside the wall. A cannon only fires from sealed
+   * ground, so a wall drawn tight around the castle alone leaves the guns outside and
+   * silent — and the sweep then takes the old outer wall away, so they never come
+   * back. Enclosing them costs more, and that is simply what they are worth.
+   */
+  keepCannons = false,
 ): SealPlan | null {
   if (castles.length === 0) return null;
   const islandId = state.players[playerId]?.islandId;
@@ -102,11 +109,23 @@ export function planSeal(
     if (coastal) flow.addEdge(source, inNode(n), INFINITE_CAPACITY);
   }
 
+  const sinkTile = (i: number): void => {
+    const n = node[i] as number;
+    if (n >= 0) flow.addEdge(outNode(n), sink, INFINITE_CAPACITY);
+  };
+
   for (const castle of castles) {
     for (let oy = 0; oy < castle.h; oy++) {
-      for (let ox = 0; ox < castle.w; ox++) {
-        const n = node[(castle.y + oy) * state.width + castle.x + ox] as number;
-        if (n >= 0) flow.addEdge(outNode(n), sink, INFINITE_CAPACITY);
+      for (let ox = 0; ox < castle.w; ox++) sinkTile((castle.y + oy) * state.width + castle.x + ox);
+    }
+  }
+
+  if (keepCannons) {
+    for (const cannon of state.cannons) {
+      if (cannon.owner !== playerId) continue;
+      for (let oy = 0; oy < cannon.h; oy++) {
+        for (let ox = 0; ox < cannon.w; ox++)
+          sinkTile((cannon.y + oy) * state.width + cannon.x + ox);
       }
     }
   }
@@ -138,6 +157,7 @@ export function sealOptions(
   playerId: number,
   maxCastles: number,
   blocked?: ReadonlySet<number>,
+  keepCannons = false,
 ): SealPlan[] {
   const islandId = state.players[playerId]?.islandId;
   const mine = state.castles.filter((c) => c.islandId === islandId);
@@ -148,16 +168,19 @@ export function sealOptions(
     if (plan !== null) plans.push(plan);
   };
 
-  for (const castle of mine) add(planSeal(state, playerId, [castle], blocked));
+  for (const castle of mine) add(planSeal(state, playerId, [castle], blocked, keepCannons));
 
   if (maxCastles > 1) {
     for (let a = 0; a < mine.length; a++) {
       for (let b = a + 1; b < mine.length; b++) {
-        add(planSeal(state, playerId, [mine[a] as Castle, mine[b] as Castle], blocked));
+        add(
+          planSeal(state, playerId, [mine[a] as Castle, mine[b] as Castle], blocked, keepCannons),
+        );
       }
     }
   }
-  if (maxCastles > 2 && mine.length >= 3) add(planSeal(state, playerId, mine, blocked));
+  if (maxCastles > 2 && mine.length >= 3)
+    add(planSeal(state, playerId, mine, blocked, keepCannons));
 
   return plans.sort((x, y) => x.cost - y.cost);
 }
@@ -169,8 +192,9 @@ export function cheapestPlanFor(
   atLeastCastles: number,
   maxCastles: number,
   blocked?: ReadonlySet<number>,
+  keepCannons = false,
 ): SealPlan | null {
-  const options = sealOptions(state, playerId, maxCastles, blocked).filter(
+  const options = sealOptions(state, playerId, maxCastles, blocked, keepCannons).filter(
     (plan) => plan.castleIds.length >= atLeastCastles,
   );
   return options[0] ?? null;
@@ -257,6 +281,9 @@ export function thickenTargets(state: MatchState, playerId: number): number[] {
       if (nx < 0 || ny < 0 || nx >= state.width || ny >= state.height) continue;
       const i = ny * state.width + nx;
       if (seen.has(i) || !buildable(state, playerId, i)) continue;
+      // Outward only. A second layer laid on the inside is a block of wall standing
+      // where a cannon could have stood, and a cannon is what wins the match.
+      if (state.territory[i] === state.players[playerId]?.islandId) continue;
       seen.add(i);
       out.push(i);
     }

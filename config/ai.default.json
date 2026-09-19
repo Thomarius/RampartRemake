@@ -3,7 +3,7 @@
     "recruit": {
       "placementBaseMs": 600,
       "placementPerCellMs": 420,
-      "fireIntervalMs": 600,
+      "fireIntervalMs": 330,
       "aimJitter": 0.7,
       "maxCastles": 1,
       "riskMargin": 0.55,
@@ -13,7 +13,7 @@
     "gunner": {
       "placementBaseMs": 420,
       "placementPerCellMs": 360,
-      "fireIntervalMs": 380,
+      "fireIntervalMs": 210,
       "aimJitter": 0.25,
       "maxCastles": 2,
       "riskMargin": 0.8,
@@ -23,7 +23,7 @@
     "marshal": {
       "placementBaseMs": 360,
       "placementPerCellMs": 320,
-      "fireIntervalMs": 260,
+      "fireIntervalMs": 150,
       "aimJitter": 0.05,
       "maxCastles": 2,
       "riskMargin": 1.0,

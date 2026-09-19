@@ -107,12 +107,14 @@ describe('audio manifest', () => {
 });
 
 describe('cross-file validation', () => {
-  it('catches islands that cannot fit on the grid with water between them', () => {
+  it('catches a map that is asked to be all land', () => {
+    // A backstop only. The real packing check lives in the terrain generator, which
+    // knows the sector geometry; this catches a value that is obviously impossible.
     const problems = validateConfigBundle({
       ...defaultConfigBundle,
       terrain: {
         ...defaultTerrainConfig,
-        island: { ...defaultTerrainConfig.island, targetAreaTiles: 1200 },
+        island: { ...defaultTerrainConfig.island, targetAreaTiles: 3000 },
       },
     });
     expect(problems.some((p) => p.includes('no room for the water'))).toBe(true);

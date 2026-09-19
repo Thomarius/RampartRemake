@@ -14,8 +14,12 @@ export interface ConfigBundle {
   ai: AiConfig;
 }
 
-/** Fraction of the map that may be land once every island is placed. */
-const MAX_LAND_FRACTION = 0.35;
+/**
+ * Fraction of the map that may be land once every island is placed. Generous,
+ * because the players are meant to be separated by a channel rather than an ocean:
+ * the real packing check lives in the terrain generator, which knows the geometry.
+ */
+const MAX_LAND_FRACTION = 0.8;
 
 /**
  * Constraints that span more than one config file, and so cannot be expressed

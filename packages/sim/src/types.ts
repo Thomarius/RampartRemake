@@ -109,6 +109,7 @@ export type MatchEvent =
     }
   | { kind: 'cannon_placed'; tick: number; player: number; cannonId: number; x: number; y: number }
   | { kind: 'round_resolved'; tick: number; round: number; results: RoundResult[] }
+  | { kind: 'walls_swept'; tick: number; tiles: number[] }
   | { kind: 'player_eliminated'; tick: number; player: number; round: number }
   | { kind: 'game_over'; tick: number; winner: number | null; draw: boolean };
 

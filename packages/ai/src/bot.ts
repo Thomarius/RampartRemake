@@ -15,6 +15,7 @@ import {
 import {
   cannonRoom,
   cheapestPlanFor,
+  sealOptions,
   thickenTargets,
   weakestWall,
   type SealPlan,
@@ -22,6 +23,9 @@ import {
 
 /** How long a bot waits before looking again when it found nothing to do. */
 const IDLE_RETRY_MS = 250;
+
+/** How far from a castle a cannon is taken to belong to it. */
+const GUN_REACH = 12;
 
 export const DIFFICULTIES = ['recruit', 'gunner', 'marshal'] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
@@ -248,17 +252,15 @@ export class Bot {
         );
         if (affordable(bold)) return (bold as SealPlan).tiles;
       }
-      const safe = cheapestPlanFor(
-        state,
-        this.playerId,
-        1,
-        this.profile.maxCastles,
-        this.unreachable,
-      );
-      return safe?.tiles ?? [];
+      return this.reseal(state, budget);
     }
 
-    const needsRoom = cannonRoom(state, this.playerId) <= player.cannonsToPlace + 1;
+    // cannonsToPlace is zero throughout a build phase — it is set at the resolution
+    // that ends it — so asking whether there is room for it always said yes. What
+    // matters is the reward this wall is about to earn.
+    const { firstCastleReward, perAdditionalCastleReward } = state.ruleset.cannons;
+    const earning = firstCastleReward + Math.max(0, sealed - 1) * perAdditionalCastleReward;
+    const needsRoom = cannonRoom(state, this.playerId) < earning + 2;
     const wantsMore = sealed < this.profile.maxCastles;
 
     if (needsRoom || wantsMore) {
@@ -268,12 +270,18 @@ export class Bot {
         sealed + 1,
         this.profile.maxCastles,
         this.unreachable,
+        true,
       );
       if (affordable(bigger)) return (bigger as SealPlan).tiles;
     }
 
-    const thicken = thickenTargets(state, this.playerId);
-    if (thicken.length > 0) return thicken;
+    // Only thicken when there is somewhere to put the guns. Otherwise a bot spends
+    // the phase making its wall stouter and its arsenal smaller, which is how a match
+    // turns into two impregnable castles with nothing to shoot at each other.
+    if (!needsRoom) {
+      const thicken = thickenTargets(state, this.playerId);
+      if (thicken.length > 0) return thicken;
+    }
 
     // Still standing, nowhere obvious to improve: hold the current wall.
     const hold = cheapestPlanFor(
@@ -286,6 +294,64 @@ export class Bot {
     return hold?.tiles ?? [];
   }
 
+  /**
+   * Chooses which castle to wall when nothing is enclosed.
+   *
+   * Cheapest is the obvious answer and the wrong one. A cannon only fires from inside
+   * sealed ground, so walling a fresh castle across the island abandons every gun the
+   * bot owns: it survives the round with no firepower, and so does whoever breached
+   * it. Two bots doing that to each other is precisely the stalemate that looks like
+   * thick walls and no guns — measured at two active cannons out of sixteen.
+   *
+   * So a wall that takes back the ground the guns are standing on is worth paying
+   * more for.
+   */
+  private reseal(state: MatchState, budget: number): number[] {
+    // First ask for a wall that keeps the guns. If that is more than this phase can
+    // build, fall back to merely surviving — a silent cannon still beats elimination.
+    const withGuns = sealOptions(
+      state,
+      this.playerId,
+      this.profile.maxCastles,
+      this.unreachable,
+      true,
+    )
+      .filter((plan) => plan.cost / 3.5 <= budget)
+      .sort((a, b) => a.cost - b.cost);
+    if (withGuns.length > 0) return (withGuns[0] as SealPlan).tiles;
+
+    const options = sealOptions(state, this.playerId, this.profile.maxCastles, this.unreachable);
+    if (options.length === 0) return [];
+
+    let best = options[0] as SealPlan;
+    let bestValue = -Infinity;
+    for (const plan of options) {
+      if (plan.cost / 3.5 > budget) continue;
+      // Which of this bot's guns stand near the castles this wall would take in.
+      // Not which castles were sealed last round: after a breach that is nothing at
+      // all, which is exactly the moment the choice matters most.
+      const keeps = state.cannons.filter(
+        (cannon) =>
+          cannon.owner === this.playerId &&
+          plan.castleIds.some((id) => {
+            const castle = state.castles[id];
+            return (
+              castle !== undefined &&
+              Math.abs(cannon.x - castle.x) <= GUN_REACH &&
+              Math.abs(cannon.y - castle.y) <= GUN_REACH
+            );
+          }),
+      ).length;
+      // Each gun recovered is worth a few extra blocks of wall.
+      const value = keeps * 3 - plan.cost / 3.5;
+      if (value > bestValue) {
+        bestValue = value;
+        best = plan;
+      }
+    }
+    return best.tiles;
+  }
+
   /** The placement that covers most of what is wanted, proposed from the tiles themselves. */
   private fit(
     state: MatchState,
@@ -295,6 +361,7 @@ export class Bot {
     let best: { x: number; y: number; rotation: number } | null = null;
     let bestScore = Number.NEGATIVE_INFINITY;
     const target = new Set(wanted);
+    const islandId = state.players[this.playerId]?.islandId;
 
     for (const tile of wanted) {
       const tx = tile % state.width;
@@ -306,11 +373,16 @@ export class Bot {
           const y = ty - oy;
           if (canPlacePiece(state, this.playerId, rotation, x, y) !== null) continue;
           let covered = 0;
+          let indoors = 0;
           for (const [cx, cy] of cells) {
-            if (target.has((y + cy) * state.width + x + cx)) covered++;
+            const i = (y + cy) * state.width + x + cx;
+            if (target.has(i)) covered++;
+            else if (state.territory[i] === islandId) indoors++;
           }
-          // Spill never weakens a wall, but a block on the plan is worth far more.
-          const score = covered * 4 - (cells.length - covered);
+          // Spill outside is merely wasted. Spill inside is worse than wasted: it
+          // occupies sealed ground, which is the only place a cannon may go, and a
+          // wall with no guns behind it wins nothing.
+          const score = covered * 4 - (cells.length - covered) - indoors * 5;
           if (score > bestScore) {
             bestScore = score;
             best = { x, y, rotation };
