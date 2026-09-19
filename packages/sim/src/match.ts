@@ -2,7 +2,6 @@ import type { Ruleset, TerrainConfig } from '@rampart/config';
 
 import { applyEnclosure } from './enclosure.js';
 import { Hasher } from './hash.js';
-import { generatePieceSequence } from './pieces.js';
 import { canPlaceAnyCannon, placeCannon, placePiece, type Rejection } from './placement.js';
 import { fire, resolveImpacts } from './shots.js';
 import { generateTerrain } from './terrain.js';
@@ -94,7 +93,6 @@ export function createMatch(options: MatchOptions): MatchState {
     shots: [],
     nextCannonId: 0,
     nextShotId: 0,
-    pieceSequence: generatePieceSequence(ruleset, seed),
     winner: null,
     draw: false,
     events: [],
@@ -304,6 +302,11 @@ function beginPendingPhase(state: MatchState): void {
     for (const player of state.players) player.cannonsToPlace = 0;
     enterPhase(state, 'combat', state.ruleset.phases.combatMs);
     return;
+  }
+  if (next === 'build') {
+    // Each build phase deals a fresh queue, so the round's size band applies from
+    // its first piece.
+    for (const player of state.players) player.pieceIndex = 0;
   }
   const durations: Partial<Record<Phase, number>> = {
     castle_select: state.ruleset.phases.castleSelectMs,

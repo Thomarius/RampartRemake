@@ -195,11 +195,18 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
     "previewCount": 1,
     "allowSkip": false,
     "restrictToOwnIsland": true,
-    "sequenceLength": 4096,
     "pieces": [
       {
+        "name": "i1",
+        "weight": 10
+      },
+      {
+        "name": "i2",
+        "weight": 10
+      },
+      {
         "name": "i3",
-        "weight": 8
+        "weight": 9
       },
       {
         "name": "l3",
@@ -207,15 +214,15 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
       },
       {
         "name": "o4",
-        "weight": 10
+        "weight": 9
       },
       {
         "name": "i4",
-        "weight": 8
+        "weight": 7
       },
       {
         "name": "t4",
-        "weight": 10
+        "weight": 9
       },
       {
         "name": "s4",
@@ -227,19 +234,99 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
       },
       {
         "name": "j4",
-        "weight": 9
+        "weight": 8
       },
       {
         "name": "l4",
-        "weight": 9
+        "weight": 8
       },
       {
         "name": "p5",
+        "weight": 6
+      },
+      {
+        "name": "q5",
+        "weight": 6
+      },
+      {
+        "name": "f5",
+        "weight": 5
+      },
+      {
+        "name": "g5",
+        "weight": 5
+      },
+      {
+        "name": "z5",
+        "weight": 5
+      },
+      {
+        "name": "s5",
+        "weight": 5
+      },
+      {
+        "name": "t5",
         "weight": 5
       },
       {
         "name": "u5",
-        "weight": 4
+        "weight": 5
+      },
+      {
+        "name": "v5",
+        "weight": 5
+      },
+      {
+        "name": "w5",
+        "weight": 5
+      },
+      {
+        "name": "x5",
+        "weight": 3
+      }
+    ],
+    "sizeSchedule": [
+      {
+        "fromRound": 1,
+        "sizes": [
+          1,
+          2,
+          3
+        ]
+      },
+      {
+        "fromRound": 2,
+        "sizes": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      {
+        "fromRound": 3,
+        "sizes": [
+          2,
+          3,
+          4
+        ]
+      },
+      {
+        "fromRound": 4,
+        "sizes": [
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      {
+        "fromRound": 5,
+        "sizes": [
+          3,
+          4,
+          5
+        ]
       }
     ]
   },
@@ -872,71 +959,61 @@ A useful piece already exists for the resilience problem: `weakestWall(state, se
 computes where an opponent would breach *this* player, which is exactly where thickening
 is worth the blocks.
 
-## 10e. The piece set should grow harder as a match goes on
+## 10e. The piece set grows harder as a match goes on
 
-Recorded for later. Not yet implemented.
+Implemented. The catalogue is complete and the draw narrows by round.
 
-### What is missing
+### The set
 
-The original drew on pieces of one through five cells, and used every five-cell piece
-that fits inside a 3x3 box. Enumerated: of the 12 free pentominoes, **8 qualify** — I, L,
-N and Y are excluded, being the four that need a span of four. Our engine rotates pieces
-but does not reflect them, so in one-sided terms that is **11 pentominoes**.
+22 pieces: the single, the domino, both trominoes, all seven one-sided tetrominoes, and
+the eleven one-sided five-cell pieces that fit a 3x3 box. The 3x3 limit applies to
+five-cell pieces only, so the straight four is in; within size five it excludes the
+straight five along with L, N and Y. Enumerated rather than drawn by hand, and a test
+asserts the counts per size so the catalogue cannot quietly drift.
 
-We currently ship 11 pieces: both trominoes, all seven tetrominoes, and two pentominoes
-(P and U). Completing the set means adding the single, the domino, and the nine remaining
-qualifying pentominoes — 22 pieces in total.
+### The schedule
 
-**The 3x3 limit applies to five-cell pieces only.** Sizes one to four are unconstrained,
-so all seven one-sided tetrominoes are in, the straight four included. Within size five it
-still bites: the straight five is 1x5 and so is out, along with L, N and Y.
+`build.sizeSchedule` in the ruleset, as bands of piece sizes by round. Each band runs
+until the next begins; the last runs to the end of the match.
 
-### The escalation
+| From round | Sizes |
+| --- | --- |
+| 1 | 1, 2, 3 |
+| 2 | 1, 2, 3, 4 |
+| 3 | 2, 3, 4 |
+| 4 | 2, 3, 4, 5 |
+| 5 onward | 3, 4, 5 |
 
-Complexity should climb over the course of a match: the first round draws only from sizes
-one to three, larger pieces are introduced as rounds pass, the small ones become rarer,
-and eventually the draw is sizes three to five. Sealing gets progressively harder for
-everyone.
+Bands rather than per-piece curves, because a band is a single legible thing to tune.
+Individual weights still apply within whichever band is active.
 
-### Why this matters more than it looks
+### The draw is a function, not a list
 
-**It is the escalation the game currently lacks.** M5 recorded that roughly one match in
-twenty never ends, because two well-matched defenders repair everything and *nothing in
-the rules forces a resolution*. This is the original's answer to exactly that problem, and
-a better one than capping a bot's build rate: the pressure applies to every player
-equally, it is visible, and it is thematic. This should be tried before any anti-stalemate
-mechanism is invented.
+`pieceAt(ruleset, seed, round, index)` — a pure function, with no stored sequence. This is
+what lets a client regenerate its own queue from the seed rather than receive it, and it
+keeps the match state a fixed size however long a match runs. Every player draws the same
+piece at the same position, so the bag is identical for everyone. `pieceIndex` resets at
+the start of each build phase, since each phase deals a fresh queue.
 
-**It recasts the thin-wall finding from M2.** With a single-cell piece available early, any
-gap is fillable and a thin wall is a perfectly reasonable thing to maintain. As the small
-pieces disappear, a one-tile gap with no free neighbours becomes genuinely unfillable and
-thin walls stop being viable — so players are pushed from repairing lines toward building
-blobs. The geometry that looked like a flaw in M2 is the intended late-game difficulty,
-arriving on a schedule.
+### What it measured
 
-**It gives the bots a difficulty arc for free.** The `unreachable` workaround in the
-planner exists precisely because no piece is small enough to plug an isolated gap. Early
-rounds would rarely need it and late rounds would lean on it heavily, so bots would get
-relatively stronger early and weaker late without any per-tier tuning.
+Against a control that puts every piece in the bag from round one, three players per
+match, eight seeds:
 
-### Implementation notes
+| | escalating | flat bag |
+| --- | --- | --- |
+| recruit | 13 rounds median, 2 unfinished | 14 rounds, 1 unfinished |
+| gunner | 15 rounds median, 1 unfinished | 21 rounds, 3 unfinished |
+| marshal | 12 rounds median, 0 unfinished | — |
 
-- **Determinism is the constraint.** Clients regenerate the piece sequence from the seed
-  rather than receiving it, so the draw must stay a pure function of `(seed, round,
-  index)`. Today it is a flat array generated from the seed alone.
-- **`pieceIndex` would need to be per-round**, not the monotonic counter it is now.
-  Resetting the queue each build phase is the simplest reading and matches the original.
-- **Config shape**: either weights per round band, or an introduction and retirement curve
-  per piece. Either belongs in `ruleset.build`, alongside the existing weights.
-- The preview strip and its swatches will need to cope with a one-cell piece, and the AI's
-  placement enumeration grows slightly with five-cell shapes — both minor.
+So it helps, clearly at gunner level, and marshal matches now always resolve. **It is not
+by itself enough**: recruit and gunner still stalemate occasionally.
 
-### Open questions
-
-- How fast should the ramp be, and is it keyed to the round number or to elapsed match
-  time? Round number is deterministic and simpler; elapsed time is fairer if rounds vary
-  in length.
-- Should the ramp plateau, or keep tightening until the match resolves itself?
+That is very likely an artefact of the bots rather than the rules. A bot places up to six
+pieces a second (section 10d); a person places about one. Awkward pieces cost a human far
+more than they cost a bot, so the escalation's real effect cannot be judged until bots
+build at human speed. **Re-measure this after 10d, before adding anything more
+sophisticated here.**
 
 ## 11. Deferred (explicitly out of scope for v1)
 

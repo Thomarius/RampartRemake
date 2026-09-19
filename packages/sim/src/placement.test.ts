@@ -1,9 +1,9 @@
-import { defaultRuleset, defaultTerrainConfig } from '@rampart/config';
+import { defaultTerrainConfig } from '@rampart/config';
 import { describe, expect, it } from 'vitest';
 
 import { applyEnclosure } from './enclosure.js';
 import { applyAction, createMatch } from './match.js';
-import { pieceByName, pieceCells } from './pieces.js';
+import { pieceAt, pieceCells, poolForRound } from './pieces.js';
 import {
   canPlaceCannon,
   canPlacePiece,
@@ -123,34 +123,42 @@ describe('piece placement', () => {
   });
 });
 
-describe('shared piece sequence', () => {
-  it('hands every player the same piece at the same position in the queue', () => {
+describe('the piece queue', () => {
+  it('hands every player the same piece at the same position', () => {
     const state = buildPhaseMatch(3);
     expect(currentPieceId(state, 0)).toBe(currentPieceId(state, 1));
     expect(currentPieceId(state, 0)).toBe(currentPieceId(state, 2));
 
-    // Player 0 places one; the others are now one piece behind, not on a different list.
+    // Player 0 places one, so the others are a piece behind rather than on a
+    // different list.
     const previous = currentPieceId(state, 0);
     state.players[0]!.pieceIndex++;
     expect(currentPieceId(state, 1)).toBe(previous);
-    expect(currentPieceId(state, 0)).toBe(state.pieceSequence[1]);
+    expect(currentPieceId(state, 0)).toBe(pieceAt(state.ruleset, state.seed, state.round, 1));
   });
 
   it('previews the pieces still to come', () => {
     const state = buildPhaseMatch();
-    expect(upcomingPieceIds(state, 0, 3)).toEqual(state.pieceSequence.slice(1, 4));
+    expect(upcomingPieceIds(state, 0, 3)).toEqual([
+      pieceAt(state.ruleset, state.seed, state.round, 1),
+      pieceAt(state.ruleset, state.seed, state.round, 2),
+      pieceAt(state.ruleset, state.seed, state.round, 3),
+    ]);
   });
 
-  it('wraps at the end of the sequence rather than running out', () => {
+  it('never runs out, however long a build phase lasts', () => {
     const state = buildPhaseMatch();
-    state.players[0]!.pieceIndex = state.pieceSequence.length;
-    expect(currentPieceId(state, 0)).toBe(state.pieceSequence[0]);
+    state.players[0]!.pieceIndex = 100_000;
+    expect(() => currentPieceId(state, 0)).not.toThrow();
   });
 
-  it('only ever offers pieces the catalogue knows', () => {
+  it('only offers pieces the round allows', () => {
     const state = buildPhaseMatch();
-    const allowed = new Set(defaultRuleset.build.pieces.map((p) => pieceByName(p.name).id));
-    for (const id of state.pieceSequence.slice(0, 200)) expect(allowed.has(id)).toBe(true);
+    const allowed = new Set(poolForRound(state.ruleset, state.round).ids);
+    for (let i = 0; i < 200; i++) {
+      state.players[0]!.pieceIndex = i;
+      expect(allowed.has(currentPieceId(state, 0))).toBe(true);
+    }
   });
 });
 

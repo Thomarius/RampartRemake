@@ -62,14 +62,31 @@ export const RulesetSchema = z
       previewCount: z.number().int().nonnegative().max(5),
       allowSkip: z.boolean(),
       restrictToOwnIsland: z.boolean(),
-      /** Length of the generated sequence; it wraps, keeping match state bounded. */
-      sequenceLength: z.number().int().positive(),
       /** Piece names must exist in the simulation's catalogue. Weights are relative. */
       pieces: z
         .array(
           z.strictObject({
             name: z.string().min(1),
             weight: z.number().positive(),
+          }),
+        )
+        .min(1),
+      /**
+       * Which piece sizes are in the bag, by round.
+       *
+       * The draw narrows as a match goes on: small pieces that can plug any gap give
+       * way to large ones that cannot, so sealing gets harder for everyone. This is
+       * the game's difficulty ramp, and the one thing in the rules that forces a long
+       * match toward a resolution.
+       *
+       * Each band applies from its round until the next one begins; the last runs to
+       * the end of the match.
+       */
+      sizeSchedule: z
+        .array(
+          z.strictObject({
+            fromRound: z.number().int().nonnegative(),
+            sizes: z.array(z.number().int().min(1).max(5)).min(1),
           }),
         )
         .min(1),

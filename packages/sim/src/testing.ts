@@ -1,7 +1,6 @@
 import { defaultRuleset, defaultTerrainConfig, type Ruleset } from '@rampart/config';
 
 import { step } from './match.js';
-import { generatePieceSequence } from './pieces.js';
 import {
   Structure,
   Terrain,
@@ -123,7 +122,6 @@ export function stateFromAscii(art: string, ruleset: Ruleset = defaultRuleset): 
     shots: [],
     nextCannonId: cannons.length,
     nextShotId: 0,
-    pieceSequence: generatePieceSequence(ruleset, 1),
     winner: null,
     draw: false,
     events: [],

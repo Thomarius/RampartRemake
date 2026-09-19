@@ -32,7 +32,7 @@ export interface PlayerState {
   enclosedCastles: number;
   /** Cannons still to be placed this cannon_place phase. */
   cannonsToPlace: number;
-  /** How far this player has advanced through the shared piece sequence. */
+  /** Position in this round's queue; every player draws the same piece at the same position. */
   pieceIndex: number;
 }
 
@@ -151,9 +151,6 @@ export interface MatchState {
 
   nextCannonId: number;
   nextShotId: number;
-
-  /** Shared, seeded. All players draw the same pieces in the same order. */
-  pieceSequence: number[];
 
   winner: number | null;
   draw: boolean;

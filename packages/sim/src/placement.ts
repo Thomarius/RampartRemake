@@ -1,5 +1,5 @@
 import { Structure, Terrain, type Cannon, type MatchState, type PlayerState } from './types.js';
-import { pieceCells } from './pieces.js';
+import { pieceAt, pieceCells } from './pieces.js';
 
 /**
  * Why an action was refused. The server returns these to the client verbatim, and
@@ -30,18 +30,16 @@ export function playerOf(state: MatchState, id: number): PlayerState | null {
 export function currentPieceId(state: MatchState, playerId: number): number {
   const player = state.players[playerId];
   if (!player) throw new Error(`unknown player ${playerId}`);
-  const sequence = state.pieceSequence;
-  return sequence[player.pieceIndex % sequence.length] as number;
+  return pieceAt(state.ruleset, state.seed, state.round, player.pieceIndex);
 }
 
 /** The next `count` pieces, for the client's preview strip. */
 export function upcomingPieceIds(state: MatchState, playerId: number, count: number): number[] {
   const player = state.players[playerId];
   if (!player) return [];
-  const sequence = state.pieceSequence;
   const out: number[] = [];
   for (let i = 1; i <= count; i++) {
-    out.push(sequence[(player.pieceIndex + i) % sequence.length] as number);
+    out.push(pieceAt(state.ruleset, state.seed, state.round, player.pieceIndex + i));
   }
   return out;
 }

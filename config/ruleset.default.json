@@ -34,11 +34,18 @@
     "previewCount": 1,
     "allowSkip": false,
     "restrictToOwnIsland": true,
-    "sequenceLength": 4096,
     "pieces": [
       {
+        "name": "i1",
+        "weight": 10
+      },
+      {
+        "name": "i2",
+        "weight": 10
+      },
+      {
         "name": "i3",
-        "weight": 8
+        "weight": 9
       },
       {
         "name": "l3",
@@ -46,15 +53,15 @@
       },
       {
         "name": "o4",
-        "weight": 10
+        "weight": 9
       },
       {
         "name": "i4",
-        "weight": 8
+        "weight": 7
       },
       {
         "name": "t4",
-        "weight": 10
+        "weight": 9
       },
       {
         "name": "s4",
@@ -66,19 +73,77 @@
       },
       {
         "name": "j4",
-        "weight": 9
+        "weight": 8
       },
       {
         "name": "l4",
-        "weight": 9
+        "weight": 8
       },
       {
         "name": "p5",
+        "weight": 6
+      },
+      {
+        "name": "q5",
+        "weight": 6
+      },
+      {
+        "name": "f5",
+        "weight": 5
+      },
+      {
+        "name": "g5",
+        "weight": 5
+      },
+      {
+        "name": "z5",
+        "weight": 5
+      },
+      {
+        "name": "s5",
+        "weight": 5
+      },
+      {
+        "name": "t5",
         "weight": 5
       },
       {
         "name": "u5",
-        "weight": 4
+        "weight": 5
+      },
+      {
+        "name": "v5",
+        "weight": 5
+      },
+      {
+        "name": "w5",
+        "weight": 5
+      },
+      {
+        "name": "x5",
+        "weight": 3
+      }
+    ],
+    "sizeSchedule": [
+      {
+        "fromRound": 1,
+        "sizes": [1, 2, 3]
+      },
+      {
+        "fromRound": 2,
+        "sizes": [1, 2, 3, 4]
+      },
+      {
+        "fromRound": 3,
+        "sizes": [2, 3, 4]
+      },
+      {
+        "fromRound": 4,
+        "sizes": [2, 3, 4, 5]
+      },
+      {
+        "fromRound": 5,
+        "sizes": [3, 4, 5]
       }
     ]
   },
