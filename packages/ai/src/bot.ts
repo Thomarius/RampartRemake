@@ -27,6 +27,14 @@ const IDLE_RETRY_MS = 250;
 /** How far from a castle a cannon is taken to belong to it. */
 const GUN_REACH = 12;
 
+/**
+ * Ground the wall must take in around each castle.
+ *
+ * Without it the planner returns the tightest wall that works, which is the wall with
+ * no room inside for a gun. Three tiles leaves a comfortable band for several.
+ */
+const ROOM_RADIUS = 3;
+
 export const DIFFICULTIES = ['recruit', 'gunner', 'marshal'] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
 
@@ -261,6 +269,33 @@ export class Bot {
     const { firstCastleReward, perAdditionalCastleReward } = state.ruleset.cannons;
     const earning = firstCastleReward + Math.max(0, sealed - 1) * perAdditionalCastleReward;
     const needsRoom = cannonRoom(state, this.playerId) < earning + 2;
+
+    // Guns left outside the wall are the thing most worth fixing. When one of two
+    // enclosures is breached the sweep takes that whole wall, and its cannons are
+    // stranded on open ground — silent, and expensive to reach. A single build phase
+    // rarely pays for the wall that recovers them, so the bot commits across phases
+    // instead: a part-built extension of a live wall still touches territory, so the
+    // sweep leaves it standing and the work carries over. Without this, two bots
+    // grind each other down to no firepower at all and the match never ends.
+    let owned = 0;
+    let firing = 0;
+    for (const cannon of state.cannons) {
+      if (cannon.owner !== this.playerId) continue;
+      owned++;
+      if (cannon.active) firing++;
+    }
+    if (owned >= 3 && firing * 2 < owned) {
+      const recover = cheapestPlanFor(
+        state,
+        this.playerId,
+        1,
+        this.profile.maxCastles,
+        this.unreachable,
+        true,
+        ROOM_RADIUS,
+      );
+      if (recover !== null) return recover.tiles;
+    }
     const wantsMore = sealed < this.profile.maxCastles;
 
     if (needsRoom || wantsMore) {
@@ -271,6 +306,7 @@ export class Bot {
         this.profile.maxCastles,
         this.unreachable,
         true,
+        ROOM_RADIUS,
       );
       if (affordable(bigger)) return (bigger as SealPlan).tiles;
     }
@@ -320,7 +356,14 @@ export class Bot {
       .sort((a, b) => a.cost - b.cost);
     if (withGuns.length > 0) return (withGuns[0] as SealPlan).tiles;
 
-    const options = sealOptions(state, this.playerId, this.profile.maxCastles, this.unreachable);
+    const options = sealOptions(
+      state,
+      this.playerId,
+      this.profile.maxCastles,
+      this.unreachable,
+      false,
+      ROOM_RADIUS,
+    );
     if (options.length === 0) return [];
 
     let best = options[0] as SealPlan;

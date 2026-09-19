@@ -55,6 +55,16 @@ export function planSeal(
    * back. Enclosing them costs more, and that is simply what they are worth.
    */
   keepCannons = false,
+  /**
+   * Ground around each castle that must also end up inside the wall.
+   *
+   * A minimum cut is by definition the *tightest* wall that works, which is exactly
+   * the wall with no room in it: a cannon needs a clear 2x2 of sealed ground, and a
+   * wall drawn against the castle leaves nowhere to put one. A bot that cannot spend
+   * the cannons it earns has no firepower, and a match between two of those does not
+   * end.
+   */
+  roomRadius = 0,
 ): SealPlan | null {
   if (castles.length === 0) return null;
   const islandId = state.players[playerId]?.islandId;
@@ -115,8 +125,13 @@ export function planSeal(
   };
 
   for (const castle of castles) {
-    for (let oy = 0; oy < castle.h; oy++) {
-      for (let ox = 0; ox < castle.w; ox++) sinkTile((castle.y + oy) * state.width + castle.x + ox);
+    // The castle, plus the band of ground the wall has to take in around it.
+    const x0 = Math.max(0, castle.x - roomRadius);
+    const y0 = Math.max(0, castle.y - roomRadius);
+    const x1 = Math.min(state.width - 1, castle.x + castle.w - 1 + roomRadius);
+    const y1 = Math.min(state.height - 1, castle.y + castle.h - 1 + roomRadius);
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) sinkTile(y * state.width + x);
     }
   }
 
@@ -158,6 +173,7 @@ export function sealOptions(
   maxCastles: number,
   blocked?: ReadonlySet<number>,
   keepCannons = false,
+  roomRadius = 0,
 ): SealPlan[] {
   const islandId = state.players[playerId]?.islandId;
   const mine = state.castles.filter((c) => c.islandId === islandId);
@@ -168,19 +184,29 @@ export function sealOptions(
     if (plan !== null) plans.push(plan);
   };
 
-  for (const castle of mine) add(planSeal(state, playerId, [castle], blocked, keepCannons));
+  for (const castle of mine) {
+    add(planSeal(state, playerId, [castle], blocked, keepCannons, roomRadius));
+  }
 
   if (maxCastles > 1) {
     for (let a = 0; a < mine.length; a++) {
       for (let b = a + 1; b < mine.length; b++) {
         add(
-          planSeal(state, playerId, [mine[a] as Castle, mine[b] as Castle], blocked, keepCannons),
+          planSeal(
+            state,
+            playerId,
+            [mine[a] as Castle, mine[b] as Castle],
+            blocked,
+            keepCannons,
+            roomRadius,
+          ),
         );
       }
     }
   }
-  if (maxCastles > 2 && mine.length >= 3)
-    add(planSeal(state, playerId, mine, blocked, keepCannons));
+  if (maxCastles > 2 && mine.length >= 3) {
+    add(planSeal(state, playerId, mine, blocked, keepCannons, roomRadius));
+  }
 
   return plans.sort((x, y) => x.cost - y.cost);
 }
@@ -193,8 +219,9 @@ export function cheapestPlanFor(
   maxCastles: number,
   blocked?: ReadonlySet<number>,
   keepCannons = false,
+  roomRadius = 0,
 ): SealPlan | null {
-  const options = sealOptions(state, playerId, maxCastles, blocked, keepCannons).filter(
+  const options = sealOptions(state, playerId, maxCastles, blocked, keepCannons, roomRadius).filter(
     (plan) => plan.castleIds.length >= atLeastCastles,
   );
   return options[0] ?? null;

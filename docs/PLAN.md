@@ -41,7 +41,7 @@ LOBBY
 
 ### 1.2 Map
 
-- Square tile grid, default 80x80.
+- Square tile grid, default 56x56.
 - The map is divided into N equal **sectors** meeting at its centre, one per player,
   separated by a **channel two tiles wide**. Sectors are rotational copies of one
   generated shape, so the whole map turns onto itself by 1/N and no seat is better
@@ -175,7 +175,7 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
     "transitionBannerMs": 4000
   },
   "cannons": {
-    "startingCount": 2,
+    "startingCount": 3,
     "firstCastleReward": 2,
     "perAdditionalCastleReward": 1,
     "footprint": [
@@ -351,11 +351,11 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
 
 ```json
 {
-  "gridWidth": 88,
-  "gridHeight": 88,
+  "gridWidth": 56,
+  "gridHeight": 56,
   "layout": "rotational",
   "island": {
-    "targetAreaTiles": 1100,
+    "targetAreaTiles": 440,
     "areaTolerance": 0.08,
     "noiseOctaves": 4,
     "noiseFrequency": 0.08,
@@ -369,7 +369,7 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
       2,
       2
     ],
-    "minSpacingTiles": 9,
+    "minSpacingTiles": 7,
     "minDistanceFromShoreTiles": 3
   },
   "startingWall": {
@@ -495,7 +495,7 @@ resolveEnclosure(state):
   for each player: enclosedCastles = count -> reward or elimination
 ```
 
-Complexity O(W*H) per resolution, run once per build phase. Trivial at 80x80.
+Complexity O(W*H) per resolution, run once per build phase. Trivial at 56x56.
 
 **Placement validation**
 
@@ -1131,6 +1131,55 @@ alongside it is what makes that possible — set every seat to a bot and watch. 
 levers, in the order I would try them: fewer castles per sector, castles closer together
 so one barrage threatens several, and a smaller sector so there is less ground to retreat
 into.
+
+## 10g. Sizing the map from the original
+
+The endless matches were mostly a map problem. Measured from a screenshot of the
+original's three-player map: roughly **42x30 tiles, about 400 a player including the
+river**. Ours were 1100 tiles of pure land each — nearly three times the space, which is
+why walling a castle was never in doubt.
+
+Territories are now **440 tiles on a 56x56 grid**, and players start with **three
+cannons** rather than two, as in the original.
+
+Not the measured 400: four 2x2 castles each need an 8x8 block of clear ground for their
+starting ring — 10x10 on three-player maps, where the 120 degree rotation needs a tile of
+slack — and 380 tiles cannot hold four of those. 440 is the smallest that generates
+reliably at every player count.
+
+**480 was the first answer and it was quietly wrong.** At four players the island nearly
+filled its sector, so the coastline was pinned by geometry rather than noise and every
+seed produced *the same map*. A determinism test caught it. 440 restores ten distinct maps
+in ten seeds at every player count — worth remembering that "fits" and "varies" are
+different questions, and only one of them is obvious when looking at a single map.
+
+### What it fixed, and what it did not
+
+Recruit matches went from 36-43 rounds with frequent stalls to **three rounds, none
+unfinished**. Gunner and marshal still do not reliably finish.
+
+Chasing the rest turned up a second mechanism, and it is an interaction with the sweep
+rather than a fault in either part alone. When a bot holds two enclosures and one is
+breached, the sweep correctly removes that whole wall — and strands every cannon inside
+it on open ground. Recovering them never fits one build phase's budget, so they stay
+silent. Matches were reaching **zero active cannons for every player**: nobody could hurt
+anybody, so nobody could win.
+
+Two changes followed:
+
+- **The planner asks for room.** A minimum cut is by definition the tightest wall that
+  works, which is precisely the wall with nowhere to put a gun. It now requires a band of
+  ground around each castle, so a bot can spend the cannons it earns.
+- **A bot that has lost most of its guns commits to getting them back**, across several
+  phases rather than one. That works because a part-built extension of a live wall still
+  touches territory, so the sweep leaves it standing and the work carries over.
+
+Together those took matches from zero active guns to one player holding six to eleven.
+Still not enough: the other two defend perfectly with no firepower at all.
+
+**Next lever, untried:** three castles rather than four, closer together, so a single
+barrage threatens more than one at a time. Four spread-out castles give a near-optimal
+planner four independent chances to seal something, and it only needs one.
 
 ## 11. Deferred (explicitly out of scope for v1)
 

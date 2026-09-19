@@ -99,9 +99,11 @@ describe('bot pacing', () => {
     // The piece schedule widens over the match, and a bigger shape takes longer to
     // fit, so the rate should fall of its own accord rather than by a separate rule.
     const { placementsPerPhase } = play(5, ['marshal', 'marshal'], 30_000);
-    expect(placementsPerPhase.length).toBeGreaterThan(4);
+    // However many phases the match lasts — it is much shorter than it used to be —
+    // the last one should be slower going than the first.
+    expect(placementsPerPhase.length).toBeGreaterThanOrEqual(3);
     const first = placementsPerPhase[0] as number;
-    const later = placementsPerPhase[3] as number;
+    const later = placementsPerPhase[placementsPerPhase.length - 1] as number;
     expect(later).toBeLessThan(first);
   }, 60_000);
 });

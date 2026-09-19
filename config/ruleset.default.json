@@ -13,7 +13,7 @@
     "transitionBannerMs": 4000
   },
   "cannons": {
-    "startingCount": 2,
+    "startingCount": 3,
     "firstCastleReward": 2,
     "perAdditionalCastleReward": 1,
     "footprint": [2, 2],
