@@ -1177,6 +1177,20 @@ Two changes followed:
 Together those took matches from zero active guns to one player holding six to eleven.
 Still not enough: the other two defend perfectly with no firepower at all.
 
+### Observed while watching, after the above landed
+
+Recorded from playtest observation, and the current top priority:
+
+1. **Recruit** encloses its starting castle and its cannons correctly, but does not
+   expand, and **stops placing tiles entirely once its enclosure is valid** — most of the
+   build phase goes unused.
+2. **Gunner and marshal** tend to enclose *a different* castle with minimal placement,
+   **leaving no room for cannons at all**. Neither side ends up with firepower, and the
+   match stalls.
+
+These were seen around the same time as the `ROOM_RADIUS` and stranded-gun changes, so
+re-observe before acting on them — set every seat to a bot and watch.
+
 **Next lever, untried:** three castles rather than four, closer together, so a single
 barrage threatens more than one at a time. Four spread-out castles give a near-optimal
 planner four independent chances to seal something, and it only needs one.
