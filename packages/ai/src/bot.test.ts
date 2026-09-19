@@ -15,6 +15,8 @@ import { Bot, type Difficulty } from './bot.js';
 interface Outcome {
   state: MatchState;
   rejections: Rejection[];
+  /** Pieces player 0 laid in each build phase, in order. */
+  placementsPerPhase: number[];
 }
 
 function play(seed: number, kinds: Difficulty[], maxTicks = 150_000): Outcome {
@@ -27,6 +29,9 @@ function play(seed: number, kinds: Difficulty[], maxTicks = 150_000): Outcome {
   const rng = new Rng(seed);
   const bots = state.players.map((p) => new Bot(p.id, kinds[p.id] as Difficulty));
   const rejections: Rejection[] = [];
+  const placementsPerPhase: number[] = [];
+  let placed = 0;
+  let phase = state.phase;
 
   while (state.phase !== 'game_over' && state.tick < maxTicks) {
     for (const player of state.players) {
@@ -34,11 +39,19 @@ function play(seed: number, kinds: Difficulty[], maxTicks = 150_000): Outcome {
       if (action === null) continue;
       const rejection = applyAction(state, action);
       if (rejection !== null) rejections.push(rejection);
+      else if (action.kind === 'place_piece' && player.id === 0) placed++;
     }
     step(state);
     drainEvents(state);
+    if (state.phase !== phase) {
+      if (phase === 'build') {
+        placementsPerPhase.push(placed);
+        placed = 0;
+      }
+      phase = state.phase;
+    }
   }
-  return { state, rejections };
+  return { state, rejections, placementsPerPhase };
 }
 
 describe('bot conduct', () => {
@@ -51,39 +64,61 @@ describe('bot conduct', () => {
     }
   }, 60_000);
 
-  it('almost always reaches a conclusion', () => {
-    // Almost, not always: two evenly matched defenders can hold each other off for a
-    // very long time, since nothing in the rules forces escalation. Measured at
-    // roughly one match in twenty, which is a property of the design rather than a
-    // fault in the bot.
-    let concluded = 0;
-    for (let seed = 1; seed <= 6; seed++) {
-      if (play(seed, ['gunner', 'gunner']).state.phase === 'game_over') concluded++;
+  it('reaches a conclusion', () => {
+    // This used to be "almost always": bots repaired everything thrown at them and
+    // roughly one match in twenty ran forever. Between the widening piece schedule
+    // and a human build rate, that no longer happens.
+    for (let seed = 1; seed <= 5; seed++) {
+      expect(play(seed, ['gunner', 'gunner']).state.phase).toBe('game_over');
     }
-    expect(concluded).toBeGreaterThanOrEqual(5);
+  }, 90_000);
+});
+
+describe('bot pacing', () => {
+  it('builds at a rate a person could manage', () => {
+    // A person lays roughly 20-30 pieces in a 25-second build phase while the pieces
+    // are small, falling to 10-18 once the large ones arrive. A bot placing six a
+    // second would be unbeatable for a reason that has nothing to do with playing
+    // well, so the budget is time in milliseconds, not a per-tick chance.
+    const { placementsPerPhase } = play(3, ['marshal', 'marshal'], 40_000);
+    expect(placementsPerPhase.length).toBeGreaterThan(2);
+    for (const count of placementsPerPhase) {
+      expect(count).toBeLessThanOrEqual(30);
+    }
+    // And it is actually using the phase, not stopping after a token repair.
+    expect(placementsPerPhase[0]).toBeGreaterThanOrEqual(8);
+  }, 60_000);
+
+  it('slows down as the pieces get harder to place', () => {
+    // The piece schedule widens over the match, and a bigger shape takes longer to
+    // fit, so the rate should fall of its own accord rather than by a separate rule.
+    const { placementsPerPhase } = play(5, ['marshal', 'marshal'], 60_000);
+    expect(placementsPerPhase.length).toBeGreaterThan(4);
+    const first = placementsPerPhase[0] as number;
+    const later = placementsPerPhase[3] as number;
+    expect(later).toBeLessThan(first);
   }, 60_000);
 });
 
 describe('bot competence', () => {
   it('seals a castle in the first build phase', () => {
-    // The whole reason the stopgap was replaced: it rebuilt the thin ring it was
-    // handed and was eliminated almost immediately.
     const { state } = play(3, ['gunner', 'gunner'], 3000);
     expect(state.round).toBeGreaterThanOrEqual(1);
     expect(state.players.some((p) => p.enclosedCastles >= 1)).toBe(true);
   });
 
   it('expands beyond the castle it started with', () => {
-    // A bot that only ever holds one castle earns two cannons a round forever.
-    const { state } = play(5, ['marshal', 'marshal'], 40_000);
+    // A bot that only ever holds one castle earns two cannons a round forever, has
+    // nowhere to put them, and is always one breach from elimination.
+    const { state } = play(5, ['marshal', 'marshal'], 60_000);
     const most = Math.max(...state.players.map((p) => p.enclosedCastles));
     expect(most).toBeGreaterThan(1);
-  }, 30_000);
+  }, 60_000);
 
   it('survives far longer than the opponent it replaces', () => {
     const { state } = play(1, ['gunner', 'gunner']);
     expect(state.round).toBeGreaterThan(5);
-  }, 30_000);
+  }, 60_000);
 });
 
 describe('difficulty', () => {
@@ -100,5 +135,6 @@ describe('difficulty', () => {
       return wins;
     };
     expect(record('gunner', 'recruit')).toBeGreaterThanOrEqual(8);
-  }, 120_000);
+    expect(record('marshal', 'gunner')).toBeGreaterThanOrEqual(6);
+  }, 180_000);
 });

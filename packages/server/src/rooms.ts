@@ -37,6 +37,7 @@ export class RoomManager {
       ruleset: this.config.ruleset,
       terrain: this.config.terrain,
       server: this.config.server,
+      ai: this.config.ai,
       seed: this.rng.nextU32(),
     });
     this.rooms.set(room.code, room);

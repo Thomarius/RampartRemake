@@ -229,10 +229,27 @@ export function pieceCells(pieceId: number, rotation: number): readonly Cell[] {
  * give way to ones that cannot. That is deliberate: it is the only thing in the rules
  * that makes a long match harder rather than merely longer.
  */
+const poolCache = new WeakMap<Ruleset, Map<number, { ids: number[]; weights: number[] }>>();
+
 export function poolForRound(
   ruleset: Ruleset,
   round: number,
 ): { ids: number[]; weights: number[] } {
+  // Cached per ruleset and round: this is asked on every draw and every preview, and
+  // rebuilding the arrays each time showed up as real cost in the bots.
+  let byRound = poolCache.get(ruleset);
+  if (byRound === undefined) {
+    byRound = new Map();
+    poolCache.set(ruleset, byRound);
+  }
+  const hit = byRound.get(round);
+  if (hit !== undefined) return hit;
+  const built = buildPool(ruleset, round);
+  byRound.set(round, built);
+  return built;
+}
+
+function buildPool(ruleset: Ruleset, round: number): { ids: number[]; weights: number[] } {
   let band = ruleset.build.sizeSchedule[0] as (typeof ruleset.build.sizeSchedule)[number];
   for (const entry of ruleset.build.sizeSchedule) {
     if (entry.fromRound <= round) band = entry;

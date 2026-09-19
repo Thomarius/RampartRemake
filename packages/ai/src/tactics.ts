@@ -127,42 +127,141 @@ export function planSeal(
 }
 
 /**
- * The cheapest plan among the sensible options: each castle alone, and — for a bot
- * that thinks that far — every combination worth the extra cannons.
+ * Every wall worth considering, cheapest first.
+ *
+ * Each castle alone, then pairs, then the lot — so a caller can choose between
+ * staying alive cheaply and reaching for a bigger enclosure, which is the decision
+ * that actually matters in a build phase.
  */
+export function sealOptions(
+  state: MatchState,
+  playerId: number,
+  maxCastles: number,
+  blocked?: ReadonlySet<number>,
+): SealPlan[] {
+  const islandId = state.players[playerId]?.islandId;
+  const mine = state.castles.filter((c) => c.islandId === islandId);
+  if (mine.length === 0) return [];
+
+  const plans: SealPlan[] = [];
+  const add = (plan: SealPlan | null): void => {
+    if (plan !== null) plans.push(plan);
+  };
+
+  for (const castle of mine) add(planSeal(state, playerId, [castle], blocked));
+
+  if (maxCastles > 1) {
+    for (let a = 0; a < mine.length; a++) {
+      for (let b = a + 1; b < mine.length; b++) {
+        add(planSeal(state, playerId, [mine[a] as Castle, mine[b] as Castle], blocked));
+      }
+    }
+  }
+  if (maxCastles > 2 && mine.length >= 3) add(planSeal(state, playerId, mine, blocked));
+
+  return plans.sort((x, y) => x.cost - y.cost);
+}
+
+/** The cheapest wall that encloses at least this many castles, if one exists. */
+export function cheapestPlanFor(
+  state: MatchState,
+  playerId: number,
+  atLeastCastles: number,
+  maxCastles: number,
+  blocked?: ReadonlySet<number>,
+): SealPlan | null {
+  const options = sealOptions(state, playerId, maxCastles, blocked).filter(
+    (plan) => plan.castleIds.length >= atLeastCastles,
+  );
+  return options[0] ?? null;
+}
+
 export function bestSealPlan(
   state: MatchState,
   playerId: number,
   ambition: number,
   blocked?: ReadonlySet<number>,
 ): SealPlan | null {
-  const islandId = state.players[playerId]?.islandId;
-  const mine = state.castles.filter((c) => c.islandId === islandId);
-  if (mine.length === 0) return null;
-
-  let best: SealPlan | null = null;
-  const consider = (plan: SealPlan | null): void => {
-    if (plan === null) return;
-    // More castles mean more cannons, so a longer wall can still be the better deal —
-    // but only just. The blocks to build it are a one-off; the length is a bill that
-    // comes in every round, because a longer wall is more of it to repair under fire.
-    // Valuing a castle too highly makes a bot reach for all three and lose the lot.
-    const value = (p: SealPlan): number => p.cost - p.castleIds.length * 6;
-    if (best === null || value(plan) < value(best)) best = plan;
-  };
-
-  for (const castle of mine) consider(planSeal(state, playerId, [castle], blocked));
-
-  if (ambition > 1) {
-    for (let a = 0; a < mine.length; a++) {
-      for (let b = a + 1; b < mine.length; b++) {
-        consider(planSeal(state, playerId, [mine[a] as Castle, mine[b] as Castle], blocked));
-      }
-    }
-    if (ambition > 2 && mine.length >= 3) consider(planSeal(state, playerId, mine, blocked));
-  }
-
+  const options = sealOptions(state, playerId, ambition, blocked);
+  if (options.length === 0) return null;
+  // More castles mean more cannons, so a longer wall can still be the better deal —
+  // but only just. The blocks are a one-off; the length is a bill that arrives every
+  // round, because a longer wall is more of it to repair under fire.
+  let best = options[0] as SealPlan;
+  const value = (p: SealPlan): number => p.cost - p.castleIds.length * 6;
+  for (const plan of options) if (value(plan) < value(best)) best = plan;
   return best;
+}
+
+/**
+ * How many cannons this player's sealed ground could still hold.
+ *
+ * A wall drawn tight around one castle runs out of room to put the cannons it earns,
+ * so the reward becomes unspendable. Counting the space is what lets a bot notice
+ * that and widen before it matters.
+ */
+export function cannonRoom(state: MatchState, playerId: number): number {
+  const islandId = state.players[playerId]?.islandId;
+  if (islandId === undefined) return 0;
+  const [cw, ch] = state.ruleset.cannons.footprint;
+
+  const taken = new Uint8Array(state.width * state.height);
+  let spots = 0;
+  for (let y = 0; y + ch <= state.height; y++) {
+    for (let x = 0; x + cw <= state.width; x++) {
+      let fits = true;
+      for (let oy = 0; oy < ch && fits; oy++) {
+        for (let ox = 0; ox < cw; ox++) {
+          const i = (y + oy) * state.width + x + ox;
+          if (
+            state.territory[i] !== islandId ||
+            state.structure[i] !== Structure.Empty ||
+            taken[i]
+          ) {
+            fits = false;
+            break;
+          }
+        }
+      }
+      if (!fits) continue;
+      // Reserve the footprint, so overlapping positions are not counted twice.
+      for (let oy = 0; oy < ch; oy++) {
+        for (let ox = 0; ox < cw; ox++) taken[(y + oy) * state.width + x + ox] = 1;
+      }
+      spots++;
+    }
+  }
+  return spots;
+}
+
+/**
+ * Tiles worth building to thicken the wall where it is thinnest.
+ *
+ * A minimum cut is by definition one block thick, so every block of it is
+ * load-bearing and a single crater breaks the seal. `weakestWall` already computes
+ * where an opponent would come through; the empty ground beside those blocks is
+ * where a second layer is worth having.
+ */
+export function thickenTargets(state: MatchState, playerId: number): number[] {
+  const breach = weakestWall(state, playerId);
+  if (breach.length === 0) return [];
+
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const wall of breach) {
+    const x = wall % state.width;
+    const y = (wall - x) / state.width;
+    for (const [ox, oy] of NEIGHBOURS_8) {
+      const nx = x + ox;
+      const ny = y + oy;
+      if (nx < 0 || ny < 0 || nx >= state.width || ny >= state.height) continue;
+      const i = ny * state.width + nx;
+      if (seen.has(i) || !buildable(state, playerId, i)) continue;
+      seen.add(i);
+      out.push(i);
+    }
+  }
+  return out;
 }
 
 /**

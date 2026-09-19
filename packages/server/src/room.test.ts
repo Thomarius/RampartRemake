@@ -70,6 +70,7 @@ function room(playerCount: number, seed = 1): Room {
     ruleset: defaultConfigBundle.ruleset,
     terrain: defaultConfigBundle.terrain,
     server: defaultConfigBundle.server,
+    ai: defaultConfigBundle.ai,
     seed,
   });
 }

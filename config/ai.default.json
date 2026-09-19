@@ -1,0 +1,34 @@
+{
+  "profiles": {
+    "recruit": {
+      "placementBaseMs": 600,
+      "placementPerCellMs": 420,
+      "fireIntervalMs": 600,
+      "aimJitter": 0.7,
+      "maxCastles": 1,
+      "riskMargin": 0.55,
+      "replanTicks": 60,
+      "picksTarget": false
+    },
+    "gunner": {
+      "placementBaseMs": 420,
+      "placementPerCellMs": 360,
+      "fireIntervalMs": 380,
+      "aimJitter": 0.25,
+      "maxCastles": 2,
+      "riskMargin": 0.8,
+      "replanTicks": 30,
+      "picksTarget": true
+    },
+    "marshal": {
+      "placementBaseMs": 360,
+      "placementPerCellMs": 320,
+      "fireIntervalMs": 260,
+      "aimJitter": 0.05,
+      "maxCastles": 2,
+      "riskMargin": 1.0,
+      "replanTicks": 20,
+      "picksTarget": true
+    }
+  }
+}

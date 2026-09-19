@@ -6,6 +6,7 @@ import { TerrainConfigSchema } from './terrain.js';
 import { ArtConfigSchema } from './art.js';
 import { AudioManifestSchema } from './audio.js';
 import { ServerConfigSchema } from './server.js';
+import { AiConfigSchema } from './ai.js';
 import { assertValidConfigBundle, type ConfigBundle } from './bundle.js';
 
 function readJson(path: string): unknown {
@@ -24,6 +25,7 @@ export function loadConfigBundle(repoRoot: string): ConfigBundle {
     art: ArtConfigSchema.parse(readJson(join(dir, 'art.default.json'))),
     audio: AudioManifestSchema.parse(readJson(join(dir, 'audio.manifest.json'))),
     server: ServerConfigSchema.parse(readJson(join(dir, 'server.default.json'))),
+    ai: AiConfigSchema.parse(readJson(join(dir, 'ai.default.json'))),
   };
   assertValidConfigBundle(bundle);
   return bundle;

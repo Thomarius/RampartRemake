@@ -376,6 +376,45 @@ manifest cover every cue the code can trigger? — live in `validateConfigBundle
 }
 ```
 
+### `config/ai.default.json`
+
+```json
+{
+  "profiles": {
+    "recruit": {
+      "placementBaseMs": 600,
+      "placementPerCellMs": 420,
+      "fireIntervalMs": 600,
+      "aimJitter": 0.7,
+      "maxCastles": 1,
+      "riskMargin": 0.55,
+      "replanTicks": 60,
+      "picksTarget": false
+    },
+    "gunner": {
+      "placementBaseMs": 420,
+      "placementPerCellMs": 360,
+      "fireIntervalMs": 380,
+      "aimJitter": 0.25,
+      "maxCastles": 2,
+      "riskMargin": 0.8,
+      "replanTicks": 30,
+      "picksTarget": true
+    },
+    "marshal": {
+      "placementBaseMs": 360,
+      "placementPerCellMs": 320,
+      "fireIntervalMs": 260,
+      "aimJitter": 0.05,
+      "maxCastles": 2,
+      "riskMargin": 1.0,
+      "replanTicks": 20,
+      "picksTarget": true
+    }
+  }
+}
+```
+
 ### `config/art.default.json`
 
 Style selector, arcade-era base palette, per-player colours, flat-style parameters, and the
@@ -878,86 +917,77 @@ different id. There is a test that tries exactly that.
 connection cannot stall the table. The seat is held, not freed: presenting the token
 reclaims it and the returning player is sent a snapshot of the board as it now stands.
 
-## 10d. Known weaknesses of the bots
+## 10d. Bots play at a human pace, and to a plan
 
-Recorded for the balance pass. Not yet addressed.
+Implemented. The two problems recorded here — no strategy, and inhuman speed — were
+fixed together, because fixing either alone makes things worse: a better plan without a
+rate cap is unbeatable for the wrong reason, and a rate cap without a better plan is just
+a weaker bot.
 
-### They repair, and then stop
+### Pace, in human units
 
-A bot asks for the minimum cut and builds exactly that. Two consequences follow, and
-both are structural rather than incidental.
+`config/ai.default.json` describes each tier in milliseconds, not per-tick chances. A
+probability is opaque, does not survive a change to the tick rate or a phase length, and
+cannot be compared against what a person manages. Placement time is `base + perCell *
+cells`, so a bot slows down as the piece schedule widens — which is the same reason a
+person's rate falls, rather than a separate rule bolted on.
 
-**The wall it builds is one tile thick, by construction.** A minimum cut is by definition
-the thinnest barrier that separates the castle from the sea, so the bot deliberately
-builds the most fragile wall that works. Every block of it is load-bearing: a single
-crater anywhere along it breaks the seal. A person thickens the places that keep getting
-hit; the bot has no notion that some parts of its wall are more exposed than others.
+Measured, player 0 across a match: **20 pieces in the first build phase falling to 8 by
+the late rounds**, against the roughly 25-then-15 a person manages. Firing is barely
+limited at all, at 260-600ms between shots, because clicking is fast and the reload is the
+real constraint.
 
-**Once sealed, it stops building entirely.** `build()` returns null as soon as the plan is
-covered, so a bot that finishes its repairs in eight seconds does nothing for the
-remaining seventeen. Measured: 5-18 placements per build phase against a theoretical
-budget of 60-150. That idle time is precisely what a good player spends on everything
-below.
+### A ladder, not a single objective
 
-### They never expand
+Each time it may place, a bot works down what would hurt most to be without:
 
-Nothing in the bot tries to grow. It holds what it started with, which costs it three
-different things at once:
+1. **Stay alive.** Enclose something, or the rest is moot.
+2. **Make room.** Cannons need sealed 2x2 ground; without it the reward is unspendable.
+3. **Take more ground.** Another castle is another cannon a round, and a spare life.
+4. **Thicken.** A minimum cut is one block thick, so every block of it is load-bearing.
+   `weakestWall` against itself says where an opponent would come through, and the ground
+   beside those blocks is where a second layer is worth having.
 
-1. **Cannons.** Each further castle inside the wall is another cannon every round, so a
-   bot on one castle is permanently on the minimum income of two.
-2. **Room.** Cannons need 2x2 of sealed territory. A wall drawn tight around one castle
-   runs out of space to put the cannons it does earn — the reward becomes unspendable.
-3. **A spare life.** Elimination is at *zero* enclosed castles, so a second sealed castle
-   is literally a second life. A bot on one castle is always one breach from death, which
-   is also why widening matters more than the cannon count suggests.
+### Reaching for two castles is an affordability question
 
-The three compound: more castles means more cannons, more room to place them, and more
-margin for error. A bot that never expands is playing a strictly worse game than the rules
-reward, and the gap widens every round.
+Combining repair with expansion is the interesting decision, and it is a gamble: more
+cannons if the wall closes, elimination if it does not. A rate-limited bot can price it —
+it knows how many pieces it can still lay this phase, and `riskMargin` is its appetite for
+attempting a wall that does not comfortably fit. Below 1 it insists on slack; above 1 it
+gambles.
 
-### They build and shoot faster than a person can
+Tuning found that **over-reaching loses**. A marshal set to bring three castles inside one
+wall lost to a gunner reaching for two (8-9); cut to two castles it wins (10-6). Ambition
+has to be paid for out of a budget, not assumed.
 
-| | build attempts | per 25s phase | fire attempts |
-|---|---|---|---|
-| recruit | 2.4/s | 60 | 3.0/s |
-| gunner | 4.2/s | 105 | 4.8/s |
-| marshal | 6.0/s | 150 | 6.0/s |
+### What it fixed
 
-A person places perhaps one piece a second with a mouse. Marshal is budgeted for six.
+| | before | after |
+| --- | --- | --- |
+| marshal vs gunner | 7-6 | **8-3** |
+| gunner vs recruit | 19-1 | **11-1** |
+| stalemates | ~1 in 20 | **none in 30 matches** |
+| match length | 8-20 rounds | 6-9 rounds |
 
-This advantage is currently invisible, because the strategy above means the bot never
-uses more than a fraction of its budget — which is exactly why it must be fixed *together*
-with expansion, and not before. Improving the plan without capping the rate would hand
-the bot its full 150 placements a phase and make it unbeatable for the wrong reason.
+The stalemates are gone. Between the widening piece schedule from section 10e and a human
+build rate, bots can no longer repair everything thrown at them — so the question left open
+there is answered: **the escalation is enough, once the bots stop building at six pieces a
+second.**
 
-**The firing advantage arrives on a timer.** Early on a cannon cannot fire again until its
-shot lands, which at 40 tiles is 1.75s, so two cannons sustain roughly one shot a second
-whatever the bot's rate says. The rate only becomes the binding constraint once a player
-has eight to fifteen cannons — around round four to seven. So the bots are fair at the
-start of a match and progressively less fair as it goes on.
+### A performance note worth keeping
 
-### What to do about it
+Build-phase thinking was 30.7 seconds of a 31-second match. The cause was not the
+planning: when a bot could not fit a piece it forced a replan without also standing down,
+so it re-planned on every tick. Standing down for 250ms first took it to 2.1 seconds. The
+lesson is that a bot which fails to act still has to pay its own rate limit.
 
-Both dials the feedback identifies are the right ones, and they should be expressed in
-human units — **pieces per build phase** and **shots per second** — rather than the current
-per-tick probabilities, which are opaque and do not survive a change to the tick rate or
-the phase length. A hard cap per phase alongside the rate would bound total output even if
-phase timings change.
+### Still open
 
-Two things worth doing before tuning:
-
-- **Measure a person.** Instrument the client to record placements per build phase and
-  shots per second during a playtest. The numbers above are the bot's budget; we do not
-  actually know a human's, and guessing it is how the difficulty curve ends up wrong.
-- **Expect this to interact with the stalemate.** Roughly one match in twenty currently
-  runs forever because two defenders repair everything thrown at them. Cutting build rate
-  to human levels removes repair capacity, so it may well resolve the stalemate on its
-  own. Tuning the two independently risks over-correcting.
-
-A useful piece already exists for the resilience problem: `weakestWall(state, self)`
-computes where an opponent would breach *this* player, which is exactly where thickening
-is worth the blocks.
+- **Personalities.** The tiers carry risk appetite, but a separate axis — turtle, expander,
+  aggressor — would make opponents feel different rather than merely better. Deliberately
+  deferred; it layers cleanly on the ladder.
+- **Late-phase idling.** A bot lays 8 pieces in a late build phase where a person manages
+  15. Once its wall is sealed, thickened and it cannot afford another castle, it stops.
 
 ## 10e. The piece set grows harder as a match goes on
 

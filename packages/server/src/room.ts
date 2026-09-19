@@ -1,4 +1,4 @@
-import type { Ruleset, ServerConfig, TerrainConfig } from '@rampart/config';
+import type { AiConfig, Ruleset, ServerConfig, TerrainConfig } from '@rampart/config';
 import { Bot, type Difficulty } from '@rampart/ai';
 import {
   ActionSchema,
@@ -49,6 +49,7 @@ export interface RoomOptions {
   ruleset: Ruleset;
   terrain: TerrainConfig;
   server: ServerConfig;
+  ai: AiConfig;
   seed?: number;
 }
 
@@ -209,7 +210,9 @@ export class Room {
     });
 
     const difficulty = this.options.server.botDifficulty as Difficulty;
-    for (const seat of this.seats) this.bots.set(seat.playerId, new Bot(seat.playerId, difficulty));
+    for (const seat of this.seats) {
+      this.bots.set(seat.playerId, new Bot(seat.playerId, difficulty, this.options.ai));
+    }
 
     this.broadcastRoom();
     for (const seat of this.seats) this.sendSnapshot(seat);
