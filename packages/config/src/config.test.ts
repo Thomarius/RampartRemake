@@ -40,8 +40,13 @@ describe('shipped config files', () => {
     // 1 castle -> 2 cannons, each further castle -> +1.
     expect(defaultRuleset.cannons.firstCastleReward).toBe(2);
     expect(defaultRuleset.cannons.perAdditionalCastleReward).toBe(1);
-    // Fairness is not left to chance.
-    expect(defaultRuleset.build.sharedPieceSequence).toBe(true);
+    // Not shared, because a continue rewinds one player's piece schedule to round one
+    // and theirs alone. The schema refuses the two together, so this is the consequence
+    // of resetPieceScheduleOnContinue rather than a free choice.
+    expect(defaultRuleset.elimination.resetPieceScheduleOnContinue).toBe(true);
+    expect(defaultRuleset.build.sharedPieceSequence).toBe(false);
+    // Two lives beyond the first, as in the original.
+    expect(defaultRuleset.elimination.continues).toBe(2);
     expect(defaultRuleset.build.restrictToOwnIsland).toBe(true);
   });
 

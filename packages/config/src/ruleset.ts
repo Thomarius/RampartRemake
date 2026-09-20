@@ -30,6 +30,13 @@ export const RulesetSchema = z
        * does not begin until it has left, so this is match timing, not decoration.
        */
       transitionBannerMs: ms,
+      /**
+       * Added to the intermission when somebody spends a continue or is knocked out,
+       * so the banner announcing it has the board to itself. In the ruleset rather
+       * than the client because it lengthens a phase, and phase length is part of what
+       * every client has to agree on.
+       */
+      continueBannerMs: ms,
     }),
 
     cannons: z.strictObject({
@@ -114,11 +121,40 @@ export const RulesetSchema = z
     elimination: z.strictObject({
       onZeroEnclosedCastles: z.boolean(),
       simultaneousIsDraw: z.boolean(),
+      /**
+       * Lives. Failing to seal a castle spends one instead of ending the match: the
+       * island is wiped, a fresh castle is chosen, and a new ring is raised around it.
+       * Zero means failing is final, which is how the game behaved before this existed.
+       */
+      continues: z.number().int().nonnegative(),
+      /**
+       * Extra opening cannons per continue already spent, so a player on their last
+       * life fields more guns than one on their first.
+       */
+      extraCannonsPerContinue: z.number().int().nonnegative(),
+      /**
+       * Whether a continue also rewinds the player's piece schedule to round one.
+       *
+       * The schedule widens with the round, so this hands somebody starting again the
+       * small pieces they need to close a ring — and leaves whoever has survived
+       * longest working with the awkward ones. It makes the round a *personal* count,
+       * which is why it cannot coexist with a shared piece sequence.
+       */
+      resetPieceScheduleOnContinue: z.boolean(),
     }),
   })
   .refine((r) => r.players.max >= r.players.min, {
     message: 'players.max must be >= players.min',
     path: ['players', 'max'],
+  })
+  .refine((r) => !r.elimination.resetPieceScheduleOnContinue || !r.build.sharedPieceSequence, {
+    // Rewinding one player's schedule is precisely that player drawing from a
+    // different bag from everybody else, so the two cannot both be true. Checking it
+    // here means the consequence has to be written down in the config rather than
+    // discovered in a match.
+    message:
+      'elimination.resetPieceScheduleOnContinue requires build.sharedPieceSequence to be false',
+    path: ['elimination', 'resetPieceScheduleOnContinue'],
   })
   .refine((r) => r.shots.damagesWalls, {
     message: 'shots.damagesWalls must be true — walls are the only damageable structure',

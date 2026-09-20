@@ -1,25 +1,36 @@
 import { defaultRuleset, defaultTerrainConfig } from '@rampart/config';
 import { describe, expect, it } from 'vitest';
 
+import { Rng } from './rng.js';
+
 import { applyEnclosure, computeEnclosure } from './enclosure.js';
 import {
   LogReplayer,
   applyAction,
+  drainEvents,
   createMatch,
   hashMatchState,
   runLog,
   step,
   stepTo,
+  owesCastleChoice,
   ticksFor,
   type MatchOptions,
 } from './match.js';
 import { canPlacePiece, currentPieceId, legalCannonPlacements } from './placement.js';
 import { pieceCells } from './pieces.js';
-import { Structure } from './types.js';
-import { recordRandomPlayout } from './playout.js';
-import { beginMatch, fastRuleset } from './testing.js';
+import { Structure, type MatchEvent, type MatchState, type PlayerState } from './types.js';
+import { recordRandomPlayout, scriptedAction } from './playout.js';
+import { beginMatch, fastRuleset, withoutContinues } from './testing.js';
 
-function options(playerCount: number, seed = 42, ruleset = fastRuleset()): MatchOptions {
+// Continues off by default here. Most of these tests are about the phase machine and
+// about elimination, and a life spent instead of a knockout would quietly change what
+// they measure. The continue behaviour has its own tests below.
+function options(
+  playerCount: number,
+  seed = 42,
+  ruleset = withoutContinues(fastRuleset()),
+): MatchOptions {
   return {
     seed,
     ruleset,
@@ -229,7 +240,7 @@ describe('round resolution', () => {
 
 describe('determinism', () => {
   it('replays an input log to exactly the same state', () => {
-    const opts = options(3, 1234, defaultRuleset);
+    const opts = options(3, 1234, withoutContinues(defaultRuleset));
     const recorded = recordRandomPlayout(opts, 99, 4000);
     expect(recorded.log.length).toBeGreaterThan(100);
 
@@ -243,7 +254,7 @@ describe('determinism', () => {
   it('agrees at every checkpoint along the way, not just at the end', () => {
     // A divergence that appears mid-match and happens to cancel out by the end is
     // still a desync, so compare as the match runs rather than only at the finish.
-    const opts = options(3, 2024, defaultRuleset);
+    const opts = options(3, 2024, withoutContinues(defaultRuleset));
     const recorded = recordRandomPlayout(opts, 31, 4000, { checkpointEvery: 100 });
     expect(recorded.checkpoints.length).toBeGreaterThan(10);
 
@@ -297,7 +308,9 @@ describe('full match', () => {
 
 describe('intermission', () => {
   function intoCombat(playerCount = 2) {
-    const state = beginMatch(createMatch(options(playerCount, 42, defaultRuleset)));
+    const state = beginMatch(
+      createMatch(options(playerCount, 42, withoutContinues(defaultRuleset))),
+    );
     for (const player of state.players) {
       const castle = state.castles.find((c) => c.islandId === player.islandId)!;
       applyAction(state, { kind: 'select_castle', player: player.id, castleId: castle.id });
@@ -557,5 +570,144 @@ describe('starting rings', () => {
         }
       }
     }
+  });
+});
+
+describe('continues', () => {
+  /** Runs a match until the given player has spent a life, and reports the moment. */
+  function playUntilContinue(seed: number): {
+    state: MatchState;
+    event: Extract<MatchEvent, { kind: 'player_continued' }> | null;
+    wallsOnIsland: number;
+    gunsOwned: number;
+  } {
+    const state = createMatch(options(2, seed, fastRuleset()));
+    beginMatch(state);
+    const rng = new Rng(seed);
+    let event: Extract<MatchEvent, { kind: 'player_continued' }> | null = null;
+
+    while (state.phase !== 'game_over' && state.tick < 40_000 && event === null) {
+      for (const player of state.players) {
+        const action = scriptedAction(state, player.id, rng, { fireChance: 0.3, buildChance: 0.1 });
+        if (action !== null) applyAction(state, action);
+      }
+      step(state);
+      for (const e of drainEvents(state)) {
+        if (e.kind === 'player_continued' && event === null) event = e;
+      }
+    }
+    if (event === null) return { state, event, wallsOnIsland: 0, gunsOwned: 0 };
+
+    const player = state.players[event.player] as PlayerState;
+    let wallsOnIsland = 0;
+    for (let i = 0; i < state.structure.length; i++) {
+      if (state.islandId[i] === player.islandId && state.structure[i] === Structure.Wall) {
+        wallsOnIsland++;
+      }
+    }
+    return {
+      state,
+      event,
+      wallsOnIsland,
+      gunsOwned: state.cannons.filter((c) => c.owner === player.id).length,
+    };
+  }
+
+  it('spends a life instead of ending the match, and wipes the island', () => {
+    const { state, event, wallsOnIsland, gunsOwned } = playUntilContinue(3);
+    expect(event).not.toBeNull();
+    const player = state.players[(event as { player: number }).player] as PlayerState;
+
+    expect(player.eliminated).toBe(false);
+    // Nothing of the old attempt is left to plan around.
+    expect(wallsOnIsland).toBe(0);
+    expect(gunsOwned).toBe(0);
+    // And a castle is owed again, which is what lets them choose in the cannon phase.
+    expect(player.startingCastleId).toBeNull();
+    expect(owesCastleChoice(player)).toBe(true);
+  });
+
+  it('grants the opening cannons, plus one for each life already spent', () => {
+    const { state, event } = playUntilContinue(3);
+    expect(event).not.toBeNull();
+    const ruleset = state.ruleset;
+    const player = state.players[(event as { player: number }).player] as PlayerState;
+    const spent = ruleset.elimination.continues - player.continuesRemaining;
+    expect(spent).toBe(1);
+    expect(player.cannonsToPlace).toBe(
+      ruleset.cannons.startingCount + ruleset.elimination.extraCannonsPerContinue * spent,
+    );
+  });
+
+  it('rewinds the piece schedule for whoever spent a life', () => {
+    const { state, event } = playUntilContinue(3);
+    expect(event).not.toBeNull();
+    const player = state.players[(event as { player: number }).player] as PlayerState;
+    // Zero, because the counter is bumped with the match round — so the next round
+    // deals them round one's pieces while the match itself has moved on.
+    expect(player.pieceRound).toBe(0);
+    expect(state.round).toBeGreaterThan(0);
+  });
+
+  it('otherwise keeps every piece schedule in step with the match round', () => {
+    // The other half of the same property, and tested apart from it because random
+    // play seals so badly that a whole table can fail in one round — leaving nobody
+    // who has not continued to compare against.
+    // Nobody fires, so no wall ever breaks and the rounds simply cycle — which is
+    // what gives the counters something to stay in step over.
+    const state = createMatch(options(3, 11, withoutContinues(fastRuleset())));
+    beginMatch(state);
+    const rng = new Rng(11);
+
+    while (state.phase !== 'game_over' && state.tick < 20_000) {
+      for (const player of state.players) {
+        const action = scriptedAction(state, player.id, rng, { fireChance: 0, buildChance: 0.1 });
+        if (action !== null) applyAction(state, action);
+      }
+      step(state);
+      drainEvents(state);
+      for (const player of state.players) expect(player.pieceRound).toBe(state.round);
+    }
+    expect(state.round).toBeGreaterThan(3);
+  });
+
+  it('is final once the lives are gone', () => {
+    // The same match with continues switched off: the first failure is the last.
+    const state = createMatch(options(2, 3, withoutContinues(fastRuleset())));
+    beginMatch(state);
+    const rng = new Rng(3);
+    let continued = 0;
+    let eliminated = 0;
+
+    while (state.phase !== 'game_over' && state.tick < 40_000) {
+      for (const player of state.players) {
+        const action = scriptedAction(state, player.id, rng, { fireChance: 0.3, buildChance: 0.1 });
+        if (action !== null) applyAction(state, action);
+      }
+      step(state);
+      for (const e of drainEvents(state)) {
+        if (e.kind === 'player_continued') continued++;
+        if (e.kind === 'player_eliminated') eliminated++;
+      }
+    }
+    expect(continued).toBe(0);
+    expect(eliminated).toBeGreaterThan(0);
+  });
+
+  it('gives the banners room by lengthening the intermission', () => {
+    // The pause is match timing, not decoration: every client has to spend the same
+    // number of ticks on it or they disagree about when the next phase started.
+    const bannerTicks = Math.ceil(
+      (fastRuleset().phases.continueBannerMs * fastRuleset().tickRateHz) / 1000,
+    );
+    expect(bannerTicks).toBeGreaterThan(0);
+
+    const { state, event } = playUntilContinue(3);
+    expect(event).not.toBeNull();
+    expect(state.phase).toBe('intermission');
+    const plain =
+      Math.ceil((fastRuleset().phases.endOfPhasePauseMs * fastRuleset().tickRateHz) / 1000) +
+      Math.ceil((fastRuleset().phases.transitionBannerMs * fastRuleset().tickRateHz) / 1000);
+    expect(state.phaseEndTick - state.tick).toBeGreaterThan(plain);
   });
 });

@@ -26,7 +26,7 @@
     "minDistanceFromShoreTiles": 3
   },
   "startingWall": {
-    "ringRadiusTiles": 3
+    "ringRadiusTiles": 4
   },
   "generation": {
     "maxRetries": 150

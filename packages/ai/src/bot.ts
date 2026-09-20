@@ -1,6 +1,8 @@
 import { defaultAiConfig, type AiConfig, type BotProfile } from '@rampart/config';
 import {
+  NEIGHBOURS_8,
   Structure,
+  Terrain,
   canPlaceCannon,
   canPlacePiece,
   currentPieceId,
@@ -43,6 +45,24 @@ const GUN_REACH = 12;
  * spend is just a longer bill.
  */
 const ROOM_RADIUS = 3;
+
+/**
+ * Clearance a cannon wants between itself and the nearest wall or shore.
+ *
+ * A cannon jammed against its own wall is what makes a breach there unrepairable. The
+ * hole a shot leaves has the cannon on one side and, on a coastal wall, water on the
+ * other — so the only tile free to build in is the hole itself, and a piece is at
+ * least two cells from round three on. The size schedule stops dealing ones after
+ * round two, which turns a one-tile gap from awkward into permanent.
+ *
+ * Two tiles is enough to leave a piece somewhere to land, and it costs nothing in the
+ * opening: the band around a castle inside its starting ring is exactly twelve free
+ * tiles, which is precisely three cannons' worth at this clearance. Measured before
+ * this existed, all 120 opening cannons across twelve matches sat at clearance one —
+ * not because the geometry forced it, but because proximity to the enemy was the only
+ * thing being scored.
+ */
+const CANNON_CLEARANCE = 2;
 
 export const DIFFICULTIES = ['recruit', 'gunner', 'marshal'] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
@@ -95,6 +115,11 @@ export class Bot {
       case 'build':
         return this.build(state, rng);
       case 'cannon_place':
+        // A bot that has just spent a continue owes a castle before it owes anything
+        // else: without one it has no territory, so no gun has anywhere to stand.
+        if (state.players[this.playerId]?.startingCastleId === null) {
+          return this.chooseCastle(state, rng);
+        }
         return this.placeCannon(state, rng);
       default:
         return null;
@@ -565,6 +590,10 @@ export class Bot {
   private chooseCastle(state: MatchState, rng: Rng): Action | null {
     const player = state.players[this.playerId];
     if (!player || player.startingCastleId !== null) return null;
+    // Last round's plan described an island that no longer exists: a continue wipes it.
+    this.plan = [];
+    this.plannedAt = -1;
+    this.unreachable.clear();
     const mine = state.castles.filter((c) => c.islandId === player.islandId);
     if (mine.length === 0) return null;
 
@@ -616,24 +645,87 @@ export class Bot {
     this.nextCannonTick = state.tick + this.ticks(this.profile.placementBaseMs, state);
 
     const enemies = state.castles.filter((c) => c.islandId !== player.islandId);
+    const hazard = this.clearanceField(state, player.islandId);
+    const [cw, ch] = state.ruleset.cannons.footprint;
+
     let best: { x: number; y: number } | null = null;
+    // Room first, then proximity: compared as a pair rather than summed, so there is no
+    // exchange rate to invent between tiles of clearance and tiles of range.
+    let bestRoom = -1;
     let bestScore = Number.NEGATIVE_INFINITY;
 
     for (let y = 0; y < state.height; y++) {
       for (let x = 0; x < state.width; x++) {
         if (state.territory[y * state.width + x] !== player.islandId) continue;
         if (canPlaceCannon(state, this.playerId, x, y) !== null) continue;
+
+        let clear = Number.MAX_SAFE_INTEGER;
+        for (let oy = 0; oy < ch; oy++) {
+          for (let ox = 0; ox < cw; ox++) {
+            clear = Math.min(clear, hazard[(y + oy) * state.width + x + ox] as number);
+          }
+        }
+        // Capped, because clearance beyond this buys nothing and every extra tile of it
+        // is a tile of range given away.
+        const room = Math.min(clear, CANNON_CLEARANCE);
+
         let nearest = Number.MAX_SAFE_INTEGER;
         for (const enemy of enemies) {
           nearest = Math.min(nearest, distanceSquared(x, y, enemy.x, enemy.y));
         }
         const score = -nearest + (this.difficulty === 'recruit' ? rng.nextFloat() * 5000 : 0);
-        if (score > bestScore) {
+
+        if (room > bestRoom || (room === bestRoom && score > bestScore)) {
+          bestRoom = room;
           bestScore = score;
           best = { x, y };
         }
       }
     }
     return best ? { kind: 'place_cannon', player: this.playerId, ...best } : null;
+  }
+
+  /**
+   * Chebyshev distance from every tile to the nearest thing a cannon should stand off
+   * from: this player's own wall, or water.
+   *
+   * Own wall, because that is what has to be repaired under fire. Water, because a wall
+   * that runs along the coast has nothing behind it either — a cannon pressed against
+   * the shore leaves the future wall there the same one-tile gap.
+   *
+   * Eight-connected unit steps, which is exactly Chebyshev distance, and one pass over
+   * the board rather than a scan per candidate.
+   */
+  private clearanceField(state: MatchState, islandId: number): Int32Array {
+    const size = state.width * state.height;
+    const dist = new Int32Array(size).fill(0x7fffffff);
+    const queue = new Int32Array(size);
+    let tail = 0;
+
+    for (let i = 0; i < size; i++) {
+      const hazard =
+        state.terrain[i] === Terrain.Water ||
+        (state.structure[i] === Structure.Wall && state.islandId[i] === islandId);
+      if (!hazard) continue;
+      dist[i] = 0;
+      queue[tail++] = i;
+    }
+
+    for (let head = 0; head < tail; head++) {
+      const i = queue[head] as number;
+      const x = i % state.width;
+      const y = (i - x) / state.width;
+      const next = (dist[i] as number) + 1;
+      for (const [ox, oy] of NEIGHBOURS_8) {
+        const nx = x + ox;
+        const ny = y + oy;
+        if (nx < 0 || ny < 0 || nx >= state.width || ny >= state.height) continue;
+        const j = ny * state.width + nx;
+        if (dist[j] !== 0x7fffffff) continue;
+        dist[j] = next;
+        queue[tail++] = j;
+      }
+    }
+    return dist;
   }
 }

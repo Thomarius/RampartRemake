@@ -64,6 +64,10 @@ LOBBY
   not, so the sea slips between two blocks meeting at a point: a diagonal join does not
   seal, and the corner block has to be there. A 4-connected flood would let a diagonal
   staircase stand in for a wall, which the original did not allow.
+- **Continues.** Failing to seal a castle spends a life rather than ending the match.
+  The island is wiped — cannons, shots, and every wall — a castle is chosen again in the
+  coming cannon phase, a fresh ring is raised around it, and the player places
+  `startingCount + livesSpent` cannons. Out of lives, failing is final as before. See 10o.
 - A single sealed region containing K castles counts as K castles. Separate sealed regions
   stack. This is the central tradeoff: a wide loop earns more cannons but leaves far more
   perimeter to repair each round.
@@ -1711,6 +1715,93 @@ it. Neither is alarming and both are the balance pass's business.
 A fourth bot test moved from a two-seat to a three-seat table. Its pacing assertions were
 never reached: a two-player match now ends before there are enough build phases to
 measure a build rate over. Two players remains the case to fix, as 10m says.
+
+## 10o. Continues
+
+Implemented. Two lives beyond the first, as in the original, and failing to seal now
+spends one instead of ending the match.
+
+What happens: the island is wiped — cannons, shots in the air, and **the wall itself**,
+which is more than `stripEliminated` did. That function leaves an eliminated player's
+wall standing as unowned rubble, which is reasonable for somebody who is out and wrong
+for somebody about to build again, who would otherwise have to plan around the wreck of
+their last attempt. Then a castle is owed, chosen during the coming cannon phase, and the
+ring goes up around it exactly as at the start of a match.
+
+Cannons are the opening count plus one for each life already spent, so a player on their
+last life fields more guns than one on their first.
+
+### A continue rewinds the player's piece schedule, and that retires a stated rule
+
+Section 1.5 said every player draws the same seeded sequence. They no longer do. A
+continue sets the player's `pieceRound` to zero, so the next round deals them round one's
+pieces — the small ones a player starting again needs to close a ring — while whoever has
+survived longest goes on drawing the wide, awkward ones.
+
+That makes the piece schedule a **personal difficulty ramp keyed to how long you have
+held on**, which is a rubber band with real force: it stacks with the fresh compact ring
+and the extra cannon. All three together are what make a continue worth having rather
+than merely survivable.
+
+`build.sharedPieceSequence` was dead config — declared and never read, the second such
+flag after `layout`. It is now false, and the schema **refuses** it being true alongside
+`resetPieceScheduleOnContinue`, so the consequence has to be written down in the config
+rather than discovered in a match.
+
+### The pause, and why it is in the sim
+
+A life lost or a player knocked out adds `phases.continueBannerMs` to the intermission.
+That is match timing rather than decoration: every client has to spend the same number of
+ticks on it or they disagree about when the next phase began. One pause however many
+players it was — the banners sit over their own islands and cannot overlap, so they are
+all readable at once.
+
+### Three things that had to change to let a player choose mid-phase
+
+- `select_castle` was gated on `phase === 'castle_select'` and on having no castle yet.
+  Both now admit a player who owes a choice during `cannon_place`, which is the same
+  question asked twice, so it is the same predicate: `owesCastleChoice`.
+- **`advancePhase`'s cannon-phase early exit would have ended the phase before they could
+  act.** It stops when every player is `eliminated || cannonsToPlace === 0 ||
+  !canPlaceAnyCannon`, and a player who owes a castle has no territory, so
+  `canPlaceAnyCannon` is false and they read as finished. Found by reading rather than by
+  playing, which is the only reason it is not a bug report.
+- A player who lets the clock run out gets a castle and guns chosen for them, from
+  `streamFor(seed, 'fallback:round:player')` — deterministic, because `Math.random` is
+  banned in `sim` and a replay has to reproduce these like any other choice. Without it,
+  hesitating would leave them with no ring at all and cost them a second life for it.
+  Only a person can reach this path: a bot always acts, and a dropped seat is played by
+  one.
+
+### What it measured
+
+Three players, gunner, six seeds: **32 continues and 13 eliminations**, no action ever
+refused, and every invariant held at the moment of the continue — island empty of walls
+and guns, cannon grant equal to `startingCount + spent`, piece schedule at zero, castle
+cleared and later rechosen.
+
+Matches run **11.8 rounds** against 4.4 before, which is what three lives each should
+cost. Nothing unfinished.
+
+### Verified, and not
+
+The simulation is covered: six tests in `match.test.ts`, and the banner wording and
+timing window in `banners.test.ts` — which is why that decision was pulled out of
+`main.ts` into a function of its own.
+
+**The banners have not been seen.** Headless Chrome cannot show them: after 120 seconds
+of virtual time at ten times speed a watched match is still on round 0, because the
+render loop is barely driven. That also means the "ran a watched match with no runtime
+error" checks in 10i and 10j were weaker than they sounded — the match was not
+progressing far enough to exercise much. Anything time-dependent in the client needs a
+real browser and a person watching it.
+
+### Tests that had to say what they meant
+
+`options()` in `match.test.ts` now builds its ruleset with `withoutContinues`, and so
+does the stopgap suite. Nine tests broke on this change, all of them asserting that
+failing to seal ends a player's match — which is still true, but only once the lives are
+gone. Saying so explicitly beats them quietly measuring something else.
 
 ## 11. Deferred (explicitly out of scope for v1)
 

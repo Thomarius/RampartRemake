@@ -98,6 +98,8 @@ export function stateFromAscii(art: string, ruleset: Ruleset = defaultRuleset): 
     enclosedCastles: 0,
     cannonsToPlace: 0,
     pieceIndex: 0,
+    continuesRemaining: 0,
+    pieceRound: 0,
   }));
 
   return {
@@ -137,6 +139,17 @@ export function beginMatch(state: MatchState): MatchState {
   return state;
 }
 
+/**
+ * A ruleset where failing to seal is final.
+ *
+ * Continues are on by default, so "fails to enclose anything" no longer means "is out"
+ * — it means "spends a life". Tests about elimination itself want the simpler rule, and
+ * saying so explicitly is better than them quietly testing something else.
+ */
+export function withoutContinues(ruleset: Ruleset): Ruleset {
+  return { ...ruleset, elimination: { ...ruleset.elimination, continues: 0 } };
+}
+
 /** A ruleset with compressed phases, so a whole match runs in a test in milliseconds. */
 export function fastRuleset(ruleset: Ruleset = defaultRuleset): Ruleset {
   return {
@@ -148,6 +161,7 @@ export function fastRuleset(ruleset: Ruleset = defaultRuleset): Ruleset {
       cannonPlaceMs: 600,
       endOfPhasePauseMs: 100,
       transitionBannerMs: 200,
+      continueBannerMs: 200,
     },
   };
 }

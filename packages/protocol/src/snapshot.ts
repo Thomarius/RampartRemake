@@ -45,6 +45,8 @@ const PlayerSchema = z.strictObject({
   enclosedCastles: z.number().int().nonnegative(),
   cannonsToPlace: z.number().int().nonnegative(),
   pieceIndex: z.number().int().nonnegative(),
+  continuesRemaining: z.number().int().nonnegative(),
+  pieceRound: z.number().int().nonnegative(),
 });
 
 const CastleSchema = z.strictObject({

@@ -91,6 +91,14 @@ export class Scene {
   }
 
   /** Screen coordinates to tile, or null when outside the grid. */
+  /** Centre of a tile in screen pixels, for anything drawn over the board in HTML. */
+  screenAt(x: number, y: number): { x: number; y: number } {
+    return {
+      x: this.view.originX + (x + 0.5) * this.view.tile,
+      y: this.view.originY + (y + 0.5) * this.view.tile,
+    };
+  }
+
   tileAt(state: MatchState, screenX: number, screenY: number): { x: number; y: number } | null {
     const x = Math.floor((screenX - this.view.originX) / this.view.tile);
     const y = Math.floor((screenY - this.view.originY) / this.view.tile);

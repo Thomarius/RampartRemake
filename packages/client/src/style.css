@@ -403,3 +403,44 @@ body {
   color: var(--ink);
   font: inherit;
 }
+
+/*
+ * Banners over an island: a life lost, or a player out of the match.
+ *
+ * Centred on the island rather than on the screen, because several can be up at once —
+ * a round can take a life from more than one player — and each has to be readable as
+ * belonging to its own ground.
+ */
+.island-banner {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 0.4rem 0.9rem;
+  border: 2px solid #fff;
+  border-radius: 3px;
+  background: rgb(8 12 24 / 82%);
+  color: #f4f6ff;
+  font: 600 0.95rem/1.3 inherit;
+  letter-spacing: 0.02em;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: island-banner-in 220ms ease-out;
+}
+
+/* An elimination stands until the match ends, so it reads as settled, not as news. */
+.island-banner.out {
+  opacity: 0.85;
+  font-weight: 500;
+  background: rgb(8 12 24 / 62%);
+}
+
+@keyframes island-banner-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}

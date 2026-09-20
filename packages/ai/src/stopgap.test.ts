@@ -8,6 +8,7 @@ import {
   step,
   type Action,
   type MatchState,
+  withoutContinues,
 } from '@rampart/sim';
 import { describe, expect, it } from 'vitest';
 
@@ -27,7 +28,7 @@ function playOut(
 ): MatchState {
   const state = createMatch({
     seed,
-    ruleset: defaultRuleset,
+    ruleset: withoutContinues(defaultRuleset),
     terrainConfig: defaultTerrainConfig,
     players: Array.from({ length: playerCount }, (_, i) => ({ name: `bot${i}`, isBot: true })),
   });

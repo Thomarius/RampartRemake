@@ -3,7 +3,14 @@ import type { Ruleset, TerrainConfig } from '@rampart/config';
 import { applyEnclosure } from './enclosure.js';
 import { sweepOrphanedWalls } from './sweep.js';
 import { Hasher } from './hash.js';
-import { canPlaceAnyCannon, placeCannon, placePiece, type Rejection } from './placement.js';
+import {
+  canPlaceAnyCannon,
+  legalCannonPlacements,
+  placeCannon,
+  placePiece,
+  type Rejection,
+} from './placement.js';
+import { streamFor } from './rng.js';
 import { fire, resolveImpacts } from './shots.js';
 import { generateTerrain } from './terrain.js';
 import {
@@ -57,6 +64,8 @@ export function createMatch(options: MatchOptions): MatchState {
     enclosedCastles: 0,
     cannonsToPlace: 0,
     pieceIndex: 0,
+    continuesRemaining: options.ruleset.elimination.continues,
+    pieceRound: 0,
   }));
 
   const structure = new Uint8Array(size);
@@ -153,6 +162,18 @@ function enterIntermission(state: MatchState, next: Phase): void {
   });
 }
 
+/**
+ * Whether this player still has a castle to choose.
+ *
+ * True at the start of a match, and true again after a continue — the same question in
+ * both cases, so it is the same predicate. A player in this state has no territory at
+ * all, which is why the cannon phase has to treat them as unfinished rather than as
+ * having nowhere left to build.
+ */
+export function owesCastleChoice(player: PlayerState): boolean {
+  return !player.eliminated && player.startingCastleId === null;
+}
+
 export function alivePlayers(state: MatchState): PlayerState[] {
   return state.players.filter((p) => !p.eliminated);
 }
@@ -201,6 +222,26 @@ function finishCastleSelect(state: MatchState): void {
 }
 
 /** Clears an eliminated player's cannons and leaves their walls as neutral rubble. */
+/**
+ * Clears everything a player built, for a continue: cannons, shots in the air, and the
+ * wall itself.
+ *
+ * Stronger than `stripEliminated`, which leaves an eliminated player's wall standing as
+ * unowned rubble — reasonable for someone who is out, wrong for someone about to build
+ * again, who would otherwise have to plan around the wreck of their last attempt.
+ */
+function wipeIsland(state: MatchState, playerId: number): void {
+  const player = state.players[playerId] as PlayerState;
+  stripEliminated(state, playerId);
+  for (let i = 0; i < state.structure.length; i++) {
+    if (state.islandId[i] !== player.islandId) continue;
+    if (state.structure[i] === Structure.Wall) {
+      state.structure[i] = Structure.Empty;
+      state.owner[i] = 0;
+    }
+  }
+}
+
 function stripEliminated(state: MatchState, playerId: number): void {
   const islandId = (state.players[playerId] as PlayerState).islandId;
   state.cannons = state.cannons.filter((cannon) => {
@@ -247,12 +288,43 @@ function resolveRound(state: MatchState): void {
   const { firstCastleReward, perAdditionalCastleReward, maxTotal } = state.ruleset.cannons;
   const results: RoundResult[] = [];
   const eliminatedNow: number[] = [];
+  const continued: number[] = [];
 
   for (const player of state.players) {
     if (player.eliminated) continue;
     const enclosed = player.enclosedCastles;
 
     if (enclosed === 0 && state.ruleset.elimination.onZeroEnclosedCastles) {
+      const { continues, extraCannonsPerContinue, resetPieceScheduleOnContinue } =
+        state.ruleset.elimination;
+
+      // A life, if there is one left. Everything the player built goes, they choose a
+      // castle again in the coming cannon phase, and the ring is raised around it — so
+      // this is a fresh start on the same ground rather than a reprieve on a ruin.
+      if (player.continuesRemaining > 0) {
+        player.continuesRemaining--;
+        const spent = continues - player.continuesRemaining;
+        wipeIsland(state, player.id);
+        player.startingCastleId = null;
+        player.enclosedCastles = 0;
+        // More guns for a player closer to the end, and the opening count rather than
+        // a round reward: they have no territory to be rewarded for.
+        player.cannonsToPlace =
+          state.ruleset.cannons.startingCount + extraCannonsPerContinue * spent;
+        // Rewound so the next round deals round one's pieces. `pieceRound` is
+        // incremented with the match round, so zero here means one there.
+        if (resetPieceScheduleOnContinue) player.pieceRound = 0;
+
+        continued.push(player.id);
+        results.push({
+          player: player.id,
+          enclosedCastles: 0,
+          cannonsAwarded: player.cannonsToPlace,
+          eliminated: false,
+        });
+        continue;
+      }
+
       player.eliminated = true;
       player.eliminatedRound = state.round;
       player.cannonsToPlace = 0;
@@ -276,6 +348,15 @@ function resolveRound(state: MatchState): void {
   }
 
   state.events.push({ kind: 'round_resolved', tick: state.tick, round: state.round, results });
+  for (const id of continued) {
+    state.events.push({
+      kind: 'player_continued',
+      tick: state.tick,
+      player: id,
+      round: state.round,
+      continuesRemaining: (state.players[id] as PlayerState).continuesRemaining,
+    });
+  }
   for (const id of eliminatedNow) {
     stripEliminated(state, id);
     state.events.push({
@@ -303,6 +384,13 @@ function resolveRound(state: MatchState): void {
 
   const anyToPlace = state.players.some((p) => !p.eliminated && p.cannonsToPlace > 0);
   enterIntermission(state, anyToPlace ? 'cannon_place' : 'combat');
+
+  // A life lost or a player knocked out gets the board to itself for a moment. One
+  // pause however many it was: the banners sit over their own islands and cannot
+  // overlap, so they are all readable at once.
+  if (continued.length > 0 || eliminatedNow.length > 0) {
+    state.phaseEndTick += ticksFor(state.ruleset.phases.continueBannerMs, state.ruleset.tickRateHz);
+  }
 }
 
 /** Begins the phase an intermission was holding. */
@@ -310,7 +398,10 @@ function beginPendingPhase(state: MatchState): void {
   const next = state.pendingPhase ?? 'combat';
   if (next === 'combat') {
     state.round++;
-    for (const player of state.players) player.cannonsToPlace = 0;
+    for (const player of state.players) {
+      player.cannonsToPlace = 0;
+      player.pieceRound++;
+    }
     enterPhase(state, 'combat', state.ruleset.phases.combatMs);
     return;
   }
@@ -325,6 +416,50 @@ function beginPendingPhase(state: MatchState): void {
     cannon_place: state.ruleset.phases.cannonPlaceMs,
   };
   enterPhase(state, next, durations[next] ?? 0);
+}
+
+/**
+ * Chooses for anyone who did not choose, as the cannon phase closes.
+ *
+ * Only a person can end up here: a bot always acts, and a disconnected seat is played
+ * by one. Without it, running the clock down would leave a player with no ring at all,
+ * so they would fail the next resolution and spend another life for having hesitated.
+ *
+ * Deterministic, from the match seed and the round — `Math.random` is banned in `sim`,
+ * and a replay has to reproduce these choices exactly like any other.
+ */
+function autoFinishCannonPhase(state: MatchState): void {
+  for (const player of state.players) {
+    if (player.eliminated) continue;
+    const rng = streamFor(state.seed, `fallback:${state.round}:${player.id}`);
+
+    if (owesCastleChoice(player)) {
+      const mine = state.castles.filter((c) => c.islandId === player.islandId);
+      // An island with no castles cannot happen through generation, but drawing from
+      // an empty range throws rather than returning nothing, so it is checked.
+      if (mine.length === 0) continue;
+      const pick = mine[rng.nextInt(mine.length)] as Castle;
+      player.startingCastleId = pick.id;
+      buildStartingRing(state, pick);
+      applyEnclosure(state);
+      state.events.push({
+        kind: 'castle_selected',
+        tick: state.tick,
+        player: player.id,
+        castleId: pick.id,
+      });
+    }
+
+    // Then the guns, wherever they will go. A gun somewhere beats a gun nowhere.
+    while (player.cannonsToPlace > 0) {
+      const spots = legalCannonPlacements(state, player.id);
+      // Nowhere left to put one, which is a legitimate end to the phase rather than a
+      // problem — and the reason this is checked before drawing, not after.
+      if (spots.length === 0) break;
+      const spot = spots[rng.nextInt(spots.length)] as { x: number; y: number };
+      if ('rejection' in placeCannon(state, player.id, spot.x, spot.y)) break;
+    }
+  }
 }
 
 function advancePhase(state: MatchState): void {
@@ -346,9 +481,17 @@ function advancePhase(state: MatchState): void {
       // A player with cannons left but nowhere to put them is done too — otherwise
       // everyone waits out a timer that cannot change anything.
       const done = state.players.every(
-        (p) => p.eliminated || p.cannonsToPlace === 0 || !canPlaceAnyCannon(state, p.id),
+        (p) =>
+          !owesCastleChoice(p) &&
+          (p.eliminated || p.cannonsToPlace === 0 || !canPlaceAnyCannon(state, p.id)),
       );
-      if (done || state.tick >= state.phaseEndTick) enterIntermission(state, 'combat');
+      if (done || state.tick >= state.phaseEndTick) {
+        // Anyone who let the clock run out gets a castle and guns chosen for them,
+        // rather than starting the next round with nothing and burning another life
+        // for it. Only a person can reach this — a bot always acts.
+        if (state.tick >= state.phaseEndTick) autoFinishCannonPhase(state);
+        enterIntermission(state, 'combat');
+      }
       return;
     }
 
@@ -384,11 +527,15 @@ export function stepTo(state: MatchState, tick: number): void {
 export function applyAction(state: MatchState, action: Action): Rejection | null {
   switch (action.kind) {
     case 'select_castle': {
-      if (state.phase !== 'castle_select') return 'wrong_phase';
+      // Also the cannon phase, where a player who has just spent a continue picks
+      // again before placing their guns.
+      if (state.phase !== 'castle_select' && state.phase !== 'cannon_place') {
+        return 'wrong_phase';
+      }
       const player = state.players[action.player];
       if (!player) return 'unknown_player';
       if (player.eliminated) return 'eliminated';
-      if (player.startingCastleId !== null) return 'already_selected';
+      if (!owesCastleChoice(player)) return 'already_selected';
       const castle = state.castles.find((c) => c.id === action.castleId);
       if (!castle) return 'unknown_castle';
       if (castle.islandId !== player.islandId) return 'wrong_island';

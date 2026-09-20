@@ -30,7 +30,7 @@ export function playerOf(state: MatchState, id: number): PlayerState | null {
 export function currentPieceId(state: MatchState, playerId: number): number {
   const player = state.players[playerId];
   if (!player) throw new Error(`unknown player ${playerId}`);
-  return pieceAt(state.ruleset, state.seed, state.round, player.pieceIndex);
+  return pieceAt(state.ruleset, state.seed, player.pieceRound, player.pieceIndex);
 }
 
 /** The next `count` pieces, for the client's preview strip. */
@@ -39,7 +39,7 @@ export function upcomingPieceIds(state: MatchState, playerId: number, count: num
   if (!player) return [];
   const out: number[] = [];
   for (let i = 1; i <= count; i++) {
-    out.push(pieceAt(state.ruleset, state.seed, state.round, player.pieceIndex + i));
+    out.push(pieceAt(state.ruleset, state.seed, player.pieceRound, player.pieceIndex + i));
   }
   return out;
 }

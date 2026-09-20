@@ -11,7 +11,8 @@ import { PHASES, type Action, type MatchEvent, type MatchState, type Phase } fro
 
 import { Audio } from './audio.js';
 import { Controls } from './controls.js';
-import { Hud } from './hud.js';
+import { bannersFor, type LifeLost } from './banners.js';
+import { Hud, type IslandBanner } from './hud.js';
 import { MatchAudio } from './matchAudio.js';
 import { LocalMatch } from './localMatch.js';
 import { ServerConnection } from './net/connection.js';
@@ -73,6 +74,12 @@ const preferredStyle: ArtStyle = ArtStyleSchema.catch(defaultArtConfig.style).pa
   params.get('style'),
 );
 const timeScale = Math.max(1, Number(params.get('speed') ?? 1));
+
+/** A player's colour as CSS, for the banners drawn over their island. */
+function playerColourHex(player: number): string {
+  const entry = defaultArtConfig.players[player % defaultArtConfig.players.length];
+  return entry ? entry.base : '#ffffff';
+}
 
 /** What the render loop needs, whichever way the match is being played. */
 interface Session {
@@ -403,6 +410,50 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
 
   const hud = new Hud(hudRoot, bannerRoot);
   const matchAudio = new MatchAudio(audio, session.humanPlayer);
+
+  /**
+   * Middle of each player's island, for the banners that sit over them.
+   *
+   * The island, not the territory: by the time a "life lost" banner shows, the wipe has
+   * already taken the territory away, so there would be nothing to anchor to. Islands
+   * never move, so this is measured once.
+   */
+  const islandCentre = new Map<number, { x: number; y: number }>();
+  {
+    const sums = new Map<number, { x: number; y: number; n: number }>();
+    const board = session.state;
+    for (let i = 0; i < board.islandId.length; i++) {
+      const island = board.islandId[i] as number;
+      if (island === 0) continue;
+      const x = i % board.width;
+      const entry = sums.get(island) ?? { x: 0, y: 0, n: 0 };
+      entry.x += x;
+      entry.y += (i - x) / board.width;
+      entry.n++;
+      sums.set(island, entry);
+    }
+    for (const player of board.players) {
+      const sum = sums.get(player.islandId);
+      if (sum !== undefined) islandCentre.set(player.id, { x: sum.x / sum.n, y: sum.y / sum.n });
+    }
+  }
+
+  /** Lives lost, and the tick each announcement stops being news. */
+  const livesLost = new Map<number, LifeLost>();
+
+  function drawIslandBanners(): void {
+    const banners: IslandBanner[] = [];
+    for (const banner of bannersFor(session.state, livesLost)) {
+      const centre = islandCentre.get(banner.player);
+      if (centre === undefined) continue;
+      banners.push({
+        ...banner,
+        colour: playerColourHex(banner.player),
+        ...scene.screenAt(centre.x, centre.y),
+      });
+    }
+    hud.showIslandBanners(banners);
+  }
   const controls = new Controls(
     canvas,
     scene,
@@ -485,6 +536,22 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
           structuresChanged = true;
           territoryChanged = true;
           break;
+        case 'player_continued': {
+          // The sim lengthens the intermission by continueBannerMs for exactly this,
+          // so the announcement has the board to itself. Held a little longer than the
+          // pause, so it does not vanish the instant the next phase starts.
+          const hold = Math.ceil(
+            (session.state.ruleset.phases.continueBannerMs * 2 * session.state.ruleset.tickRateHz) /
+              1000,
+          );
+          livesLost.set(event.player, {
+            remaining: event.continuesRemaining,
+            untilTick: event.tick + hold,
+          });
+          structuresChanged = true;
+          territoryChanged = true;
+          break;
+        }
         case 'phase_changed':
           controls.resetRotation();
           territoryChanged = true;
@@ -508,6 +575,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     matchAudio.handle(events);
     matchAudio.frame(session.state);
     announceWhenDue();
+    drawIslandBanners();
     hud.update(session.state, session.humanPlayer, session.status());
 
     scene.drawEffects(session.state, session.tickFraction, delta);

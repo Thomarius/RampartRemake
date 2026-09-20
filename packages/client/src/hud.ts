@@ -28,6 +28,17 @@ const PHASE_HINT: Record<Phase, string> = {
   game_over: '',
 };
 
+/** One banner over one island. */
+export interface IslandBanner {
+  player: number;
+  text: string;
+  colour: string;
+  eliminated: boolean;
+  /** Screen pixels, from `Scene.screenAt`. */
+  x: number;
+  y: number;
+}
+
 function playerColour(player: number): string {
   const entry = defaultArtConfig.players[player % defaultArtConfig.players.length];
   return entry ? entry.base : '#ffffff';
@@ -64,6 +75,9 @@ export class Hud {
     private readonly bannerRoot: HTMLElement,
   ) {}
 
+  /** Live banner nodes by player, kept across frames so their animation survives. */
+  private readonly islandBanners = new Map<number, HTMLElement>();
+
   /**
    * Announces a phase with a banner that sweeps down the screen, as the original
    * did. Phases change without warning otherwise, and a player who does not notice
@@ -82,6 +96,40 @@ export class Hud {
     this.bannerRoot.replaceChildren(banner);
   }
 
+  /**
+   * Banners sitting over the islands themselves: a life lost, or a player out.
+   *
+   * Placed rather than templated, because they move with the camera and rebuilding
+   * them from a string every frame would restart their animation on every frame.
+   */
+  showIslandBanners(banners: IslandBanner[]): void {
+    const wanted = new Map(banners.map((b) => [b.player, b]));
+
+    for (const [player, node] of this.islandBanners) {
+      if (wanted.has(player)) continue;
+      node.remove();
+      this.islandBanners.delete(player);
+    }
+
+    for (const banner of banners) {
+      let node = this.islandBanners.get(banner.player);
+      if (node === undefined) {
+        node = document.createElement('div');
+        node.className = 'island-banner';
+        this.bannerRoot.append(node);
+        this.islandBanners.set(banner.player, node);
+      }
+      if (node.dataset.text !== banner.text) {
+        node.dataset.text = banner.text;
+        node.textContent = banner.text;
+      }
+      node.classList.toggle('out', banner.eliminated);
+      node.style.borderColor = banner.colour;
+      node.style.left = `${banner.x}px`;
+      node.style.top = `${banner.y}px`;
+    }
+  }
+
   update(state: MatchState, humanPlayer: number, status = ''): void {
     const waiting = state.phase === 'intermission';
     const shown = waiting ? (state.pendingPhase ?? state.phase) : state.phase;
@@ -96,9 +144,15 @@ export class Hud {
         const classes = ['player', p.eliminated ? 'out' : '', p.id === humanPlayer ? 'you' : '']
           .filter(Boolean)
           .join(' ');
+        // Lives are only worth showing while they can still be spent.
+        const lives =
+          p.continuesRemaining > 0
+            ? ` · ${p.continuesRemaining} ${p.continuesRemaining === 1 ? 'life' : 'lives'}`
+            : ' · last life';
         const status = p.eliminated
           ? `eliminated round ${p.eliminatedRound}`
-          : `${p.enclosedCastles} castle${p.enclosedCastles === 1 ? '' : 's'} · ${live}/${cannons.length} guns`;
+          : `${p.enclosedCastles} castle${p.enclosedCastles === 1 ? '' : 's'} · ` +
+            `${live}/${cannons.length} guns${lives}`;
         return `<li class="${classes}"><b style="background:${playerColour(p.id)}"></b>${p.name}<span>${status}</span></li>`;
       })
       .join('');

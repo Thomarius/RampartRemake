@@ -4,7 +4,7 @@ Multiplayer-only recreation of the 1990 Atari arcade game _Rampart_, in TypeScri
 Shoot down opponents' castle walls, then race to rebuild your own before the next
 barrage. Fail to seal a castle and you are out.
 
-`docs/PLAN.md` is the design record and the source of truth: sections 10a-10g hold the
+`docs/PLAN.md` is the design record and the source of truth: sections 10a-10o hold the
 decisions and measurements behind everything below, and are worth reading before
 changing rules, terrain or bots. This file is the orientation.
 
@@ -77,6 +77,12 @@ with the sender's seat, so a client cannot act for someone else.
   traversable, so enclosure needs a complete loop on land.
 - **Only walls are destructible.** Castles and cannons are indestructible; a shot removes
   exactly the tile it hits.
+- **Continues.** Failing to seal spends a life (default 2) rather than ending the match:
+  the island is wiped, a castle is chosen again during the next cannon phase, a fresh
+  ring goes up, and the player places `startingCount + livesSpent` cannons. It also
+  **rewinds that player's piece schedule to round 1**, which is why
+  `build.sharedPieceSequence` is now false — players no longer draw the same bag, and the
+  schema refuses the two being true together. PLAN.md 10o.
 - **Cannons go inert outside sealed territory**, including the opening three you place
   yourself. This is the game's main corrective, and the source of most bot trouble.
 - **Orphaned wall is swept** between build and combat, in **one pass**: every block with
@@ -187,6 +193,12 @@ separately. Prefer this to watching; watching is for forming the hypothesis.
   ends it. Judge cannon room against the reward about to be earned.
 - **`enclosedCastles` is live during a build phase**, so it is legitimately 0 mid-repair.
   Do not assert on it except at a resolution.
+- **Headless Chrome cannot verify anything time-dependent in the client.** A watched
+  match is still on round 0 after 120s of virtual time at 10x speed, because the render
+  loop is barely driven. It catches a crash on load and nothing else — pull the logic out
+  into a testable function instead, as `banners.ts` does.
+- **A test asserting "failing to seal ends your match" needs `withoutContinues`.** That is
+  only true once a player's lives are gone, and nine tests had to say so.
 - **`Int32Array.fill(Number.MAX_SAFE_INTEGER)` truncates to -1**, which silently disabled
   target selection for an entire tuning session.
 - **Measure both seats.** Position carries a real advantage on a symmetric map; a 19-1

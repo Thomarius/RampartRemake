@@ -32,8 +32,18 @@ export interface PlayerState {
   enclosedCastles: number;
   /** Cannons still to be placed this cannon_place phase. */
   cannonsToPlace: number;
-  /** Position in this round's queue; every player draws the same piece at the same position. */
+  /** Position in this round's queue. */
   pieceIndex: number;
+  /** Lives left: failing to seal spends one instead of ending the match. */
+  continuesRemaining: number;
+  /**
+   * The round this player's piece schedule is at, which is not always the match's.
+   *
+   * A continue rewinds it to zero, so the next round deals the small pieces a player
+   * starting again needs to close a ring. For anyone who has never continued it tracks
+   * `round` exactly.
+   */
+  pieceRound: number;
 }
 
 export interface Castle {
@@ -109,6 +119,14 @@ export type MatchEvent =
     }
   | { kind: 'cannon_placed'; tick: number; player: number; cannonId: number; x: number; y: number }
   | { kind: 'round_resolved'; tick: number; round: number; results: RoundResult[] }
+  | {
+      /** A player failed to seal anything and spent a life rather than being knocked out. */
+      kind: 'player_continued';
+      tick: number;
+      player: number;
+      round: number;
+      continuesRemaining: number;
+    }
   | { kind: 'walls_swept'; tick: number; tiles: number[] }
   | { kind: 'player_eliminated'; tick: number; player: number; round: number }
   | { kind: 'game_over'; tick: number; winner: number | null; draw: boolean };
