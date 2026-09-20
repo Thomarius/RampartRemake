@@ -1923,6 +1923,119 @@ their content.
 
 Three copies of "player colour as CSS" became one, in `colours.ts`.
 
+## 10r. Rounds are capped and decided on points — PLANNED, NOT BUILT
+
+Everything above this line is a record of work done. This section is a design agreed in
+advance, and nothing in it exists yet.
+
+### The rules
+
+A match ends after `maxRounds` (default 10), or earlier when one player is left, as now.
+If two or more are still in it at the cap, the highest score among them wins; a tie is a
+shared win. **A player who is out cannot win however many points they had** — being
+eliminated is worse than any score, which is what keeps aggression worth it when behind.
+
+Points are awarded at each build-phase resolution, to every player holding a valid
+territory with at least one castle:
+
+- `wallPoints` (default 2) for each wall tile that player destroyed during the round.
+- `tilePoints` (default 1) for each enclosed tile, multiplied by their castle count.
+
+A player who ends the round without a valid territory scores **nothing for that round**,
+including the damage they dealt. They may spend a continue as usual.
+
+### Why it is expected to work, and what it really changes
+
+The scoring is aimed squarely at the failure mode this project keeps returning to: a
+minimal enclosure that survives forever. Under points, a tight wall around one castle
+scores almost nothing and loses on the clock.
+
+Measured first, because it changes what this feature is. At today's bot play, with the
+default weights:
+
+| | 3 players | 2 players |
+| --- | --- | --- |
+| matches reaching round 10 | 4 of 8 | 7 of 8 |
+| enclosed tiles per player-round | 35 | 42 |
+| castles | 1.16 | 1.35 |
+| territory points | 62 | 87 |
+| walls destroyed, as points | 16.8 -> 34 | 13.9 -> 28 |
+| split | 65% territory / 35% aggression | 76% / 24% |
+
+**The cap is not a tie-breaker, it is the main win condition** — most matches will be
+decided on points rather than by elimination. That makes the scoring formula the game's
+balance, and the elimination rules the exception. Worth holding in mind when tuning: the
+split will drift further toward territory as play improves, because tiles times castles
+grows with the square-ish term while damage stays flat.
+
+### Which walls score
+
+Only a wall belonging to somebody else. `state.owner[i]` already carries the island for
+each wall tile and is cleared to zero when a player is eliminated or a wall is swept, so
+the test is cheap — but it has to be read **before** `resolveImpacts` clears it.
+
+Shooting your own wall must not score, because nothing prevents it: `fire()` has no
+island check at all, so a player could shoot a spare stretch of their own wall for two
+points a tile and rebuild it in the build phase they were spending anyway.
+
+**Recommended: score nothing for it rather than forbidding it.** Since 10n the sweep
+leaves stranded wall standing as an obstacle, and clearing your own rubble out of the
+ground a cannon needs is now a legitimate use of a shot. Forbidding self-fire would take
+that away to fix a problem that scoring zero already fixes. One line either way.
+
+Rubble left by an eliminated player is unowned, so it scores nothing under the same test.
+That is also fine on its own terms: shooting rubble spends a shot without touching a live
+wall, which helps every opponent.
+
+### What has to change
+
+**Config** (`ruleset.scoring`): `maxRounds`, `wallPoints`, `tilePoints`, and
+`scoreDamageOnFailedRound` (default false) — the last so the alternative to the
+forfeit rule can be measured later without a code change.
+
+**Sim.** `PlayerState` gains `score` and a per-round `wallsDestroyed`. `resolveImpacts`
+credits the shooter, reading the victim's owner before clearing it. `resolveRound` scores
+every surviving player, then resets the accumulators. `checkGameOver` gains the cap.
+
+Scoring is measured **after** the sweep and its `applyEnclosure`, so the territory scored
+is the territory that will face the next barrage. A loop that encloses anything can never
+be swept, so in practice this should equal the pre-sweep figure; defining it removes the
+ambiguity rather than relying on that.
+
+**A shared win needs a shape for it.** `MatchState.winner` is `number | null` today.
+Ties are rare but real, so this becomes a list, and the change ripples through the
+snapshot schema, the client's end-of-match banner and several tests. Worth doing
+properly rather than encoding "shared" as a draw, because a shared win is not a draw.
+
+**Lobby settings, built as a mechanism rather than a special case.** Only `maxRounds` is
+settable now, but game speed, team mode and special weapons are coming, so:
+
+- `config/server.default.json` declares what a host may change and within what bounds —
+  which keeps "no rule is hardcoded" true, since the *range* is configuration too.
+- The room validates a host's setting against those bounds, ignores a guest's, and locks
+  them once the match starts, exactly as bot difficulties already work.
+- The match ruleset is the server's with the host's overrides applied, and travels in the
+  snapshot as it always has. Determinism is unaffected.
+- The same control appears in the offline menu, or the two paths diverge and the round
+  limit cannot be felt out offline.
+
+**Client.** Scores in the HUD roster, and the leaderboard carried by the phase
+announcement that already follows a build phase — so it costs no extra pause. The table
+is built by a pure function and tested like `lobbyMarkup` and `bannersFor`, since
+headless Chrome cannot check anything that depends on the clock.
+
+### The part that cannot be tested the usual way, yet
+
+**The bots have no idea what points are.** Their ladder is survival-shaped and their
+ambition is deliberately capped at two castles, because 10d measured that reaching
+further loses — a finding about surviving, not about scoring. Under points, more castles
+is strictly better, so that cap becomes a handicap.
+
+Until the bots play for points, a soak cannot tell whether the weights are right: a
+points-decided match between current bots is won by whoever accidentally held more
+ground. This is the first feature here that ships without the measuring tool that tuned
+everything else, and teaching the bots is a second step rather than a footnote.
+
 ## 11. Deferred (explicitly out of scope for v1)
 
 Team modes (2v2), quick-match / matchmaking queue, accounts and persistence, ranking,
