@@ -1854,10 +1854,33 @@ flight time went from 1.05s to 3.05s at twenty tiles (10k), the apex went from 8
 23. A five-tile lob peaked 10 tiles in the air.
 
 It now scales with the **range** a shot is thrown, which is what a lob's height should
-follow and which survives any amount of balance tuning: `sin(pi * t) * min(range * 0.16,
-4.5)`. At twenty tiles the apex is 3.2 tiles rather than 23. Both styles drew their own
-copy of the old formula; there is now one `shotLift` in `theme.ts`, so the next person to
-tune it has one number to find.
+follow and which survives any amount of balance tuning: `sin(pi * t) * min(range * 0.22,
+5)`. At twenty tiles the apex is 4.4 tiles rather than 23. Both styles drew their own copy
+of the old formula; there is now one `shotLift` in `theme.ts`, so the next person to tune
+it has one number to find.
+
+(The first attempt used 0.16 and a 4.5-tile cap, which watching found too flat once the
+shots were no longer leaving the screen.)
+
+### And they were too slow, which is a different number
+
+Flight time had been tuned against shots per cannon averaged over a whole match, and that
+average hid the problem: **in round one a cannon at the median range of 26 tiles managed
+2.8 shots, and one at 35 tiles only 2.1.** The distribution over eight seeds was 2x:5
+3x:30 4x:1 5x:5 6x:1 — so the long guns were firing twice while the close ones fired six
+times, and the whole thing looked sluggish.
+
+Tuned against the round-one distribution instead, `850/110` becomes **`1600/45`**: 3x:25
+4x:22 5x:1, mean 3.50, **minimum three**. Every cannon now gets its three salvos.
+
+The trade is worth recording, because it is forced by geometry rather than chosen. Shot
+distances in round one run from about 10 tiles to 36, a spread of nearly four to one, so
+no setting gives every cannon exactly three: guaranteeing three at the far end hands the
+close ones four or five. Pushing the mode down to three everywhere needs flight to be
+nearly constant with distance — around `2400/20` — which contradicts section 1.4's rule
+that flight time scales with distance, and makes close shots *slower* than they were.
+Lowering the per-tile term rather than the base is the compromise: **25-38% faster at
+every range beyond twenty tiles, and within 5% of unchanged at point blank.**
 
 ## 11. Deferred (explicitly out of scope for v1)
 

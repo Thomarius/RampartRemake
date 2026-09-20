@@ -6,6 +6,7 @@ import {
   drainEvents,
   step,
   type MatchState,
+  withoutContinues,
   type Rejection,
 } from '@rampart/sim';
 import { describe, expect, it } from 'vitest';
@@ -38,10 +39,15 @@ interface Resolution {
   cannonRoom: number;
 }
 
-function play(seed: number, kinds: Difficulty[], maxTicks = 30_000): Outcome {
+function play(
+  seed: number,
+  kinds: Difficulty[],
+  maxTicks = 30_000,
+  ruleset = defaultRuleset,
+): Outcome {
   const state = createMatch({
     seed,
-    ruleset: defaultRuleset,
+    ruleset,
     terrainConfig: defaultTerrainConfig,
     players: kinds.map((k, i) => ({ name: `${k}${i}`, isBot: true })),
   });
@@ -138,7 +144,16 @@ describe('bot pacing', () => {
   it('slows down as the pieces get harder to place', () => {
     // The piece schedule widens over the match, and a bigger shape takes longer to
     // fit, so the rate should fall of its own accord rather than by a separate rule.
-    const { placementsPerPhase } = play(5, ['marshal', 'marshal'], 30_000);
+    //
+    // Continues off, because a continue rewinds the schedule to round one and the rate
+    // climbs straight back — which is the feature working, and the opposite of what
+    // this measures.
+    const { placementsPerPhase } = play(
+      5,
+      ['marshal', 'marshal'],
+      30_000,
+      withoutContinues(defaultRuleset),
+    );
     // However many phases the match lasts — it is much shorter than it used to be —
     // the last one should be slower going than the first.
     expect(placementsPerPhase.length).toBeGreaterThanOrEqual(3);

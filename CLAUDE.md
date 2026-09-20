@@ -202,7 +202,13 @@ separately. Prefer this to watching; watching is for forming the hypothesis.
   loop is barely driven. It catches a crash on load and nothing else — pull the logic out
   into a testable function instead, as `banners.ts` does.
 - **A test asserting "failing to seal ends your match" needs `withoutContinues`.** That is
-  only true once a player's lives are gone, and nine tests had to say so.
+  only true once a player's lives are gone, and nine tests had to say so. So does anything
+  measuring the piece-size ramp: a continue rewinds the schedule, so the build rate climbs
+  back instead of falling.
+- **Tune shot flight against round one, not the match average.** The average hid long guns
+  firing twice while close ones fired six times. Round-one shot distances span 10 to 36
+  tiles, so no setting gives every cannon exactly three salvos — guaranteeing three at the
+  far end hands the near ones four.
 - **`Int32Array.fill(Number.MAX_SAFE_INTEGER)` truncates to -1**, which silently disabled
   target selection for an entire tuning session.
 - **Measure both seats.** Position carries a real advantage on a symmetric map; a 19-1

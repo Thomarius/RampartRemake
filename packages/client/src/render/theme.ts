@@ -94,10 +94,16 @@ export function playerColour(
  * simply left the top of the screen. A lob's height should follow how far it is thrown,
  * and then it survives any amount of balance tuning.
  */
-const ARC_RISE = 0.16;
+const ARC_RISE = 0.22;
 
-/** Ceiling on the arc, so a shot across a big map still stays on it. */
-const ARC_MAX_TILES = 4.5;
+/**
+ * Ceiling on the arc, so a shot across a big map still stays on it.
+ *
+ * Five tiles is a fifth of the height of the two-player map, which is the shortest one
+ * the game generates — enough to read as a lob, not enough to leave the screen from a
+ * gun near the top edge.
+ */
+const ARC_MAX_TILES = 5;
 
 /** How far above the ground a shot rides, in tiles, at progress `t` through its flight. */
 export function shotLift(shot: Shot, t: number): number {
