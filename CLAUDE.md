@@ -65,9 +65,13 @@ with the sender's seat, so a client cannot act for someone else.
 
 ## The rules, where they differ from expectation
 
-- **Sectors, not islands.** The map is divided into N equal wedges meeting at the centre,
-  separated by a 2-tile channel, rotationally symmetric so no seat is favoured. 56x56
-  grid, ~440 tiles a player, four 2x2 castles each.
+- **One island, copied into a pattern.** A rectangular-ish island is drawn inside a box,
+  trimmed to its land, then stamped into N placements by translation and mirroring — both
+  exact, so every island is pixel-identical at **every** player count. 2-8 players; grids
+  at 2, 4, 6, 8 and rings at 3, 5, 7, from the `patterns` table in
+  `config/terrain.default.json`. ~440 tiles a player, four 2x2 castles each, a 2-tile
+  channel. **The map's size is measured from the island and the pattern, not configured**
+  — 52x25 at two players, 102x48 at eight. See PLAN.md 10l.
 - **A wall must turn its corners.** The escape flood is 8-connected while the wall is
   not, so a diagonal join does not seal. The coastline is worth nothing — water is
   traversable, so enclosure needs a complete loop on land.
@@ -124,28 +128,30 @@ itself. **`widestAffordable` now asks for room first and gives it up a tile at a
 until the plan fits the phase's budget**, so a tight wall is the last rung rather than
 the first. A bot that has finished its plan thickens rather than stops.
 
-Measured, three players, eight seeds, per surviving player-round:
+Two later fixes matter as much (PLAN.md 10m): **one shot per tile**, since a shot
+destroys exactly the tile it hits so a second is always wasted, and **`spareWork`**, so a
+bot whose plan is standing reaches for the next castle or takes in more open ground
+rather than idling. Gunner's build-phase use went 58% to 121% and its room 1.7 to 7.6.
 
-|                         | gunner before | gunner after | marshal before | marshal after |
-| ----------------------- | ------------- | ------------ | -------------- | ------------- |
-| room for another cannon | 0.3           | 1.1          | 0.3            | 5.5           |
-| cannons idle            | 46%           | 19%          | 54%            | 10%           |
-| matches unfinished      | 2 of 3        | 1 of 8       | 3 of 3         | 0 of 8        |
-
-**`ROOM_RADIUS` is 2, and 3 was worse than either** — it buys room for fourteen cannons
-against a reward of three a round, and the wall is too long to repair.
+**`ROOM_RADIUS` is 3.** It was 2 on the wedge map; a compact rectangle makes a tight cut
+cheaper, so the same constant meant something different and had to be re-swept. Every
+number quoted in PLAN.md 10h and 10k was measured on the wedge map and is historical.
 
 ### What is now the top priority
 
-Guns work, so **damage is the binding constraint for the first time**, and nothing in the
-rules bounds it: cannons are indestructible and accumulate every round while repair
-capacity is fixed by the build phase. Matches now run 4-5 rounds and marshal draws two in
-eight, both of them every surviving player eliminated in the same resolution.
-`cannons.maxTotal` exists in the ruleset and is `null`; that is the first thing to try.
+**Two-player balance.** Bots used to fire their whole opening salvo into one wall block;
+one shot per tile is now enforced, which multiplied real damage several times over
+(PLAN.md 10m). Three players is in good order — marshal runs 4.6 rounds over eight seeds,
+none unfinished, 3.14 shots per cannon, wins spread 4/2/2 across the seats. **Two players
+is erratic**: over six seeds, two were decided in round one and one ran to the tick limit.
 
-Still open: gunner holds room for 1.1 cannons where marshal holds 5.5, and eight seeds of
-identical recruits went six wins to seat 2 on a map that is meant to be rotationally
-symmetric.
+Flight time is _not_ the lever — it is correctly calibrated to the original's three shots
+per cannon, and raising it further drops the rate below that. What is unbalanced is the
+damage those three shots now do. The levers are the opening cannon count, the build phase
+against the combat phase, and `cannons.maxTotal`, still `null`.
+
+Three bot competence tests moved from two-seat to three-seat tables, because on two
+players they were measuring this rather than the bot.
 
 ### Measuring the bots
 

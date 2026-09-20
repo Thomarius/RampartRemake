@@ -29,15 +29,23 @@ export function validateConfigBundle(bundle: ConfigBundle): string[] {
   const problems: string[] = [];
   const { ruleset, terrain, art, audio } = bundle;
 
-  const gridArea = terrain.gridWidth * terrain.gridHeight;
-  const landArea = ruleset.players.max * terrain.island.targetAreaTiles;
-  if (landArea > gridArea * MAX_LAND_FRACTION) {
+  // The island must not nearly fill its box. When it does, the coastline is pinned by
+  // the box rather than by the noise and every seed produces the same map — which
+  // generates perfectly and is caught only by a determinism test, if there is one.
+  const boxArea = terrain.island.boxWidth * terrain.island.boxHeight;
+  if (terrain.island.targetAreaTiles > boxArea * MAX_LAND_FRACTION) {
     problems.push(
-      `terrain: ${ruleset.players.max} islands of ${terrain.island.targetAreaTiles} tiles need ` +
-        `${landArea} land tiles, exceeding ${Math.floor(gridArea * MAX_LAND_FRACTION)} ` +
-        `(${MAX_LAND_FRACTION * 100}% of a ${terrain.gridWidth}x${terrain.gridHeight} grid). ` +
-        `Islands would leave no room for the water separating them.`,
+      `terrain: an island of ${terrain.island.targetAreaTiles} tiles fills more than ` +
+        `${MAX_LAND_FRACTION * 100}% of its ${terrain.island.boxWidth}x${terrain.island.boxHeight} ` +
+        `box, leaving the coastline no room to vary between seeds.`,
     );
+  }
+
+  // Every playable count needs somewhere to put the islands.
+  for (let count = ruleset.players.min; count <= ruleset.players.max; count++) {
+    if (!terrain.patterns.some((pattern) => pattern.players === count)) {
+      problems.push(`terrain: no island pattern for ${count} players.`);
+    }
   }
 
   if (art.players.length < ruleset.players.max) {

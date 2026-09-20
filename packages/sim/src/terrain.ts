@@ -1,29 +1,49 @@
-import type { TerrainConfig } from '@rampart/config';
+import type { PatternKind, TerrainConfig } from '@rampart/config';
 
 import { fbm2D } from './noise.js';
 import { NEIGHBOURS_4 } from './grid.js';
-import { cosTurns, rotationFor, sinTurns } from './trig.js';
+import { cosTurns, sinTurns } from './trig.js';
 import { streamFor } from './rng.js';
 import { Terrain } from './types.js';
 
 /**
  * Terrain generation.
  *
- * One island is generated, then rotated into N congruent copies about the map centre.
- * Rotating a finished raster (rather than re-sampling the noise field per island)
- * is what makes the islands the *same* island rather than merely similar ones: for
- * 2 and 4 players the rotation is a multiple of 90 degrees and therefore exact.
+ * One island is generated inside a rectangular box, then copied into N placements laid
+ * out by a pattern. The copies are translated and optionally mirrored, and both are
+ * exact on a square grid — so every island is pixel-identical at every player count,
+ * and the map's size is measured from the arrangement rather than configured.
+ *
+ * The rotational layout this replaces could only be exact at 2 and 4 players, because
+ * a third of a turn has no representation on a square grid. It paid for that with a
+ * slack tile in the channel, a repair pass over rounded castle rings, and four
+ * rejection reasons that no longer have anything to reject.
  */
 
-export interface IslandLayout {
+/** Where one island sits on the map, and how it is turned. */
+export interface Placement {
+  /** Top-left of this island's box, in map coordinates. */
+  x: number;
+  y: number;
+  flipX: boolean;
+  flipY: boolean;
+}
+
+/**
+ * The arrangement of islands, and the map it implies.
+ *
+ * Measured rather than configured: the box and the pattern decide how big the map has
+ * to be, so eight players get the map eight players need instead of being squeezed
+ * into a fixed grid.
+ */
+export interface LayoutPlan {
   playerCount: number;
-  /** Distance from the map centre to a representative point in each sector. */
-  radius: number;
-  /** Angle bisecting the canonical sector, in turns. */
-  angleOffset: number;
-  /** How far the land may reach from the map centre. */
-  extent: number;
-  centres: readonly { readonly x: number; readonly y: number }[];
+  kind: PatternKind;
+  boxWidth: number;
+  boxHeight: number;
+  width: number;
+  height: number;
+  placements: readonly Placement[];
 }
 
 export interface GeneratedCastle {
@@ -41,25 +61,21 @@ export interface GeneratedTerrain {
   islandId: Uint8Array;
   castles: GeneratedCastle[];
   islandAreas: number[];
-  layout: IslandLayout;
+  layout: LayoutPlan;
   /** How many seeds were rejected before one satisfied every constraint. */
   attempts: number;
-  /** Tiles added to reconcile rounding when the rotation is not a quarter turn. */
-  repairedTiles: number;
 }
 
 /** Why a candidate map was thrown away. Tallied and reported when generation fails. */
-export type RejectReason =
-  | 'canonical_area'
-  | 'canonical_castles'
-  | 'island_overlap'
-  | 'island_area'
-  | 'island_split'
-  | 'water_gap'
-  | 'castle_out_of_bounds'
-  | 'castle_ring_off_island'
-  | 'castle_ring_blocked'
-  | 'castle_spacing';
+/**
+ * Why a candidate map was thrown away. Tallied and reported when generation fails.
+ *
+ * Only two remain. Islands are now translated and mirrored copies of one box rather
+ * than rotated ones, and both transforms are exact on a square grid — so equal areas,
+ * a single component each, no overlap and the water gap all hold by construction,
+ * where the rotational layout had to test for them and reject.
+ */
+export type RejectReason = 'canonical_area' | 'canonical_castles';
 
 export class TerrainGenerationError extends Error {}
 
@@ -67,120 +83,202 @@ export class TerrainGenerationError extends Error {}
 const BORDER_MARGIN = 2;
 
 /**
- * Divides the map into N equal sectors meeting at its centre.
+ * Whether two boxes of this size, centred here, stand clear of each other.
  *
- * The players' ground sits side by side, separated by a straight channel a couple of
- * tiles wide, rather than as islands scattered across an ocean. That is both how the
- * original reads and what makes the game work: a shot's flight time scales with
- * distance, so an ocean between players means slow, weak artillery and matches that
- * will not end.
- *
- * The whole map is still invariant under a 1/N turn, so no player has a positional
- * advantage.
+ * Axis separation rather than distance: they are rectangles, so they miss only if one
+ * clears the other on an axis entirely. Requiring the gap on that axis is what makes
+ * the water between islands at least as wide as configured, by construction.
  */
-export function computeIslandLayout(config: TerrainConfig, playerCount: number): IslandLayout {
-  const halfW = config.gridWidth / 2;
-  const halfH = config.gridHeight / 2;
-  const reach = Math.min(halfW, halfH) - BORDER_MARGIN;
-  if (reach <= config.island.minWaterGapTiles) {
-    throw new TerrainGenerationError(
-      `a ${config.gridWidth}x${config.gridHeight} grid has no room for ${playerCount} sectors ` +
-        `separated by ${config.island.minWaterGapTiles} tiles of water`,
-    );
-  }
-
-  // Rough check that a sector could hold the requested area at all: a wedge of the
-  // inscribed circle, less the channels down each side.
-  const wedge = (Math.PI * reach * reach) / playerCount;
-  if (config.island.targetAreaTiles > wedge) {
-    throw new TerrainGenerationError(
-      `an island of ${config.island.targetAreaTiles} tiles does not fit in one of ` +
-        `${playerCount} sectors of a ${config.gridWidth}x${config.gridHeight} grid ` +
-        `(about ${Math.floor(wedge)} tiles each). Shrink island.targetAreaTiles or grow the grid.`,
-    );
-  }
-
-  const angleOffset = 0.5 / playerCount;
-  const cx = (config.gridWidth - 1) / 2;
-  const cy = (config.gridHeight - 1) / 2;
-  const radius = reach * 0.6;
-
-  const centres = [];
-  for (let i = 0; i < playerCount; i++) {
-    const turns = angleOffset + i / playerCount;
-    centres.push({ x: cx + radius * sinTurns(turns), y: cy - radius * cosTurns(turns) });
-  }
-
-  return { playerCount, radius, angleOffset, extent: reach, centres };
-}
-
-/** Unit vector along an angle given in turns, in screen coordinates. */
-function direction(turns: number): { x: number; y: number } {
-  return { x: sinTurns(turns), y: -cosTurns(turns) };
+function boxesClear(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  boxW: number,
+  boxH: number,
+  gap: number,
+): boolean {
+  return Math.abs(ax - bx) >= boxW + gap || Math.abs(ay - by) >= boxH + gap;
 }
 
 /**
- * The canonical sector's field: high in the middle of the wedge, falling away at the
- * outer edge, and hard-cut along the two channels.
+ * Mirrors chosen so the arrangement reads as a pattern rather than as one island
+ * stamped N times.
  *
- * The channel is a hard cut rather than part of the noise, so its width is exactly
- * what the configuration asks for. The noise only roughens the outer coastline, which
- * is the edge nobody has to fight across.
+ * Reflection is exact on a square grid, so this is free: the islands stay congruent
+ * and equal in area whichever way they are turned. A quarter turn would be exact too,
+ * but it swaps the box's width and height and would complicate every placement, for
+ * variety that mirroring already provides.
  */
-function buildField(
+function mirrorFor(column: number, row: number): { flipX: boolean; flipY: boolean } {
+  return { flipX: column % 2 === 1, flipY: row % 2 === 1 };
+}
+
+/** Islands in rows: tighter than a ring, at the cost of edge and middle seats differing. */
+function gridPlacements(
+  playerCount: number,
+  cols: number,
+  boxW: number,
+  boxH: number,
+  gap: number,
+): { x: number; y: number; flipX: boolean; flipY: boolean }[] {
+  const out = [];
+  for (let i = 0; i < playerCount; i++) {
+    const column = i % cols;
+    const row = Math.floor(i / cols);
+    out.push({
+      x: column * (boxW + gap),
+      y: row * (boxH + gap),
+      ...mirrorFor(column, row),
+    });
+  }
+  return out;
+}
+
+/**
+ * Islands on a circle, so every player has the same two neighbours at the same
+ * distance.
+ *
+ * The radius is the smallest at which no two boxes touch, found by walking outward a
+ * tile at a time. That is a loop rather than a formula because the boxes are
+ * axis-aligned while the centres are not, so how much room a given radius buys depends
+ * on where the angles happen to fall.
+ */
+function ringPlacements(
+  playerCount: number,
+  boxW: number,
+  boxH: number,
+  gap: number,
+): { x: number; y: number; flipX: boolean; flipY: boolean }[] {
+  const limit = (boxW + boxH + gap) * playerCount;
+  for (let radius = 1; radius <= limit; radius++) {
+    const centres = [];
+    for (let i = 0; i < playerCount; i++) {
+      const turns = i / playerCount;
+      centres.push({
+        x: Math.round(radius * sinTurns(turns)),
+        y: Math.round(-radius * cosTurns(turns)),
+      });
+    }
+
+    let clear = true;
+    for (let a = 0; a < centres.length && clear; a++) {
+      for (let b = a + 1; b < centres.length; b++) {
+        const first = centres[a] as { x: number; y: number };
+        const second = centres[b] as { x: number; y: number };
+        if (!boxesClear(first.x, first.y, second.x, second.y, boxW, boxH, gap)) {
+          clear = false;
+          break;
+        }
+      }
+    }
+    if (!clear) continue;
+
+    // Mirror by which side of the ring an island sits on, which is the closest thing
+    // to facing the centre that an exact transform can manage.
+    return centres.map((c) => ({
+      x: c.x - Math.floor(boxW / 2),
+      y: c.y - Math.floor(boxH / 2),
+      flipX: c.x > 0,
+      flipY: c.y > 0,
+    }));
+  }
+  throw new TerrainGenerationError(
+    `no ring radius separates ${playerCount} islands of ${boxW}x${boxH} by ${gap} tiles`,
+  );
+}
+
+/**
+ * Lays out the islands and measures the map that holds them.
+ *
+ * The map is not configured. Its size falls out of the island box and the pattern,
+ * which is what lets one configuration serve two players and eight without either
+ * being cramped or swimming in ocean.
+ */
+export function planLayout(
   config: TerrainConfig,
-  layout: IslandLayout,
-  seed: number,
-  slack: number,
-): Float64Array {
-  const { gridWidth: w, gridHeight: h } = config;
-  const cx = (w - 1) / 2;
-  const cy = (h - 1) / 2;
+  playerCount: number,
+  /**
+   * The island's actual extent, which is smaller than the box it was drawn in.
+   *
+   * Spacing the boxes instead was wrong in a way only a test caught: an island fills
+   * about two thirds of its box, so boxes two tiles apart put eight or ten tiles of
+   * open water between the land. Section 1.2 rules that out — flight time scales with
+   * distance, and an ocean between players means slow artillery and matches that will
+   * not end. Measuring the land is what keeps the channel the width it was asked for.
+   */
+  islandWidth: number = config.island.boxWidth,
+  islandHeight: number = config.island.boxHeight,
+): LayoutPlan {
+  const pattern = config.patterns.find((p) => p.players === playerCount);
+  if (pattern === undefined) {
+    throw new TerrainGenerationError(
+      `no island pattern is configured for ${playerCount} players ` +
+        `(patterns exist for ${config.patterns.map((p) => p.players).join(', ')})`,
+    );
+  }
+
+  const boxW = islandWidth;
+  const boxH = islandHeight;
+  const gap = config.island.minWaterGapTiles;
+
+  const raw =
+    pattern.kind === 'grid'
+      ? gridPlacements(playerCount, pattern.cols as number, boxW, boxH, gap)
+      : ringPlacements(playerCount, boxW, boxH, gap);
+
+  // Shift the arrangement so it sits inside the border margin, then measure it.
+  let minX = Infinity;
+  let minY = Infinity;
+  for (const place of raw) {
+    minX = Math.min(minX, place.x);
+    minY = Math.min(minY, place.y);
+  }
+  const placements = raw.map((place) => ({
+    ...place,
+    x: place.x - minX + BORDER_MARGIN,
+    y: place.y - minY + BORDER_MARGIN,
+  }));
+
+  let width = 0;
+  let height = 0;
+  for (const place of placements) {
+    width = Math.max(width, place.x + boxW + BORDER_MARGIN);
+    height = Math.max(height, place.y + boxH + BORDER_MARGIN);
+  }
+
+  return {
+    playerCount,
+    kind: pattern.kind,
+    boxWidth: boxW,
+    boxHeight: boxH,
+    width,
+    height,
+    placements,
+  };
+}
+
+/**
+ * The island's field: high in the middle of the box, falling away towards its edges.
+ *
+ * Distance from the box edge, roughened by noise. Raising the sea level then eats the
+ * island inward from every side at once, which is what makes the result read as a
+ * rectangle with a coastline rather than as a circle or a blob.
+ */
+function buildField(config: TerrainConfig, seed: number): Float64Array {
+  const w = config.island.boxWidth;
+  const h = config.island.boxHeight;
   const field = new Float64Array(w * h);
-
-  const half = 0.5 / layout.playerCount;
-  const inward = direction(layout.angleOffset);
-  // Inward normals of the two channel edges, oriented to point into the sector.
-  const edges = [layout.angleOffset - half, layout.angleOffset + half].map((turns) => {
-    const along = direction(turns);
-    const normal = { x: -along.y, y: along.x };
-    const facing = normal.x * inward.x + normal.y * inward.y;
-    return facing >= 0 ? normal : { x: -normal.x, y: -normal.y };
-  });
-
-  // Half the channel on each side, plus slack when the rotation is not a quarter
-  // turn: 120 degrees rounds, and rounding a channel edge inward would close the gap
-  // below what was asked for.
-  const clearance = config.island.minWaterGapTiles / 2 + slack;
   const roughness = config.island.coastlineRoughness * 6;
-  const reach = layout.extent;
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const dx = x - cx;
-      const dy = y - cy;
-
-      // Inside the wedge, and clear of both channels?
-      let toEdge = Infinity;
-      for (const normal of edges) toEdge = Math.min(toEdge, dx * normal.x + dy * normal.y);
-      if (layout.playerCount === 2)
-        toEdge =
-          dx * (edges[0] as { x: number; y: number }).x +
-          dy * (edges[0] as { x: number; y: number }).y;
-
-      const radial = Math.sqrt(dx * dx + dy * dy);
-      if (toEdge < clearance || radial > reach) {
-        field[y * w + x] = -1e9;
-        continue;
-      }
-
+      const toEdge = Math.min(x, y, w - 1 - x, h - 1 - y);
       const raw = fbm2D(x, y, seed, {
         octaves: config.island.noiseOctaves,
         frequency: config.island.noiseFrequency,
       });
-      // Distance from the outer rim, roughened. Higher is further inland, so raising
-      // the sea level pulls the coastline in from the outside only.
-      field[y * w + x] = reach - radial + (raw - 0.5) * roughness;
+      field[y * w + x] = toEdge + (raw - 0.5) * roughness;
     }
   }
   return field;
@@ -413,203 +511,92 @@ function placeCastles(
   return chosen.map((c) => ({ x: c.x, y: c.y }));
 }
 
-/** Number of 4-connected components made of tiles belonging to one island. */
-function componentCount(islandId: Uint8Array, id: number, w: number, h: number): number {
-  const seen = new Uint8Array(islandId.length);
-  const queue = new Int32Array(islandId.length);
-  let components = 0;
-
-  for (let start = 0; start < islandId.length; start++) {
-    if (islandId[start] !== id || seen[start] === 1) continue;
-    components++;
-    let head = 0;
-    let tail = 0;
-    queue[tail++] = start;
-    seen[start] = 1;
-    while (head < tail) {
-      const i = queue[head++] as number;
-      const x = i % w;
-      const y = (i - x) / w;
-      for (const [ox, oy] of NEIGHBOURS_4) {
-        const nx = x + ox;
-        const ny = y + oy;
-        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-        const ni = ny * w + nx;
-        if (islandId[ni] !== id || seen[ni] === 1) continue;
-        seen[ni] = 1;
-        queue[tail++] = ni;
-      }
-    }
-  }
-  return components;
-}
-
-/** True when no two islands come within `gap` tiles of each other. */
-function waterGapHolds(islandId: Uint8Array, w: number, h: number, gap: number): boolean {
-  const gap2 = gap * gap;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const id = islandId[y * w + x] as number;
-      if (id === 0) continue;
-      for (let oy = -gap; oy <= gap; oy++) {
-        const ny = y + oy;
-        if (ny < 0 || ny >= h) continue;
-        for (let ox = -gap; ox <= gap; ox++) {
-          const nx = x + ox;
-          if (nx < 0 || nx >= w) continue;
-          const other = islandId[ny * w + nx] as number;
-          if (other === 0 || other === id) continue;
-          if (ox * ox + oy * oy < gap2) return false;
-        }
-      }
-    }
-  }
-  return true;
-}
-
 type Attempt =
   { ok: true; value: Omit<GeneratedTerrain, 'attempts'> } | { ok: false; reason: RejectReason };
 
-function tryGenerate(
-  config: TerrainConfig,
-  layout: IslandLayout,
-  playerCount: number,
-  seed: number,
-): Attempt {
-  const w = config.gridWidth;
-  const h = config.gridHeight;
+function tryGenerate(config: TerrainConfig, playerCount: number, seed: number): Attempt {
+  const drawW = config.island.boxWidth;
+  const drawH = config.island.boxHeight;
 
-  // Quarter turns are exact, so the rotated copies are pixel-identical. A third of a
-  // turn is not, and the difference has to be absorbed somewhere.
-  const exactRotation = playerCount === 1 || playerCount === 2 || playerCount === 4;
-  const field = buildField(config, layout, seed, exactRotation ? 0 : 1);
+  // One island, drawn inside the generation box.
+  const field = buildField(config, seed);
   const threshold = thresholdForArea(field, config.island.targetAreaTiles);
-
-  const canonical = new Uint8Array(w * h);
-  for (let i = 0; i < canonical.length; i++) {
-    canonical[i] = (field[i] as number) > threshold ? Terrain.Land : Terrain.Water;
+  const drawn = new Uint8Array(drawW * drawH);
+  for (let i = 0; i < drawn.length; i++) {
+    drawn[i] = (field[i] as number) > threshold ? Terrain.Land : Terrain.Water;
   }
 
-  largestComponent(canonical, w, h);
-  erode(canonical, w, h, config.island.erosionPasses);
-  const canonicalArea = largestComponent(canonical, w, h);
+  largestComponent(drawn, drawW, drawH);
+  erode(drawn, drawW, drawH, config.island.erosionPasses);
+  const area = largestComponent(drawn, drawW, drawH);
 
-  const tolerance = config.island.areaTolerance;
   const target = config.island.targetAreaTiles;
-  if (Math.abs(canonicalArea - target) > target * tolerance)
+  if (Math.abs(area - target) > target * config.island.areaTolerance) {
     return { ok: false, reason: 'canonical_area' };
+  }
 
-  const dist = distanceToWater(canonical, w, h);
-  const castleSpots = placeCastles(canonical, dist, w, h, config);
-  if (castleSpots === null) return { ok: false, reason: 'canonical_castles' };
+  // Trim to the land. The box is a frame to draw in — it needs slack so the coastline
+  // is shaped by the noise rather than by the frame — but the layout has to be spaced
+  // on the island itself, or the slack becomes ocean between the players.
+  let minX = drawW;
+  let minY = drawH;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < drawH; y++) {
+    for (let x = 0; x < drawW; x++) {
+      if (drawn[y * drawW + x] !== Terrain.Land) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+  const boxW = maxX - minX + 1;
+  const boxH = maxY - minY + 1;
 
-  // Replicate the finished raster into N rotated copies.
-  const cx = (w - 1) / 2;
-  const cy = (h - 1) / 2;
-  const terrain = new Uint8Array(w * h);
-  const islandId = new Uint8Array(w * h);
-
-  for (let player = 0; player < playerCount; player++) {
-    const { cos, sin } = rotationFor(-player / playerCount); // inverse: destination -> source
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const dx = x - cx;
-        const dy = y - cy;
-        const sx = Math.round(cx + dx * cos - dy * sin);
-        const sy = Math.round(cy + dx * sin + dy * cos);
-        if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
-        if (canonical[sy * w + sx] !== Terrain.Land) continue;
-        const di = y * w + x;
-        if (islandId[di] !== 0) return { ok: false, reason: 'island_overlap' };
-        terrain[di] = Terrain.Land;
-        islandId[di] = player + 1;
-      }
+  const canonical = new Uint8Array(boxW * boxH);
+  for (let y = 0; y < boxH; y++) {
+    for (let x = 0; x < boxW; x++) {
+      canonical[y * boxW + x] = drawn[(y + minY) * drawW + x + minX] as number;
     }
   }
 
-  // Rotate the castle sites the same way.
+  const dist = distanceToWater(canonical, boxW, boxH);
+  const castleSpots = placeCastles(canonical, dist, boxW, boxH, config);
+  if (castleSpots === null) return { ok: false, reason: 'canonical_castles' };
+
+  const plan = planLayout(config, playerCount, boxW, boxH);
+
+  // Stamp it into every placement. Mirroring is exact, so these are the same island
+  // tile for tile — equal areas and a single component each need no checking.
+  const w = plan.width;
+  const h = plan.height;
+  const terrain = new Uint8Array(w * h);
+  const islandId = new Uint8Array(w * h);
   const [castleW, castleH] = config.castles.footprint;
-  const ring = config.startingWall.ringRadiusTiles;
-  const minSpacing2 = config.castles.minSpacingTiles * config.castles.minSpacingTiles;
   const castles: GeneratedCastle[] = [];
 
   for (let player = 0; player < playerCount; player++) {
-    const { cos, sin } = rotationFor(player / playerCount);
-    const mine: GeneratedCastle[] = [];
+    const place = plan.placements[player] as Placement;
+    /** Island coordinates to map coordinates, through this placement's mirrors. */
+    const mapX = (bx: number): number => place.x + (place.flipX ? boxW - 1 - bx : bx);
+    const mapY = (by: number): number => place.y + (place.flipY ? boxH - 1 - by : by);
+
+    for (let by = 0; by < boxH; by++) {
+      for (let bx = 0; bx < boxW; bx++) {
+        if (canonical[by * boxW + bx] !== Terrain.Land) continue;
+        const i = mapY(by) * w + mapX(bx);
+        terrain[i] = Terrain.Land;
+        islandId[i] = player + 1;
+      }
+    }
 
     for (const spot of castleSpots) {
-      const ccx = spot.x + (castleW - 1) / 2 - cx;
-      const ccy = spot.y + (castleH - 1) / 2 - cy;
-      const rx = cx + ccx * cos - ccy * sin;
-      const ry = cy + ccx * sin + ccy * cos;
-      const x = Math.round(rx - (castleW - 1) / 2);
-      const y = Math.round(ry - (castleH - 1) / 2);
-      if (x - ring < 0 || y - ring < 0 || x + castleW + ring > w || y + castleH + ring > h) {
-        return { ok: false, reason: 'castle_out_of_bounds' };
-      }
-      mine.push({ islandId: player + 1, x, y, w: castleW, h: castleH });
+      // A mirror reflects the footprint too, so take the far corner when flipped.
+      const x = mapX(place.flipX ? spot.x + castleW - 1 : spot.x);
+      const y = mapY(place.flipY ? spot.y + castleH - 1 : spot.y);
+      castles.push({ islandId: player + 1, x, y, w: castleW, h: castleH });
     }
-
-    // Spacing cannot be repaired, only rejected.
-    const ringClearance = Math.max(castleW, castleH) + ring;
-    for (let a = 0; a < mine.length; a++) {
-      for (let b = a + 1; b < mine.length; b++) {
-        const first = mine[a] as GeneratedCastle;
-        const second = mine[b] as GeneratedCastle;
-        const dx = first.x - second.x;
-        const dy = first.y - second.y;
-        if (dx * dx + dy * dy < minSpacing2) return { ok: false, reason: 'castle_spacing' };
-        // Every castle must be able to build a complete ring, which means no other
-        // castle may stand on any tile of it.
-        if (!ringsClear(first.x, first.y, second.x, second.y, ringClearance)) {
-          return { ok: false, reason: 'castle_ring_blocked' };
-        }
-      }
-    }
-    castles.push(...mine);
-  }
-
-  // Repair the rounding cost of rotation.
-  //
-  // A 120-degree rotation has no exact representation on a square grid, so a tile
-  // of a castle's starting-ring block can land on water even though the canonical
-  // island had it covered. Demanding the canonical island survive every rotation
-  // instead would mean islands roughly twice this size, for a handful of tiles.
-  // Filling them keeps islands within the configured area tolerance and guarantees
-  // what actually matters: every castle is a viable opening choice.
-  let repaired = 0;
-  for (const castle of castles) {
-    for (let y = castle.y - ring; y < castle.y + castle.h + ring; y++) {
-      for (let x = castle.x - ring; x < castle.x + castle.w + ring; x++) {
-        const i = y * w + x;
-        const current = islandId[i] as number;
-        if (current === castle.islandId) continue;
-        if (current !== 0) return { ok: false, reason: 'castle_ring_off_island' };
-        terrain[i] = Terrain.Land;
-        islandId[i] = castle.islandId;
-        repaired++;
-      }
-    }
-  }
-
-  const islandAreas: number[] = new Array(playerCount).fill(0);
-  for (let i = 0; i < islandId.length; i++) {
-    const id = islandId[i] as number;
-    if (id !== 0) islandAreas[id - 1] = (islandAreas[id - 1] as number) + 1;
-  }
-
-  for (let player = 0; player < playerCount; player++) {
-    const area = islandAreas[player] as number;
-    if (Math.abs(area - canonicalArea) > canonicalArea * tolerance) {
-      return { ok: false, reason: 'island_area' };
-    }
-    if (componentCount(islandId, player + 1, w, h) !== 1) {
-      return { ok: false, reason: 'island_split' };
-    }
-  }
-
-  if (!waterGapHolds(islandId, w, h, config.island.minWaterGapTiles)) {
-    return { ok: false, reason: 'water_gap' };
   }
 
   return {
@@ -620,9 +607,8 @@ function tryGenerate(
       terrain,
       islandId,
       castles,
-      islandAreas,
-      layout,
-      repairedTiles: repaired,
+      islandAreas: new Array(playerCount).fill(area) as number[],
+      layout: plan,
     },
   };
 }
@@ -637,12 +623,11 @@ export function generateTerrain(
   playerCount: number,
   seed: number,
 ): GeneratedTerrain {
-  const layout = computeIslandLayout(config, playerCount);
   const rng = streamFor(seed, 'terrain');
   const tally = new Map<RejectReason, number>();
 
   for (let attempt = 0; attempt < config.generation.maxRetries; attempt++) {
-    const result = tryGenerate(config, layout, playerCount, rng.nextU32());
+    const result = tryGenerate(config, playerCount, rng.nextU32());
     if (result.ok) return { ...result.value, attempts: attempt + 1 };
     tally.set(result.reason, (tally.get(result.reason) ?? 0) + 1);
   }

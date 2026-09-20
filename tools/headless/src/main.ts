@@ -13,6 +13,7 @@ import {
   drainEvents,
   generateTerrain,
   hashMatchState,
+  planLayout,
   renderAscii,
   step,
   type MatchState,
@@ -269,11 +270,13 @@ if (args.map) {
   }
   console.log(
     `${args.players}p seed ${args.seed} — areas ${map.islandAreas.join('/')}, ` +
-      `${map.attempts} attempt(s), ${map.repairedTiles} tile(s) repaired`,
+      `${map.width}x${map.height}, ${map.attempts} attempt(s)`,
   );
   console.log(renderAscii({ ...map, structure }));
   process.exit(0);
 }
+
+const plan = planLayout(bundle.terrain, args.players);
 
 /** Which tier sits in each seat, repeating the list if it is shorter than the table. */
 const seatTier = (p: number): Difficulty =>
@@ -282,7 +285,7 @@ const table = Array.from({ length: args.players }, (_, p) => seatTier(p));
 
 console.log(
   `running ${args.matches} match(es), ${args.players} bots (${table.join(', ')}), ` +
-    `${bundle.terrain.gridWidth}x${bundle.terrain.gridHeight} grid\n`,
+    `${plan.width}x${plan.height} grid\n`,
 );
 
 const started = Date.now();

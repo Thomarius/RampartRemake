@@ -1552,6 +1552,122 @@ the old tuning and was measuring the ruleset rather than the bot; what replaced 
 competence floor — both gunners survive the first round — which balance work should not
 move.
 
+## 10l. Rectangular islands in a pattern, and the map measured from them
+
+Implemented. The wedge layout is gone.
+
+### One island, copied
+
+An island is drawn inside a rectangular generation box, **trimmed to its actual land**,
+then stamped into N placements by translation and mirroring. Both transforms are exact
+on a square grid, so every island is pixel-identical at every player count — where the
+rotational layout could only manage that at 2 and 4, because a third of a turn has no
+representation on a square grid.
+
+What that deleted: the `exactRotation` special case, the slack tile in the channel, the
+`repairedTiles` repair pass, and four of the six rejection reasons. `island_overlap`,
+`island_area`, `island_split` and `water_gap` are now true by construction, so
+`componentCount` and `waterGapHolds` went with them. Only `canonical_area` and
+`canonical_castles` remain. `terrain.ts` is shorter than it was despite gaining the
+pattern engine.
+
+### Patterns, and why they are configuration
+
+`config/terrain.default.json` carries one pattern per player count: a grid for 2, 4, 6
+and 8, a ring for 3, 5 and 7. A ring puts every player the same distance from the same
+two neighbours, which is the uniform answer and the right one for odd counts; a grid is
+tighter but gives edge and middle seats different neighbourhoods. Exact fairness is not
+required — the point of 6 and 8 is team modes, which rebalance by how the teams are
+drawn — so where the two differ the tighter map wins.
+
+Measured, seed 1: 2p 52x25, 3p 55x49, 4p 52x48, 6p 77x48, 8p 102x48, with rings at 5 and
+7 costing noticeably more. **Both focus counts came out smaller than the 56x56 they
+replaced**, and every count generates on the first attempt with exactly equal areas.
+
+Moving 5 or 7 to a grid is a JSON edit, which is the point of the table being config.
+
+### The map is measured, and it has to be measured from the land
+
+The map's size is not configured. It falls out of the island and the pattern, which is
+what lets one configuration serve two players and eight without either being cramped or
+swimming in ocean.
+
+**Measure the island, not the box it was drawn in.** The first attempt spaced the boxes
+by the channel width, which is wrong by the amount of box an island does not fill —
+about a third — so eight or ten tiles of open water sat between the land. Section 1.2
+rules that out: flight time scales with distance, and an ocean between players means
+slow artillery and matches that will not end. The channel test caught it by reporting
+zero channel tiles. The box is a frame that needs slack so the coastline is shaped by
+noise rather than by the frame; the layout is spaced on the trimmed land.
+
+That slack is now guarded at startup: an island filling more than 80% of its box gets a
+configuration error, because a coastline pinned by the frame produces the same map for
+every seed — the 10g trap, which generates perfectly and looks fine in one screenshot.
+
+### It reset the balance baseline, as expected
+
+A compact rectangle makes a tight cut cheaper than a wedge did, so `ROOM_RADIUS` — tuned
+on wedges at 2 — was mistuned. At 3 it recovers: marshal's room for another cannon went
+1.8 back to 7.3. Every number in 10h and 10k was measured on the wedge map and is
+historical.
+
+## 10m. Two bot faults found by watching, and what fixing them exposed
+
+### A shot destroys exactly the tile it hits, so two shots at one tile is one wasted
+
+Observed while spectating: a bot's whole opening salvo went into a single block. The
+target list was consumed only when a tile stopped being wall, so with a three-second
+flight and a gun firing every 150ms, every shot in the air was aimed at the same place.
+
+Targets are now taken off the list when fired at, and any tile with a shot already
+inbound — **anybody's** shot, since a block an opponent is about to remove does not need
+removing twice — is skipped.
+
+### Idling in a build phase is almost never right
+
+Also observed: bots stopping with time left. `thickenTargets` could come back empty and
+the bot would stand down for the rest of the phase.
+
+The ladder now ends in `spareWork`: reach for the next castle, and failing that take in
+more open ground for the cannons the wall will earn. **Affordability is deliberately not
+consulted.** It governs whether to commit to a plan over staying alive, which is the
+gamble 10d found you must not take; spending time nobody else wants is not that gamble.
+A part-built extension of a live wall touches territory, so the sweep leaves it standing
+and the work carries into the next phase — which is the difference between an expansion
+that takes two rounds and one that never happens.
+
+Measured, three players, eight seeds:
+
+| | before | after |
+| --- | --- | --- |
+| gunner room for another cannon | 1.7 | **7.6** |
+| gunner build phase used | 58% | **121%** |
+| gunner cannons idle | 30% | **16%** |
+| marshal build phase used | 88% | **101%** |
+| marshal cannons idle | 38% | **31%** |
+
+Three players is in good order: marshal runs 4.6 rounds over eight seeds with none
+unfinished, 3.14 shots per cannon, and wins spread 4/2/2 across the three seats.
+
+### What it exposed, and it is not small
+
+**Fixing the targeting multiplied real damage several times over.** The rate was already
+calibrated to the original's three shots per cannon — but three shots that each remove a
+block is a different weapon from three shots that remove one between them.
+
+Two-player matches are now erratic in a way three-player ones are not: over six seeds,
+two were decided in **round one**, one ran to the tick limit, and the rest scattered
+between. Raising flight time to 1050/135 stops the round-one eliminations but drops the
+rate to 1.4-2.6 shots per cannon, well under the original's three — so flight time is the
+wrong lever. It is correctly set; the damage those shots do is what is now unbalanced.
+
+The levers that remain are the opening cannon count, the build phase length against the
+combat phase, and `cannons.maxTotal`, which is still `null`. That is the balance pass,
+and two-player is where it should start.
+
+Three bot competence tests were moved from two-seat to three-seat tables. Run on two
+players they were measuring this imbalance rather than the bot.
+
 ## 11. Deferred (explicitly out of scope for v1)
 
 Team modes (2v2), quick-match / matchmaking queue, accounts and persistence, ranking,

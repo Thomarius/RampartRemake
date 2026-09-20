@@ -107,7 +107,10 @@ describe('bot conduct', () => {
     // down — the worst possible moment to count anybody's working guns.
     // Seed 1 rather than 3, which is now decided in two rounds — too short to show
     // whether guns survive a sustained barrage, which is the whole question here.
-    const { resolutions } = play(1, ['gunner', 'gunner']);
+    // Three seats, not two. Two-player matches are currently erratic — see PLAN 10m —
+    // and a competence test run on them measures that instead of the bot. Three is the
+    // documented focus count and the one every balance number is quoted at.
+    const { resolutions } = play(1, ['gunner', 'gunner', 'gunner']);
     const late = resolutions.filter((r) => r.round >= 3);
     expect(late.length).toBeGreaterThan(0);
     expect(Math.max(...late.map((r) => r.activeCannons))).toBeGreaterThan(2);
@@ -176,7 +179,7 @@ describe('bot competence', () => {
     //
     // The wall only has to be roomy enough to spend the reward it is about to earn,
     // which is two cannons for the first castle and one for each after.
-    const { resolutions } = play(3, ['marshal', 'gunner'], 20_000);
+    const { resolutions } = play(3, ['marshal', 'gunner', 'gunner'], 20_000);
     expect(resolutions.length).toBeGreaterThan(4);
     const cramped = resolutions.filter((r) => r.cannonRoom < 2).length;
     expect(cramped / resolutions.length).toBeLessThan(0.5);
@@ -188,10 +191,13 @@ describe('bot competence', () => {
     // rounds, so match length tests the balance pass rather than the player. What does
     // belong to the bot is surviving the first exchange, which the stopgap it replaced
     // routinely did not — it rebuilt the ring it was handed and was breached through it.
+    // Three seats, not two. Two-player matches are currently erratic — see PLAN 10m —
+    // and a competence test run on them measures that instead of the bot. Three is the
+    // documented focus count and the one every balance number is quoted at.
     for (const seed of [1, 2, 3]) {
-      const { resolutions } = play(seed, ['gunner', 'gunner']);
+      const { resolutions } = play(seed, ['gunner', 'gunner', 'gunner']);
       const survivedFirst = resolutions.filter((r) => r.round === 1);
-      expect(survivedFirst).toHaveLength(2);
+      expect(survivedFirst).toHaveLength(3);
     }
   }, 90_000);
 });

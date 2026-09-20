@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { NEIGHBOURS_4 } from './grid.js';
 import {
   TerrainGenerationError,
-  computeIslandLayout,
+  planLayout,
   generateTerrain,
   type GeneratedTerrain,
 } from './terrain.js';
@@ -39,29 +39,20 @@ function componentsOf(map: GeneratedTerrain, islandId: number): number {
   return components;
 }
 
-describe.each([2, 3, 4])('terrain for %i players', (playerCount) => {
+describe.each([2, 3, 4, 5, 6, 7, 8])('terrain for %i players', (playerCount) => {
   const maps = SEEDS.map((seed) => generateTerrain(defaultTerrainConfig, playerCount, seed));
 
   it('generates a map for every seed', () => {
     expect(maps).toHaveLength(SEEDS.length);
   });
 
-  it('only needs rounding repairs when the rotation is not a quarter turn', () => {
-    for (const map of maps) {
-      if (playerCount === 2 || playerCount === 4) expect(map.repairedTiles).toBe(0);
-      else expect(map.repairedTiles).toBeLessThan(40);
-    }
-  });
-
-  it('gives every player one island of near-identical size', () => {
+  it('gives every player one island of exactly identical size', () => {
+    // Exactly, at every count. Islands are translated and mirrored copies of one box
+    // and both transforms are exact on a square grid, where the rotational layout this
+    // replaces could only manage it at 2 and 4 players.
     for (const map of maps) {
       expect(map.islandAreas).toHaveLength(playerCount);
-      const min = Math.min(...map.islandAreas);
-      const max = Math.max(...map.islandAreas);
-      // 2 and 4 players rotate by exact quarter turns, so those must match exactly.
-      // 3 players rotate by 120 degrees, which no square grid represents exactly.
-      if (playerCount === 2 || playerCount === 4) expect(min).toBe(max);
-      else expect((max - min) / max).toBeLessThan(0.05);
+      expect(Math.min(...map.islandAreas)).toBe(Math.max(...map.islandAreas));
     }
   });
 
@@ -190,45 +181,50 @@ describe('terrain determinism', () => {
 });
 
 describe('island layout', () => {
-  it('divides the map into equal sectors meeting at the centre', () => {
-    const layout = computeIslandLayout(defaultTerrainConfig, 4);
-    expect(layout.centres).toHaveLength(4);
-    const cx = (defaultTerrainConfig.gridWidth - 1) / 2;
-    const cy = (defaultTerrainConfig.gridHeight - 1) / 2;
-    for (const centre of layout.centres) {
-      expect(Math.hypot(centre.x - cx, centre.y - cy)).toBeCloseTo(layout.radius, 6);
+  it('measures the map from the pattern rather than being told its size', () => {
+    // Two players side by side need a wide, short map; eight need a much larger one.
+    // Neither is configured — both fall out of the island box and the arrangement.
+    const small = planLayout(defaultTerrainConfig, 2);
+    const large = planLayout(defaultTerrainConfig, 8);
+    expect(large.width * large.height).toBeGreaterThan(small.width * small.height);
+    for (const count of [2, 3, 4, 5, 6, 7, 8]) {
+      const plan = planLayout(defaultTerrainConfig, count);
+      expect(plan.placements).toHaveLength(count);
     }
   });
 
-  it('explains itself when an island cannot fit in its sector', () => {
-    const config = TerrainConfigSchema.parse({
-      ...defaultTerrainConfig,
-      gridWidth: 40,
-      gridHeight: 40,
-      island: { ...defaultTerrainConfig.island, targetAreaTiles: 900 },
-    });
-    expect(() => computeIslandLayout(config, 4)).toThrow(TerrainGenerationError);
-    expect(() => computeIslandLayout(config, 4)).toThrow(/does not fit in one of 4 sectors/);
+  it('keeps every pair of island boxes a channel apart', () => {
+    // The water gap used to be a constraint a candidate map could fail. Spacing the
+    // boxes makes it true by construction, so there is nothing left to reject.
+    const gap = defaultTerrainConfig.island.minWaterGapTiles;
+    for (const count of [2, 3, 4, 5, 6, 7, 8]) {
+      const plan = planLayout(defaultTerrainConfig, count);
+      for (let a = 0; a < plan.placements.length; a++) {
+        for (let b = a + 1; b < plan.placements.length; b++) {
+          const first = plan.placements[a] as (typeof plan.placements)[number];
+          const second = plan.placements[b] as (typeof plan.placements)[number];
+          const apartX = Math.abs(first.x - second.x) >= plan.boxWidth + gap;
+          const apartY = Math.abs(first.y - second.y) >= plan.boxHeight + gap;
+          expect(apartX || apartY).toBe(true);
+        }
+      }
+    }
   });
 
-  it('explains itself when the grid has no room for the channels', () => {
+  it('explains itself when a player count has no pattern', () => {
     const config = TerrainConfigSchema.parse({
       ...defaultTerrainConfig,
-      gridWidth: 16,
-      gridHeight: 16,
-      island: { ...defaultTerrainConfig.island, targetAreaTiles: 20, minWaterGapTiles: 8 },
+      patterns: [{ players: 2, kind: 'grid', cols: 2, rows: 1 }],
     });
-    expect(() => computeIslandLayout(config, 3)).toThrow(/no room for 3 sectors/);
+    expect(() => planLayout(config, 4)).toThrow(TerrainGenerationError);
+    expect(() => planLayout(config, 4)).toThrow(/no island pattern is configured for 4/);
   });
 
   it('gives every sector the same share of the map', () => {
-    // The whole map turns onto itself by a third or a quarter, so no seat is better
-    // placed than another.
-    for (const players of [2, 3, 4]) {
+    // Every island is the same island, so this is exact at every count.
+    for (const players of [2, 3, 4, 5, 6, 7, 8]) {
       const map = generateTerrain(defaultTerrainConfig, players, 12);
-      const min = Math.min(...map.islandAreas);
-      const max = Math.max(...map.islandAreas);
-      expect((max - min) / max).toBeLessThan(0.05);
+      expect(Math.min(...map.islandAreas)).toBe(Math.max(...map.islandAreas));
     }
   });
 });

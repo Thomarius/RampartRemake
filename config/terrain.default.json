@@ -1,8 +1,16 @@
 {
-  "gridWidth": 56,
-  "gridHeight": 56,
-  "layout": "rotational",
+  "patterns": [
+    { "players": 2, "kind": "grid", "cols": 2, "rows": 1 },
+    { "players": 3, "kind": "ring" },
+    { "players": 4, "kind": "grid", "cols": 2, "rows": 2 },
+    { "players": 5, "kind": "ring" },
+    { "players": 6, "kind": "grid", "cols": 3, "rows": 2 },
+    { "players": 7, "kind": "ring" },
+    { "players": 8, "kind": "grid", "cols": 4, "rows": 2 }
+  ],
   "island": {
+    "boxWidth": 28,
+    "boxHeight": 24,
     "targetAreaTiles": 440,
     "areaTolerance": 0.08,
     "noiseOctaves": 4,

@@ -22,7 +22,7 @@ import {
 describe('shipped config files', () => {
   it('all parse against their schemas', () => {
     expect(defaultRuleset.tickRateHz).toBe(30);
-    expect(defaultTerrainConfig.layout).toBe('rotational');
+    expect(defaultTerrainConfig.patterns).toHaveLength(7);
     expect(defaultArtConfig.players.length).toBeGreaterThanOrEqual(defaultRuleset.players.max);
     expect(defaultServerConfig.port).toBe(8080);
   });
@@ -107,17 +107,31 @@ describe('audio manifest', () => {
 });
 
 describe('cross-file validation', () => {
-  it('catches a map that is asked to be all land', () => {
-    // A backstop only. The real packing check lives in the terrain generator, which
-    // knows the sector geometry; this catches a value that is obviously impossible.
+  it('catches an island that would fill its generation box', () => {
+    // The box is a frame to draw in and it needs slack: an island that nearly fills it
+    // has its coastline pinned by the frame rather than by the noise, and every seed
+    // then produces the same map. That generates perfectly and looks fine in a single
+    // screenshot, which is exactly why it is worth a startup error.
+    const island = defaultTerrainConfig.island;
     const problems = validateConfigBundle({
       ...defaultConfigBundle,
       terrain: {
         ...defaultTerrainConfig,
-        island: { ...defaultTerrainConfig.island, targetAreaTiles: 3000 },
+        island: { ...island, targetAreaTiles: island.boxWidth * island.boxHeight - 1 },
       },
     });
-    expect(problems.some((p) => p.includes('no room for the water'))).toBe(true);
+    expect(problems.some((p) => p.includes('no room to vary between seeds'))).toBe(true);
+  });
+
+  it('catches a player count with nowhere to put the islands', () => {
+    const problems = validateConfigBundle({
+      ...defaultConfigBundle,
+      terrain: {
+        ...defaultTerrainConfig,
+        patterns: defaultTerrainConfig.patterns.filter((pattern) => pattern.players !== 3),
+      },
+    });
+    expect(problems).toContain('terrain: no island pattern for 3 players.');
   });
 
   it('catches too few player palettes for the allowed player count', () => {

@@ -42,7 +42,7 @@ const GUN_REACH = 12;
  * rounds with nobody idle. Room is worth paying for; more room than the reward can
  * spend is just a longer bill.
  */
-const ROOM_RADIUS = 2;
+const ROOM_RADIUS = 3;
 
 export const DIFFICULTIES = ['recruit', 'gunner', 'marshal'] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
@@ -151,19 +151,34 @@ export class Bot {
     return target;
   }
 
+  /**
+   * Tiles a shot is already on its way to.
+   *
+   * A shot destroys exactly the tile it hits, so a second shot at the same tile is
+   * always wasted — and with a three-second flight and a gun firing every 150ms, a
+   * bot that did not track this put its whole opening salvo into one block. Every
+   * player's shots count, not just this bot's: a tile an opponent is about to remove
+   * does not need removing twice either.
+   */
+  private inbound(state: MatchState): Set<number> {
+    const taken = new Set<number>();
+    for (const shot of state.shots) taken.add(shot.toY * state.width + shot.toX);
+    return taken;
+  }
+
   private pickTarget(state: MatchState, rng: Rng): Action | null {
+    const taken = this.inbound(state);
+
     if (rng.nextFloat() >= this.profile.aimJitter) {
       if (state.tick - this.breachedAt > 20 || this.breach.length === 0) {
         this.breach = weakestWall(state, this.chooseOpponent(state, rng));
         this.breachedAt = state.tick;
       }
-      // Work along the thin part of their wall rather than scattering fire.
+      // Work along the thin part of their wall rather than scattering fire — one shot
+      // per block, moving on whether or not this one has landed yet.
       while (this.breach.length > 0) {
-        const i = this.breach[0] as number;
-        if (state.structure[i] !== Structure.Wall) {
-          this.breach.shift();
-          continue;
-        }
+        const i = this.breach.shift() as number;
+        if (state.structure[i] !== Structure.Wall || taken.has(i)) continue;
         const x = i % state.width;
         return { kind: 'fire', player: this.playerId, x, y: (i - x) / state.width };
       }
@@ -173,7 +188,7 @@ export class Bot {
       const x = rng.nextInt(state.width);
       const y = rng.nextInt(state.height);
       const i = y * state.width + x;
-      if (state.structure[i] !== Structure.Wall) continue;
+      if (state.structure[i] !== Structure.Wall || taken.has(i)) continue;
       if (state.islandId[i] === state.players[this.playerId]?.islandId) continue;
       return { kind: 'fire', player: this.playerId, x, y };
     }
@@ -228,6 +243,7 @@ export class Bot {
       wanted = thickenTargets(state, this.playerId).filter(
         (i) => state.structure[i] === Structure.Empty,
       );
+      if (wanted.length === 0) wanted = this.spareWork(state);
       if (wanted.length === 0) {
         this.pause(state);
         return null;
@@ -250,6 +266,55 @@ export class Bot {
     this.nextPlacementTick =
       state.tick + this.ticks(this.placementMs(pieceById(pieceId).size), state);
     return { kind: 'place_piece', player: this.playerId, ...placement };
+  }
+
+  /**
+   * What to build once the plan is standing and there is nothing left to thicken.
+   *
+   * Idling is almost never right. A build phase the bot does not spend is wall it will
+   * wish it had, and the two things worth starting are both worth starting even when
+   * they cannot be finished this round: a part-built extension of a live wall still
+   * touches territory, so the sweep leaves it standing and the work carries over into
+   * the next phase. That is the difference between an expansion that takes two rounds
+   * and one that never happens.
+   *
+   * Affordability is deliberately not consulted here. It governs whether to *commit*
+   * to a plan over staying alive, which is the gamble section 10d found you must not
+   * take. Spending time nobody else wants is not that gamble.
+   */
+  private spareWork(state: MatchState): number[] {
+    const player = state.players[this.playerId];
+    if (player === undefined) return [];
+    const sealed = player.enclosedCastles;
+
+    // Another castle is another cannon a round and a spare life. Start it even if this
+    // phase cannot close it.
+    if (sealed < this.profile.maxCastles) {
+      const next = cheapestPlanFor(
+        state,
+        this.playerId,
+        sealed + 1,
+        this.profile.maxCastles,
+        this.unreachable,
+        true,
+        ROOM_RADIUS,
+      );
+      const tiles = next?.tiles.filter((i) => state.structure[i] === Structure.Empty) ?? [];
+      if (tiles.length > 0) return tiles;
+    }
+
+    // No castle worth reaching for: take in more open ground instead, which is where
+    // the cannons this wall earns will have to stand.
+    const roomier = cheapestPlanFor(
+      state,
+      this.playerId,
+      Math.max(1, sealed),
+      this.profile.maxCastles,
+      this.unreachable,
+      true,
+      ROOM_RADIUS + 2,
+    );
+    return roomier?.tiles.filter((i) => state.structure[i] === Structure.Empty) ?? [];
   }
 
   /**
