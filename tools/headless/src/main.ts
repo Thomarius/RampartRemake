@@ -13,7 +13,6 @@ import {
   drainEvents,
   generateTerrain,
   hashMatchState,
-  planLayout,
   renderAscii,
   step,
   type MatchState,
@@ -276,16 +275,15 @@ if (args.map) {
   process.exit(0);
 }
 
-const plan = planLayout(bundle.terrain, args.players);
-
 /** Which tier sits in each seat, repeating the list if it is shorter than the table. */
 const seatTier = (p: number): Difficulty =>
   args.difficulties[p % args.difficulties.length] as Difficulty;
 const table = Array.from({ length: args.players }, (_, p) => seatTier(p));
 
 console.log(
-  `running ${args.matches} match(es), ${args.players} bots (${table.join(', ')}), ` +
-    `${plan.width}x${plan.height} grid\n`,
+  // No grid size here: it is measured from the island, which varies a little with the
+  // seed, so there is no one figure to quote. `--map` prints each map's own.
+  `running ${args.matches} match(es), ${args.players} bots (${table.join(', ')})\n`,
 );
 
 const started = Date.now();

@@ -9,7 +9,8 @@ single game mode, with online play, AI opponents, and fully procedural visual as
 
 ### 1.1 Match structure
 
-2–4 players, free-for-all. Empty slots are filled by AI. The data model is team-aware
+2–8 players, free-for-all; 3 and 4 remain the focus, and higher counts exist mainly so
+team modes have somewhere to go. Empty slots are filled by AI. The data model is team-aware
 from the start so 2v2 can be added later without a refactor, but no team mode ships in v1.
 
 Phase loop (all phases are simultaneous and real-time for every player):
@@ -747,7 +748,7 @@ design rather than a fault in the bot, and worth revisiting in the balance pass.
 | **M3b** | Procedural art   | Full generator suite, atlas, animation, per-player palettes, implemented as a second theme. **Done.** |
 | **M4** | Online           | ws server, room codes, authoritative loop, clock sync, reconnect + bot takeover. 2-player online match end to end.                                                                 |
 | **M5** | AI               | 3 difficulty tiers, bots fill empty slots, headless bot-vs-bot soak runs clean.                                                                                                    |
-| **M6** | Full scope       | 3–4 players, audio integration, HUD/menu polish, Docker, deployment.                                                                                                               |
+| **M6** | Full scope       | 2–8 players, audio integration, HUD/menu polish, Docker, deployment.                                                                                                               |
 | **M7** | Balance          | Tuning pass driven by the headless harness; ruleset defaults finalised.                                                                                                            |
 
 Milestone M2 is deliberately early and ugly: the cheapest possible answer to "is this

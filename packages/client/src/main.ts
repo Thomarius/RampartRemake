@@ -98,6 +98,13 @@ interface Setup {
 
 const DEFAULT_BOT: Difficulty = 'gunner';
 
+/** Every seat count the rules allow, offered in the menu. */
+const PLAYER_COUNTS = Array.from(
+  { length: defaultConfigBundle.ruleset.players.max - defaultConfigBundle.ruleset.players.min + 1 },
+  (_, i) => defaultConfigBundle.ruleset.players.min + i,
+);
+const DEFAULT_PLAYERS = 3;
+
 function difficultyOptions(selected: string, includeHuman: boolean): string {
   const options = DIFFICULTIES.map(
     (d) => `<option value="${d}"${selected === d ? ' selected' : ''}>${label(d)}</option>`,
@@ -145,7 +152,11 @@ function showMenu(): void {
         </select>
       </label>
       <label>Players
-        <select id="players"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select>
+        <select id="players">
+          ${PLAYER_COUNTS.map(
+            (n) => `<option value="${n}"${n === DEFAULT_PLAYERS ? ' selected' : ''}>${n}</option>`,
+          ).join('')}
+        </select>
       </label>
       <div id="seats" class="seats-config"></div>
       <button id="solo">Play offline</button>

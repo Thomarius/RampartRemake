@@ -67,8 +67,8 @@ with the sender's seat, so a client cannot act for someone else.
 
 - **One island, copied into a pattern.** A rectangular-ish island is drawn inside a box,
   trimmed to its land, then stamped into N placements by translation and mirroring — both
-  exact, so every island is pixel-identical at **every** player count. 2-8 players; grids
-  at 2, 4, 6, 8 and rings at 3, 5, 7, from the `patterns` table in
+  exact, so every island is pixel-identical at **every** player count. **2-8 players**, all
+  playable; grids at 2, 4, 6, 8 and rings at 3, 5, 7, from the `patterns` table in
   `config/terrain.default.json`. ~440 tiles a player, four 2x2 castles each, a 2-tile
   channel. **The map's size is measured from the island and the pattern, not configured**
   — 52x25 at two players, 102x48 at eight. See PLAN.md 10l.

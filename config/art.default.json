@@ -56,6 +56,34 @@
       "light": "#60e0a0",
       "dark": "#146840",
       "hueRotate": 150
+    },
+    {
+      "name": "lime",
+      "base": "#6fc828",
+      "light": "#a8f060",
+      "dark": "#447a14",
+      "hueRotate": 101
+    },
+    {
+      "name": "teal",
+      "base": "#28b9c8",
+      "light": "#60ebf0",
+      "dark": "#14747a",
+      "hueRotate": 193
+    },
+    {
+      "name": "violet",
+      "base": "#6c28c8",
+      "light": "#9560f0",
+      "dark": "#3c147a",
+      "hueRotate": 273
+    },
+    {
+      "name": "magenta",
+      "base": "#c828af",
+      "light": "#f060e1",
+      "dark": "#7a146d",
+      "hueRotate": 317
     }
   ],
   "dither": {

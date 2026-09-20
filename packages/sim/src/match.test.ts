@@ -48,8 +48,9 @@ describe('match setup', () => {
   });
 
   it('rejects a player count the ruleset does not allow', () => {
-    expect(() => createMatch(options(1))).toThrow(/2-4 players/);
-    expect(() => createMatch(options(5))).toThrow(/2-4 players/);
+    const { min, max } = defaultRuleset.players;
+    expect(() => createMatch(options(min - 1))).toThrow(`${min}-${max} players`);
+    expect(() => createMatch(options(max + 1))).toThrow(`${min}-${max} players`);
   });
 
   it('refuses a castle on another island', () => {

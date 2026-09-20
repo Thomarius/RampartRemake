@@ -2,7 +2,7 @@
   "tickRateHz": 30,
   "players": {
     "min": 2,
-    "max": 4
+    "max": 8
   },
   "phases": {
     "castleSelectMs": 15000,
