@@ -79,10 +79,12 @@ with the sender's seat, so a client cannot act for someone else.
   exactly the tile it hits.
 - **Cannons go inert outside sealed territory**, including the opening three you place
   yourself. This is the game's main corrective, and the source of most bot trouble.
-- **Orphaned wall is swept** between build and combat: anything with fewer than two
-  orthogonal wall neighbours goes (repeatedly, so dead ends unravel), and what survives
-  must reach sealed ground through other wall. A loop that encloses something is safe by
-  construction.
+- **Orphaned wall is swept** between build and combat, in **one pass**: every block with
+  fewer than two orthogonal wall neighbours is marked against the board as it stands,
+  then the marked blocks go together. So a run of three keeps its middle, and a spur
+  loses only its tip — cascading instead took far too much and meant half-built wall
+  could never carry across a round (PLAN.md 10n). Stranded wall is left alone as an
+  obstacle. A loop that encloses something is safe by construction.
 - **The piece set widens by round** (sizes 1-3 early, 3-5 late), which is the game's
   difficulty ramp. `pieceAt(ruleset, seed, round, index)` is a pure function.
 - Phases: castle select 15s, cannon place 25s, combat 10s, build 20s, each preceded by an

@@ -1075,25 +1075,21 @@ Five changes from a session of watching bot matches, plus the bug that watching 
 
 ### Wall that is doing no work is swept away
 
-Between the build phase and the next barrage, two rules run until nothing more falls:
+Between the build phase and the next barrage, **one rule applied once**: a wall block
+with fewer than two orthogonal wall neighbours is swept. Every block is judged against
+the board as it stood at the end of the build phase, and the failures go together — so
+removing a block never condemns its neighbour in the same sweep.
 
-1. **A block needs two orthogonal neighbours.** Fewer makes it a loose end, and removing
-   it can strand the block behind it, so this repeats — it is the 2-core of the wall
-   graph. Trees and stray blocks vanish; only loops and the runs joining them remain.
-   This applies inside your own ground too, so a block dropped in the middle of your
-   territory cannot sit there eating the space a cannon needs.
-2. **A wall must reach territory.** What survives still has to be linked, through other
-   wall, to something adjacent to a sealed region. A tidy loop enclosing nothing is
-   still swept.
+A straight run of three loses both ends and keeps its middle, which is left standing
+alone: it had two neighbours when the question was asked. Next round it has none, and
+then it goes.
 
 Orthogonal, deliberately: a wall seals only when it is 4-connected, so this is exactly
-the connectivity that makes a wall a wall — and it means a loop that does enclose
-something can never be swept, since every block of it has two neighbours and touches
-the ground it encloses. A test asserts that property directly.
+the connectivity that makes a wall a wall — and it means **a loop enclosing anything can
+never be swept**, since every block of a loop has two orthogonal neighbours. A test
+asserts that property directly.
 
-Connectivity is through other walls rather than strict adjacency, so a wall built two
-thick survives: thickening stays a legitimate investment rather than being shaved back
-every round.
+**This was originally implemented as a cascade and that was wrong** — see 10n.
 
 ### Smaller castles, more of them, closer together
 
@@ -1668,6 +1664,53 @@ and two-player is where it should start.
 
 Three bot competence tests were moved from two-seat to three-seat tables. Run on two
 players they were measuring this imbalance rather than the bot.
+
+## 10n. The sweep was a cascade, and the original was not
+
+Observed against the original: the sweep removed too much.
+
+It had two rules, both wrong. It pruned to the **2-core** of the wall graph — dropping
+loose ends repeatedly until none were left — and then deleted whatever did not reach
+sealed ground. Both are gone. What remains is one pass: **mark every wall block with
+fewer than two orthogonal wall neighbours, then remove the marked blocks together.**
+
+Marking before removing is the whole of it. Judging each block against a board that is
+already being dismantled is what turned one pass into a cascade, and the difference is
+not subtle: a five-block spur reaching towards another castle used to unravel completely
+in a single resolution, so a wall half-built could never be carried across a round. Now
+it loses its tip and keeps the rest.
+
+A run of three reduces to its middle, which then stands alone — it had two neighbours
+when the question was asked. It goes next round.
+
+**Stranded wall now stays.** The rule requiring a wall to reach sealed ground is dropped
+entirely, so a loop enclosing nothing survives. That is deliberate: it is not litter but
+an obstacle, standing where a cannon cannot be placed and where a future wall has to
+route around. The original kept it too.
+
+The safety property is unaffected and still tested: every block of a loop has two
+orthogonal neighbours, so a wall holding an enclosure together can never be swept —
+which is what makes it safe to run automatically at every resolution.
+
+### What it measured
+
+Three players, eight seeds, per surviving player-round. The visible change is how much
+wall survives, which is the point:
+
+| | before | after |
+| --- | --- | --- |
+| marshal wall tiles | 67 | **88** |
+| gunner wall tiles | 53 | **75** |
+| marshal rounds | 4.6 | 5.4 |
+| gunner cannons idle | 16% | 30% |
+
+Room for a cannon slipped a little at both tiers — 7.0 to 6.6 and 7.6 to 6.0 — which is
+the arithmetic of more wall standing on the same ground, and gunner's idle guns rose with
+it. Neither is alarming and both are the balance pass's business.
+
+A fourth bot test moved from a two-seat to a three-seat table. Its pacing assertions were
+never reached: a two-player match now ends before there are enough build phases to
+measure a build rate over. Two players remains the case to fix, as 10m says.
 
 ## 11. Deferred (explicitly out of scope for v1)
 

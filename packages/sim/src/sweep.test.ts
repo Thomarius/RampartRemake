@@ -63,9 +63,11 @@ describe('sweeping orphaned wall', () => {
     expect(state.structure[7 * 10 + 2]).toBe(Structure.Empty);
   });
 
-  it('unravels a dead end all the way back', () => {
-    // Removing the tip strands the next block, which strands the next: the rule has
-    // to repeat until nothing more falls.
+  it('takes only the tip of a dead end, not the whole spur', () => {
+    // The rule runs once. Removing the tip does not then condemn the block behind it,
+    // because every block was judged against the board as it stood. Cascading here is
+    // what made the old sweep take too much: a spur half-built towards another castle
+    // vanished entirely, so work could never be carried across a round.
     const state = sweep(`
       ............
       ..######....
@@ -76,12 +78,27 @@ describe('sweeping orphaned wall', () => {
       ..######....
       ............
     `);
-    for (let x = 8; x <= 10; x++) {
-      expect({ x, kind: state.structure[5 * 12 + x] }).toEqual({ x, kind: Structure.Empty });
+    // Only the far end goes: it alone had a single neighbour.
+    expect(state.structure[5 * 12 + 10]).toBe(Structure.Empty);
+    for (let x = 7; x <= 9; x++) {
+      expect({ x, kind: state.structure[5 * 12 + x] }).toEqual({ x, kind: Structure.Wall });
     }
-    // The loop's own edge, which the spur grew out of, is untouched.
-    expect(state.structure[5 * 12 + 7]).toBe(Structure.Wall);
     expect(applyEnclosure(state).castleEnclosed[0]).toBe(true);
+  });
+
+  it('reduces a run of three to its middle block', () => {
+    // Both ends have only the middle for company and go together. The middle survives
+    // even though it is left standing alone — it had two neighbours when the question
+    // was asked. Next round it has none, and then it goes.
+    const state = sweep(`
+      .......
+      .......
+      .###...
+      .......
+    `);
+    expect(state.structure[2 * 7 + 1]).toBe(Structure.Empty);
+    expect(state.structure[2 * 7 + 2]).toBe(Structure.Wall);
+    expect(state.structure[2 * 7 + 3]).toBe(Structure.Empty);
   });
 
   it('clears a block dropped inside your own ground', () => {
@@ -119,8 +136,10 @@ describe('sweeping orphaned wall', () => {
     expect(applyEnclosure(state).castleEnclosed[0]).toBe(true);
   });
 
-  it('sweeps a loop that encloses nothing', () => {
-    // Survives the loose-end rule, but reaches no sealed ground, so it still goes.
+  it('leaves a loop that encloses nothing standing, as an obstacle', () => {
+    // Nothing requires a wall to reach sealed ground. Stranded wall is not litter: it
+    // stands where a cannon cannot go and where a future wall has to route around, and
+    // the original kept it too.
     const state = sweep(`
       ..............
       ..######......
@@ -131,14 +150,21 @@ describe('sweeping orphaned wall', () => {
       ..............
     `);
     expect(applyEnclosure(state).castleEnclosed[0]).toBe(true);
-    for (let y = 2; y <= 4; y++) {
-      for (let x = 8; x <= 10; x++) {
-        expect({ x, y, kind: state.structure[y * 14 + x] }).toEqual({
-          x,
-          y,
-          kind: Structure.Empty,
-        });
-      }
+    for (const [x, y] of [
+      [8, 2],
+      [9, 2],
+      [10, 2],
+      [8, 3],
+      [10, 3],
+      [8, 4],
+      [9, 4],
+      [10, 4],
+    ]) {
+      expect({ x, y, kind: state.structure[(y as number) * 14 + (x as number)] }).toEqual({
+        x,
+        y,
+        kind: Structure.Wall,
+      });
     }
   });
 

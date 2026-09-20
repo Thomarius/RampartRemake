@@ -5,98 +5,56 @@ import { Structure, type MatchState } from './types.js';
  * Clears away wall that is doing no work, between the build phase and the next
  * barrage.
  *
- * Two rules, both applied until nothing more falls:
+ * One rule, applied once: **a wall block with fewer than two orthogonal wall
+ * neighbours is swept.** Every block is judged against the board as it stood at the
+ * end of the build phase, and the ones that fail go together — so removing a block
+ * never condemns its neighbour in the same sweep.
  *
- * 1. **A wall block needs two neighbours.** Anything with fewer is a loose end, and
- *    removing it can strand the block behind it, so this repeats until stable — it is
- *    the 2-core of the wall graph. Trees and stray blocks vanish entirely; only loops,
- *    and the runs joining them, remain. This applies inside your own ground too, so a
- *    block dropped in the middle of your territory does not sit there eating the space
- *    a cannon needs.
- * 2. **A wall must reach territory.** What survives the first rule still has to be
- *    linked, through other wall, to something adjacent to a sealed region. A perfectly
- *    good loop built out in the open around nothing is still swept.
+ * That "once" is the whole of it, and it is what the original did. A straight run of
+ * three blocks loses both ends, because each has only the middle for company, and the
+ * middle survives even though it is left standing alone: it had two neighbours when
+ * the question was asked. Next round it will have none, and then it goes.
+ *
+ * Cascading instead — removing loose ends until none are left, which is the 2-core of
+ * the wall graph — takes far too much. It unravels a five-block spur to nothing in one
+ * resolution, so a wall half-built towards another castle is simply gone by the time
+ * its builder comes back to it, and work can never be carried across a round.
+ *
+ * Nor is there any requirement that a wall reach sealed ground. Wall stranded out in
+ * the open is left alone, because it is not litter: it is an obstacle, standing where
+ * a cannon cannot be placed and where a future wall has to route around.
  *
  * Neighbours are counted orthogonally, deliberately: a wall seals only when it is
  * 4-connected, so this is exactly the connectivity that makes a wall a wall. It also
- * means a loop that does enclose something can never be swept — every block of it has
- * two orthogonal neighbours and touches the ground it encloses.
+ * means **a loop that encloses anything can never be swept**, whatever else is
+ * happening on the board — every block of a loop has two orthogonal neighbours.
  */
 export function sweepOrphanedWalls(state: MatchState): number[] {
   const { width: w, height: h, structure } = state;
   const size = w * h;
-  const removed: number[] = [];
 
-  const isWall = (i: number): boolean => structure[i] === Structure.Wall;
+  // Marked first, removed after. Judging each block against a board that is already
+  // being dismantled is what turns one pass into a cascade.
+  const marked: number[] = [];
 
-  const neighbours = (i: number, visit: (j: number) => void): void => {
+  for (let i = 0; i < size; i++) {
+    if (structure[i] !== Structure.Wall) continue;
     const x = i % w;
     const y = (i - x) / w;
+
+    let count = 0;
     for (const [ox, oy] of NEIGHBOURS_4) {
       const nx = x + ox;
       const ny = y + oy;
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-      visit(ny * w + nx);
+      if (structure[ny * w + nx] === Structure.Wall) count++;
     }
-  };
-
-  // --- 1. Prune to the 2-core: drop loose ends until none are left. ---
-  const degree = new Int32Array(size);
-  const queue: number[] = [];
-  for (let i = 0; i < size; i++) {
-    if (!isWall(i)) continue;
-    let count = 0;
-    neighbours(i, (j) => {
-      if (isWall(j)) count++;
-    });
-    degree[i] = count;
-    if (count < 2) queue.push(i);
+    if (count < 2) marked.push(i);
   }
 
-  let head = 0;
-  while (head < queue.length) {
-    const i = queue[head++] as number;
-    if (!isWall(i)) continue;
+  for (const i of marked) {
     structure[i] = Structure.Empty;
     state.owner[i] = 0;
-    removed.push(i);
-    neighbours(i, (j) => {
-      if (!isWall(j)) return;
-      degree[j] = (degree[j] as number) - 1;
-      if ((degree[j] as number) < 2) queue.push(j);
-    });
   }
-
-  // --- 2. Keep only what reaches sealed ground. ---
-  const reached = new Uint8Array(size);
-  const flood: number[] = [];
-  for (let i = 0; i < size; i++) {
-    if (!isWall(i) || reached[i] === 1) continue;
-    let touchesTerritory = false;
-    neighbours(i, (j) => {
-      if (state.territory[j] !== 0) touchesTerritory = true;
-    });
-    if (!touchesTerritory) continue;
-    reached[i] = 1;
-    flood.push(i);
-  }
-
-  head = 0;
-  while (head < flood.length) {
-    const i = flood[head++] as number;
-    neighbours(i, (j) => {
-      if (!isWall(j) || reached[j] === 1) return;
-      reached[j] = 1;
-      flood.push(j);
-    });
-  }
-
-  for (let i = 0; i < size; i++) {
-    if (!isWall(i) || reached[i] === 1) continue;
-    structure[i] = Structure.Empty;
-    state.owner[i] = 0;
-    removed.push(i);
-  }
-
-  return removed;
+  return marked;
 }

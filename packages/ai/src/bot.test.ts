@@ -123,7 +123,10 @@ describe('bot pacing', () => {
     // are small, falling to 10-18 once the large ones arrive. A bot placing six a
     // second would be unbeatable for a reason that has nothing to do with playing
     // well, so the budget is time in milliseconds, not a per-tick chance.
-    const { placementsPerPhase } = play(3, ['marshal', 'marshal'], 20_000);
+    // Three seats for the same reason as the tests above: build rate is what this
+    // measures, and a two-player match now ends before there are enough phases to
+    // measure it over.
+    const { placementsPerPhase } = play(3, ['marshal', 'marshal', 'marshal'], 20_000);
     expect(placementsPerPhase.length).toBeGreaterThan(2);
     for (const count of placementsPerPhase) {
       expect(count).toBeLessThanOrEqual(30);
