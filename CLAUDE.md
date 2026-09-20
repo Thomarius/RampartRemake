@@ -85,6 +85,10 @@ with the sender's seat, so a client cannot act for someone else.
   schema refuses the two being true together. PLAN.md 10o.
 - **Cannons go inert outside sealed territory**, including the opening three you place
   yourself. This is the game's main corrective, and the source of most bot trouble.
+- **The starting ring is 8x8 around a 6x6 interior** (`ringRadiusTiles: 3`), as in the
+  original. A castle sits centred in it, so the free band is exactly two tiles wide and a
+  2x2 cannon spans it — opening cannons **must** touch the wall, which is geometry rather
+  than a bot failing. Widening it to 4 was measured and reverted; see PLAN.md 10p.
 - **Orphaned wall is swept** between build and combat, in **one pass**: every block with
   fewer than two orthogonal wall neighbours is marked against the board as it stands,
   then the marked blocks go together. So a run of three keeps its middle, and a spur
@@ -207,6 +211,12 @@ separately. Prefer this to watching; watching is for forming the hypothesis.
   generates fine and produces the _same map for every seed_.
 - **Prettier reflows code, so string-replace patches silently miss.** Assert on every
   replacement.
+- **A one-tile gap between a cannon and water cannot be filled** from round 3 on, because
+  the size schedule stops dealing one-cell pieces. That is why `placeCannon` weighs
+  clearance from wall and shore ahead of range.
+- **Anything visual scaled by flight time breaks when the reload is tuned.** The shot arc
+  was `span * 0.25` in ticks and went off-screen when flight tripled; it follows range
+  now (`shotLift` in `theme.ts`).
 - **The static handler answers an unknown path with `index.html` and a 200.** So a
   missing asset is not a 404 — audio decides a file is absent by its failure to decode,
   and anything else fetched at runtime needs the same care.

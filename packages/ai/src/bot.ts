@@ -55,12 +55,19 @@ const ROOM_RADIUS = 3;
  * least two cells from round three on. The size schedule stops dealing ones after
  * round two, which turns a one-tile gap from awkward into permanent.
  *
- * Two tiles is enough to leave a piece somewhere to land, and it costs nothing in the
- * opening: the band around a castle inside its starting ring is exactly twelve free
- * tiles, which is precisely three cannons' worth at this clearance. Measured before
- * this existed, all 120 opening cannons across twelve matches sat at clearance one —
- * not because the geometry forced it, but because proximity to the enemy was the only
- * thing being scored.
+ * Two tiles is enough to leave a piece somewhere to land.
+ *
+ * It buys nothing in the *opening*, and cannot: a castle sits centred in its starting
+ * ring, so at `ringRadiusTiles: 3` the free interior is a band exactly two tiles wide
+ * and a 2x2 cannon spans it completely. Surveyed directly — sixteen legal opening
+ * spots, every one of them at clearance one. Widening the ring to 4 does make room, and
+ * took two-player round-one eliminations from 2 in 12 to none, but an 8x8 starting wall
+ * is what the original had and what the game is built around, so the ring stayed at 3.
+ *
+ * Where this does bite is every round after the first, once a player holds enough
+ * ground to have a choice. Before it existed, all 120 opening cannons across twelve
+ * matches sat against the wall, because proximity to the enemy was the only thing being
+ * scored.
  */
 const CANNON_CLEARANCE = 2;
 

@@ -12,6 +12,7 @@ import {
   type Theme,
   type ThemeLayers,
   type ViewTransform,
+  shotLift,
 } from './theme.js';
 
 interface Impact {
@@ -187,7 +188,7 @@ export class FlatTheme implements Theme {
       const x = shot.fromX + (shot.toX - shot.fromX) * t;
       const y = shot.fromY + (shot.toY - shot.fromY) * t;
       // A parabolic lift sells the lob. The shot still lands exactly on impactTick.
-      const lift = Math.sin(Math.PI * t) * span * 0.25;
+      const lift = shotLift(shot, t);
       const colour = playerColour(this.art, shot.owner, 'light');
 
       g.circle(tileX(view, x + 0.5), tileY(view, y + 0.5 - lift), Math.max(2, view.tile * 0.35));

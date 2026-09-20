@@ -1,5 +1,5 @@
 import type { ArtConfig, ArtStyle } from '@rampart/config';
-import type { MatchState } from '@rampart/sim';
+import type { MatchState, Shot } from '@rampart/sim';
 import type { Container } from 'pixi.js';
 
 /**
@@ -83,6 +83,28 @@ export function playerColour(
 ): number {
   const entry = art.players[player % art.players.length];
   return hex(entry ? entry[shade] : art.palette.uiInk);
+}
+
+/**
+ * Fraction of its own range a shot rises at the top of its arc.
+ *
+ * Range, not flight time. The lift used to be `span * 0.25` where `span` is the flight
+ * in ticks, which tied the picture to the reload: when flight time went from 1.05s to
+ * 3.05s at twenty tiles (PLAN.md 10k), the apex went from 8 tiles to 23 and most shots
+ * simply left the top of the screen. A lob's height should follow how far it is thrown,
+ * and then it survives any amount of balance tuning.
+ */
+const ARC_RISE = 0.16;
+
+/** Ceiling on the arc, so a shot across a big map still stays on it. */
+const ARC_MAX_TILES = 4.5;
+
+/** How far above the ground a shot rides, in tiles, at progress `t` through its flight. */
+export function shotLift(shot: Shot, t: number): number {
+  const dx = shot.toX - shot.fromX;
+  const dy = shot.toY - shot.fromY;
+  const range = Math.sqrt(dx * dx + dy * dy);
+  return Math.sin(Math.PI * t) * Math.min(range * ARC_RISE, ARC_MAX_TILES);
 }
 
 /** Top-left of a tile in screen space. */

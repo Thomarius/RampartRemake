@@ -1803,6 +1803,62 @@ does the stopgap suite. Nine tests broke on this change, all of them asserting t
 failing to seal ends a player's match — which is still true, but only once the lives are
 gone. Saying so explicitly beats them quietly measuring something else.
 
+## 10p. Cannon clearance, the starting ring, and an arc nobody could see
+
+### A cannon jammed against its own wall makes a hole nobody can fill
+
+Observed while spectating: bots pick a castle on the shore and then stand cannons on the
+wall beside it. A shot there leaves a one-tile gap with the cannon on one side and water
+on the other — and a piece is at least two cells from round three on, because the size
+schedule stops dealing ones after round two. The hole is not awkward, it is **permanent**.
+
+Measured: players eliminated at a resolution had **15.1** such holes against **10.1** for
+survivors.
+
+`placeCannon` scored candidates purely on closeness to the nearest enemy castle, so it
+had no reason not to press against the wall. It now prefers clearance and settles ties on
+proximity — compared as a pair rather than summed, so there is no exchange rate to invent
+between tiles of cover and tiles of range. Clearance is Chebyshev distance to the nearest
+own wall **or water**, capped at two, from one distance field per placement rather than a
+scan per candidate.
+
+### The opening is geometry, not choice
+
+The first survey said all 120 opening cannons across twelve matches sat at clearance one,
+which looked like the bot's fault. It is not. A castle sits **centred** in its starting
+ring, so at `ringRadiusTiles: 3` the free interior is a band exactly two tiles wide and a
+2x2 cannon spans it completely. Surveyed directly: sixteen legal opening spots, every one
+at clearance one. The bot had no better move available.
+
+Widening the ring to 4 does make room — opening clearance went from 1.00 to 1.98 and
+two-player round-one eliminations from 2 in 12 to none — **and it was reverted anyway.**
+An 8x8 starting wall around a 6x6 interior is what the original had and what the game is
+built around, and fidelity won. The clearance preference stays, because it governs every
+round after the first, once a player holds enough ground to have a choice.
+
+What made the revert cheap is continues (10o): a failed opening now spends a life instead
+of ending a match. Measured after reverting, ten matches at each count, no elimination
+before **round 4** at three players or **round 6** at two — the early knockouts the wider
+ring was protecting against are gone for a different reason.
+
+The cost is real and worth recording: room for another cannon fell from 8.3 to 3.1 at
+three players and idle guns rose from 28% to 44%, which is the arithmetic of a 6x6
+interior instead of an 8x8. Matches are long now — 15.3 rounds at three players, 25.7 at
+two with one unfinished in ten.
+
+### The shot arc followed the reload
+
+Shots were flying off the top of the screen. The lift was `sin(pi * t) * span * 0.25`
+where `span` is the flight **in ticks**, so the picture was tied to the reload: when
+flight time went from 1.05s to 3.05s at twenty tiles (10k), the apex went from 8 tiles to
+23. A five-tile lob peaked 10 tiles in the air.
+
+It now scales with the **range** a shot is thrown, which is what a lob's height should
+follow and which survives any amount of balance tuning: `sin(pi * t) * min(range * 0.16,
+4.5)`. At twenty tiles the apex is 3.2 tiles rather than 23. Both styles drew their own
+copy of the old formula; there is now one `shotLift` in `theme.ts`, so the next person to
+tune it has one number to find.
+
 ## 11. Deferred (explicitly out of scope for v1)
 
 Team modes (2v2), quick-match / matchmaking queue, accounts and persistence, ranking,

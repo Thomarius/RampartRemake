@@ -13,6 +13,7 @@ import {
   type Theme,
   type ThemeLayers,
   type ViewTransform,
+  shotLift,
 } from './theme.js';
 
 interface Blast {
@@ -263,7 +264,8 @@ export class PixelTheme implements Theme {
       const t = span <= 0 ? 1 : Math.min(1, Math.max(0, (now - shot.launchTick) / span));
       const x = shot.fromX + (shot.toX - shot.fromX) * t;
       const y = shot.fromY + (shot.toY - shot.fromY) * t;
-      const lift = Math.sin(Math.PI * t) * span * 0.25;
+      // A parabolic lift sells the lob. The shot still lands exactly on impactTick.
+      const lift = shotLift(shot, t);
 
       // Shadow on the ground reads the fall; the ball itself rides above it.
       g.circle(tileX(view, x + 0.5), tileY(view, y + 0.5), view.tile * 0.25);
