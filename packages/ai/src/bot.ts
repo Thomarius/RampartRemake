@@ -311,7 +311,7 @@ export class Bot {
    * and one that never happens.
    *
    * Affordability is deliberately not consulted here. It governs whether to *commit*
-   * to a plan over staying alive, which is the gamble section 10d found you must not
+   * to a plan over staying alive, which is the gamble ARCHIVE.md 10d found you must not
    * take. Spending time nobody else wants is not that gamble.
    */
   private spareWork(state: MatchState): number[] {

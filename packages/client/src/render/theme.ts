@@ -90,7 +90,7 @@ export function playerColour(
  *
  * Range, not flight time. The lift used to be `span * 0.25` where `span` is the flight
  * in ticks, which tied the picture to the reload: when flight time went from 1.05s to
- * 3.05s at twenty tiles (PLAN.md 10k), the apex went from 8 tiles to 23 and most shots
+ * 3.05s at twenty tiles (ARCHIVE.md 10k), the apex went from 8 tiles to 23 and most shots
  * simply left the top of the screen. A lob's height should follow how far it is thrown,
  * and then it survives any amount of balance tuning.
  */

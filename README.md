@@ -8,7 +8,9 @@ next barrage. Fail to seal a castle and you are out. Last player standing wins.
 - Interchangeable visual styles: a minimal flat look, and procedural art generated at runtime — no binary art in the repository
 - Authoritative server; the simulation is deterministic and shared by client, server and bots
 
-See [`docs/PLAN.md`](docs/PLAN.md) for the full design and implementation plan.
+See [`docs/PLAN.md`](docs/PLAN.md) for the design and what is still open, and
+[`docs/ARCHIVE.md`](docs/ARCHIVE.md) for how each decision was reached — with the
+measurements behind it, and the attempts that were reverted.
 
 ## Requirements
 
@@ -88,16 +90,16 @@ copy.
 
 ## Status
 
-| Milestone                              | State               |
-| -------------------------------------- | ------------------- |
-| M0 — scaffold, config schemas, CI      | Done                |
-| M1 — simulation core                   | Done                |
-| M2 — locally playable, placeholder art | Done                |
-| M3 — procedural art                    | Done                |
-| M4 — online multiplayer                | Done                |
-| M5 — AI opponents                      | Done                |
-| M6 — full scope, audio, deployment     | In progress — audio |
-| M7 — balance pass                      |                     |
+| Milestone                                | State                    |
+| ---------------------------------------- | ------------------------ |
+| M0 — scaffold, config schemas, CI        | Done                     |
+| M1 — simulation core                     | Done                     |
+| M2 — locally playable, placeholder art   | Done                     |
+| M3 — procedural art                      | Done                     |
+| M4 — online multiplayer                  | Done                     |
+| M5 — AI opponents                        | Done                     |
+| M6 — full scope, 2–8 players, deployment | Done but for audio files |
+| M7 — balance pass                        | In progress              |
 
 ## License
 
