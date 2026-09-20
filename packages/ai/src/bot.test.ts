@@ -182,10 +182,18 @@ describe('bot competence', () => {
     expect(cramped / resolutions.length).toBeLessThan(0.5);
   }, 90_000);
 
-  it('survives far longer than the opponent it replaces', () => {
-    const { state } = play(1, ['gunner', 'gunner']);
-    expect(state.round).toBeGreaterThan(5);
-  }, 60_000);
+  it('is never knocked out in the opening round', () => {
+    // This used to assert a match ran past round five, which stopped being a measure
+    // of the bot the moment the ruleset moved: two-player matches now average 2.8
+    // rounds, so match length tests the balance pass rather than the player. What does
+    // belong to the bot is surviving the first exchange, which the stopgap it replaced
+    // routinely did not — it rebuilt the ring it was handed and was breached through it.
+    for (const seed of [1, 2, 3]) {
+      const { resolutions } = play(seed, ['gunner', 'gunner']);
+      const survivedFirst = resolutions.filter((r) => r.round === 1);
+      expect(survivedFirst).toHaveLength(2);
+    }
+  }, 90_000);
 });
 
 describe('difficulty', () => {

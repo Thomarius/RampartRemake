@@ -1504,6 +1504,54 @@ So format support is whatever the browser decodes, and both of the formats most 
 having are confirmed. What is still unverified is subjective rather than structural: the
 mix. Every `volume` in the manifest is a guess until somebody listens.
 
+## 10k. Flight time is the reload, and it was set too short
+
+A cannon cannot fire again until its shot lands — there is no separate reload — so
+`shots.baseFlightMs` and `perTileFlightMs` set the rate of fire, and the honest unit for
+them is **shots per cannon per combat phase**. Counted against the original, from
+observation: ours fired about four times to the original's three.
+
+Measured from `--stats` (`shotsFired / cannonsActive` at each resolution, three players,
+eight seeds), and tuned against that number rather than against feel:
+
+| base / per tile | 20-tile flight | shots per cannon | notes |
+| --- | --- | --- | --- |
+| 350 / 35 | 1.05s | 4.5 | as shipped |
+| 500 / 60 | 1.70s | 4.5 / 4.1 | |
+| 600 / 80 | 2.20s | 4.2 / 3.1 | gunner idle 57% |
+| 700 / 90 | 2.50s | 3.6 / 3.6 | |
+| **850 / 110** | **3.05s** | **3.1 / 3.0** | adopted |
+
+### What it says about the bots
+
+The interesting result is one nobody asked for. At 500/60, with **no change to the bot at
+all**, gunner's room for another cannon went from 1.1 to 5.3, its idle guns from 19% to
+8%, castles sealed from 1.59 to 1.94, and its use of the build phase from 69% to 114%.
+
+`widestAffordable` already asks for room first and surrenders it only to the budget, so
+when incoming damage fell the repair bill fell, the budget stretched, and the roomy wall
+came back on its own. **The bots' minimal enclosures were largely a symptom of excess
+firepower, not an independent defect** — they were not choosing to turtle, they were
+being priced into it. Worth remembering before writing a rule against behaviour that a
+config value was causing.
+
+### What it did not fix
+
+Match length. Marshal at three players went 4.5 rounds to 4.1; two-player gunner averages
+**2.8 rounds with two draws in six**. Mass simultaneous elimination is untouched and
+`cannons.maxTotal` is still `null`.
+
+And at 850/110 the accumulation problem is visible from the other side: matches last
+longer, so marshal ends up owning 8.6 cannons and keeping only 6.2 of them enclosed —
+idle back up to 28% from 13% at 700/90. That is not a flight-time fault; it is the
+arsenal growing faster than the territory that has to hold it, which is the same finding
+as 10h's and the same lever answers it.
+
+A test asserting a two-player match ran past round five was removed. It was calibrated to
+the old tuning and was measuring the ruleset rather than the bot; what replaced it is a
+competence floor — both gunners survive the first round — which balance work should not
+move.
+
 ## 11. Deferred (explicitly out of scope for v1)
 
 Team modes (2v2), quick-match / matchmaking queue, accounts and persistence, ranking,

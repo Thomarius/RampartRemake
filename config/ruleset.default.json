@@ -21,8 +21,8 @@
     "maxTotal": null
   },
   "shots": {
-    "baseFlightMs": 350,
-    "perTileFlightMs": 35,
+    "baseFlightMs": 850,
+    "perTileFlightMs": 110,
     "maxRangeTiles": null,
     "craterPattern": "single",
     "damagesWalls": true,
