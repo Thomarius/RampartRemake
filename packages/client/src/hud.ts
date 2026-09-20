@@ -1,4 +1,4 @@
-import { defaultArtConfig } from '@rampart/config';
+import { playerCssColour } from './colours.js';
 import {
   PIECE_CATALOGUE,
   currentPieceId,
@@ -37,11 +37,6 @@ export interface IslandBanner {
   /** Screen pixels, from `Scene.screenAt`. */
   x: number;
   y: number;
-}
-
-function playerColour(player: number): string {
-  const entry = defaultArtConfig.players[player % defaultArtConfig.players.length];
-  return entry ? entry.base : '#ffffff';
 }
 
 /** A piece drawn as a small grid of cells, for the preview strip. */
@@ -135,7 +130,7 @@ export class Hud {
     const shown = waiting ? (state.pendingPhase ?? state.phase) : state.phase;
     const secondsLeft = Math.max(0, (state.phaseEndTick - state.tick) / state.ruleset.tickRateHz);
     const human = state.players[humanPlayer];
-    const colour = playerColour(humanPlayer);
+    const colour = playerCssColour(humanPlayer);
 
     const roster = state.players
       .map((p) => {
@@ -153,7 +148,7 @@ export class Hud {
           ? `eliminated round ${p.eliminatedRound}`
           : `${p.enclosedCastles} castle${p.enclosedCastles === 1 ? '' : 's'} · ` +
             `${live}/${cannons.length} guns${lives}`;
-        return `<li class="${classes}"><b style="background:${playerColour(p.id)}"></b>${p.name}<span>${status}</span></li>`;
+        return `<li class="${classes}"><b style="background:${playerCssColour(p.id)}"></b>${p.name}<span>${status}</span></li>`;
       })
       .join('');
 

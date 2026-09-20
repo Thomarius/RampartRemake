@@ -12,6 +12,8 @@ import { PHASES, type Action, type MatchEvent, type MatchState, type Phase } fro
 import { Audio } from './audio.js';
 import { Controls } from './controls.js';
 import { bannersFor, type LifeLost } from './banners.js';
+import { playerCssColour } from './colours.js';
+import { lobbyMarkup } from './lobby.js';
 import { Hud, type IslandBanner } from './hud.js';
 import { MatchAudio } from './matchAudio.js';
 import { LocalMatch } from './localMatch.js';
@@ -74,12 +76,6 @@ const preferredStyle: ArtStyle = ArtStyleSchema.catch(defaultArtConfig.style).pa
   params.get('style'),
 );
 const timeScale = Math.max(1, Number(params.get('speed') ?? 1));
-
-/** A player's colour as CSS, for the banners drawn over their island. */
-function playerColourHex(player: number): string {
-  const entry = defaultArtConfig.players[player % defaultArtConfig.players.length];
-  return entry ? entry.base : '#ffffff';
-}
 
 /** What the render loop needs, whichever way the match is being played. */
 interface Session {
@@ -310,48 +306,50 @@ async function startOnline(setup: Setup, code: string | null): Promise<void> {
 
   function renderLobby(): void {
     if (started) return;
-    const isHost = match.humanPlayer === hostId;
-
-    // One row per seat at the table: the people who have joined, then the bots that
-    // will fill the rest. Only the host may change a bot.
-    const rows = Array.from({ length: playerCount }, (_, i) => {
-      const seat = seats.find((s) => s.playerId === i);
-      if (seat) {
-        const you = seat.playerId === match.humanPlayer ? ' class="you"' : '';
-        const tags = [seat.playerId === hostId ? 'host' : '', seat.connected ? '' : 'away']
-          .filter(Boolean)
-          .map((t) => ` <em>${t}</em>`)
-          .join('');
-        return `<li${you}>${seat.name}${tags}</li>`;
-      }
-      const value = bots[i] ?? 'gunner';
-      const control = isHost
-        ? `<select class="bot-select" data-seat="${i}">${difficultyOptions(value, false)}</select>`
-        : `<em>${label(value)}</em>`;
-      return `<li class="bot">Bot ${i + 1} ${control}</li>`;
-    }).join('');
-
-    app!.innerHTML = `
-      <div class="menu lobby">
-        <h1>Room ${roomCode}</h1>
-        <p>Share this code. Every seat nobody takes is played by a bot.</p>
-        <ul class="seats">${rows}</ul>
-        ${isHost ? '<button id="begin">Start match</button>' : '<p class="note">Waiting for the host to start.</p>'}
-        <button id="leave" class="quiet">Leave</button>
-      </div>
-    `;
+    app!.innerHTML = lobbyMarkup({
+      code: roomCode,
+      playerCount,
+      hostId,
+      humanPlayer: match.humanPlayer,
+      seats,
+      bots,
+    });
 
     for (const field of document.querySelectorAll<HTMLSelectElement>('.bot-select')) {
       field.addEventListener('change', () => {
+        audio.play('select');
         const next = [...bots];
         next[Number(field.dataset.seat)] = field.value as Difficulty;
         connection.send({ type: 'configure', bots: next });
       });
     }
-    document
-      .querySelector('#begin')
-      ?.addEventListener('click', () => connection.send({ type: 'start' }));
+
+    // Copying beats reading a code aloud, and the fallback matters: the clipboard API
+    // is unavailable over plain http on anything but localhost, which is exactly how
+    // somebody will first try this on a home network.
+    const copy = document.querySelector<HTMLButtonElement>('#copy-code');
+    copy?.addEventListener('click', () => {
+      audio.play('select');
+      void navigator.clipboard
+        ?.writeText(roomCode)
+        .then(() => {
+          copy.textContent = 'Copied';
+          setTimeout(() => (copy.textContent = 'Copy'), 1200);
+        })
+        .catch(() => {
+          // Select it instead, so it can still be copied by hand.
+          const node = document.querySelector('#room-code');
+          if (node) globalThis.getSelection()?.selectAllChildren(node);
+          copy.textContent = 'Select and copy';
+        });
+    });
+
+    document.querySelector('#begin')?.addEventListener('click', () => {
+      audio.play('select');
+      connection.send({ type: 'start' });
+    });
     document.querySelector('#leave')?.addEventListener('click', () => {
+      audio.play('select');
       connection.close();
       showMenu();
     });
@@ -448,7 +446,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
       if (centre === undefined) continue;
       banners.push({
         ...banner,
-        colour: playerColourHex(banner.player),
+        colour: playerCssColour(banner.player),
         ...scene.screenAt(centre.x, centre.y),
       });
     }
@@ -606,6 +604,22 @@ if (params.get('autostart') === '1') {
   if (phase !== null && PHASES.includes(phase as Phase)) match.fastForwardTo(phase as Phase);
   void runSession(localSession(match), setup).catch((error: unknown) =>
     showError('Failed to start match', error),
+  );
+} else if (params.get('host') !== null || params.get('join') !== null) {
+  // The online lobby had no way in except clicking through the menu, which meant it
+  // could not be looked at the way `?autostart=1` lets the offline game be looked at —
+  // and it went un-inspected at more than four seats for exactly that long.
+  const joining = params.get('join');
+  const setup: Setup = {
+    seats: Array.from({ length: Number(params.get('host') ?? 2) }, (_, i) =>
+      i === 0 ? null : DEFAULT_BOT,
+    ),
+    seed: Number(params.get('seed') ?? 1),
+    style: preferredStyle,
+    name: params.get('name') ?? 'Player',
+  };
+  void startOnline(setup, joining).catch((error: unknown) =>
+    showError(joining !== null ? 'Could not join' : 'Could not host', error),
   );
 } else {
   showMenu();

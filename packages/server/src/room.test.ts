@@ -109,6 +109,50 @@ describe('room membership', () => {
     ).toHaveLength(3);
   });
 
+  it('seats a full table of eight, which is the most the rules allow', () => {
+    // The cap was raised from four and the online path was never exercised at it: the
+    // protocol validated 2-8 on both sides long before a room was asked to hold eight.
+    const r = room(8);
+    const clients = Array.from({ length: 8 }, (_, i) => new TestClient(`c${i}`));
+    clients.forEach((c, i) => expect(r.join(c, `P${i}`)).toBe(i));
+    expect(new Set(clients.map((c) => c.playerId)).size).toBe(8);
+
+    const roster = clients[7]?.received.filter((m) => m.type === 'room').at(-1);
+    expect(roster?.type === 'room' && roster.seats).toHaveLength(8);
+    expect(roster?.type === 'room' && roster.playerCount).toBe(8);
+
+    // And the table is full: a ninth has nowhere to sit.
+    expect(r.join(new TestClient('spare'), 'Spare')).toBeNull();
+  });
+
+  it('runs an eight-player match with every client in step', () => {
+    const r = room(8, 5);
+    const clients = Array.from({ length: 8 }, (_, i) => new TestClient(`c${i}`));
+    for (const [i, c] of clients.entries()) r.join(c, `P${i}`);
+    r.start();
+
+    const snapshot = clients[0]?.received.find((m) => m.type === 'snapshot');
+    expect(snapshot?.type === 'snapshot' && snapshot.snapshot.players).toHaveLength(8);
+
+    run(r, 600);
+    for (const client of clients) {
+      expect({ id: client.id, desyncs: client.desyncs }).toEqual({ id: client.id, desyncs: [] });
+      expect(client.state).not.toBeNull();
+    }
+  });
+
+  it('fills eight seats with bots when only one player shows up', () => {
+    const r = room(8);
+    const a = new TestClient('a');
+    r.join(a, 'Ada');
+    r.start();
+
+    const snapshot = a.received.find((m) => m.type === 'snapshot');
+    expect(
+      snapshot?.type === 'snapshot' && snapshot.snapshot.players.filter((p) => p.isBot),
+    ).toHaveLength(7);
+  });
+
   it('refuses new players once a match is under way', () => {
     const r = room(3);
     r.join(new TestClient('a'), 'Ada');

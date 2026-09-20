@@ -1882,6 +1882,47 @@ that flight time scales with distance, and makes close shots *slower* than they 
 Lowering the per-tile term rather than the base is the compromise: **25-38% faster at
 every range beyond twenty tiles, and within 5% of unchanged at point blank.**
 
+## 10q. The online lobby, tested at last and then polished
+
+### It had never been opened at more than four seats
+
+The player cap went from four to eight (10l) and the online path was never exercised at
+it: the protocol had validated 2-8 on both sides long before a room was asked to hold
+eight. Covered now, both ways.
+
+In `room.test.ts`: eight clients take eight distinct seats, a ninth is refused, and a
+600-tick eight-player match leaves every client bit-identical to the server. And over a
+real socket against the built server: seats 0-7 assigned in order, the ninth refused with
+`room_full`, the match starting with eight people. Both worked first time — the cap was
+genuinely the only thing in the way.
+
+**The lobby had no way in except the menu**, which is why it went uninspected for so
+long. `?host=N` and `?join=CODE` now open it directly, the way `?autostart=1` has always
+opened the offline game. A whole path being untestable is itself the bug that lets it rot.
+
+### Polish
+
+The markup moved into `lobbyMarkup` in `lobby.ts`, a function of the room rather than
+something assembled in place — whether a guest is shown the host's controls is exactly
+the kind of thing that is obvious in the code and still wrong on the screen. Eight tests
+cover it, including the eight-seat case that started this.
+
+What changed for a player: the room code is set large and monospaced with a **Copy**
+button beside it (falling back to selecting the text, because the clipboard API is
+unavailable over plain http on anything but localhost — which is how somebody will first
+try this on a home network); every seat carries the **colour it will actually play in**,
+so the lobby and the board agree; seats read *"2 of 8 taken — the rest are played by
+bots"*; and each bot tier says what it does, since "gunner" tells a new player nothing.
+
+That last one needed a second pass. Explaining the tier on every row gave eight identical
+lines of explanation on a default table, which reads as noise and buries the line doing
+the work. It is now explained once per distinct tier.
+
+Names are escaped. They come from other players and the server caps their length, not
+their content.
+
+Three copies of "player colour as CSS" became one, in `colours.ts`.
+
 ## 11. Deferred (explicitly out of scope for v1)
 
 Team modes (2v2), quick-match / matchmaking queue, accounts and persistence, ranking,

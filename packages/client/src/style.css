@@ -444,3 +444,78 @@ body {
     transform: translate(-50%, -50%) scale(1);
   }
 }
+
+/* --- Lobby ------------------------------------------------------------------ */
+
+.code-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/*
+ * The room code is the one thing in the lobby somebody has to read out or type in, so
+ * it is set large, spaced, and in a face where O and 0 cannot be confused. The code
+ * alphabet already excludes the worst pairs; this is the other half of that.
+ */
+.room-code {
+  flex: 1;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 3px;
+  background: rgb(255 255 255 / 6%);
+  font:
+    700 1.6rem/1 ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace;
+  letter-spacing: 0.22em;
+  text-align: center;
+  user-select: all;
+}
+
+.seats .seat {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+/* The colour this seat will actually play in, so the lobby and the board agree. */
+.seats .swatch {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 2px;
+  flex: none;
+}
+
+.seats .who {
+  flex: 1;
+  min-width: 6ch;
+}
+
+.seats .tag {
+  font-size: 0.78rem;
+  opacity: 0.7;
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.seats .tag.you {
+  opacity: 1;
+  font-weight: 700;
+}
+
+.seats .tag.away {
+  color: #f0a0a0;
+}
+
+/* What the tier does, since its name says nothing to a new player. */
+.seats .blurb {
+  flex-basis: 100%;
+  padding-left: 1.4rem;
+  font-size: 0.78rem;
+  opacity: 0.55;
+}

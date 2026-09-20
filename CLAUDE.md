@@ -23,7 +23,10 @@ npm start     -w @rampart/headless -- --map --players 3 --seed 2   # print a map
 
 Client dev query parameters: `?autostart=1&players=3&seed=7`, `&snapshot=build` to jump
 to a phase, `&speed=10`, `&style=flat|pixel`, `&watch=1&bots=marshal` to observe a bot
-match. All are also reachable from the menu, which configures every seat individually.
+match. **Online:** `?host=8` opens a room for eight, `?join=CODE` joins one, `&name=Bo`
+sets the name — without these the lobby can only be reached by clicking through the menu,
+which is why it went uninspected above four seats. All are also reachable from the menu,
+which configures every seat individually.
 
 `npm run check` takes a few minutes, mostly bot matches. Run it in the background and
 wait rather than assuming it hung.
@@ -108,7 +111,8 @@ the built client and the WebSocket, verified by a CI job because there is no Doc
 this machine — PLAN.md 10i), and audio is wired end to end (PLAN.md 10j). **No audio
 files exist yet**; the user is producing them, and missing files are silent by design, so
 the game plays exactly as before until they land. `assets/audio/README.md` lists every
-cue and what fires it. **The lobby is what remains** — functional but bare. M7 is the
+cue and what fires it. **The lobby is done** (PLAN.md 10q): tested at eight seats over a real socket, code
+copying, seat colours, tier descriptions. M7 is the
 balance pass, and it now has a real question waiting for it: see "What is now the top
 priority" below.
 
