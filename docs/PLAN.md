@@ -523,6 +523,34 @@ Until this lands, **a soak cannot tell whether the scoring weights are right**: 
 points-decided match between current bots goes to whoever accidentally held more ground.
 This is the first feature here shipping without the tool that tuned everything else.
 
+**First session, 2026-09-22: three levers tried, none kept.** Marshal in one seat against
+two gunners, three players, six matches with marshal in seat 0 and six in seat 1, changing
+marshal alone so gunner is the control. Baseline: marshal won 7 of 11 decided matches and
+finished on 1,198 points on average against gunner's 719.
+
+| Change, marshal only                    | marshal wins | final score | castles | forfeited rounds |
+| --------------------------------------- | ------------ | ----------- | ------- | ---------------- |
+| none (baseline)                         | 7 of 11      | 1,198       | 1.46    | 26%              |
+| `maxCastles` 2 -> 3                     | 6 of 11      | 1,176       | 1.50    | 26%              |
+| target the rival with the highest score | 5 of 11      | 1,172       | 1.47    | 27%              |
+| `ROOM_RADIUS` 3 -> 4                    | 1 of 12      | 459         | 1.09    | 43%              |
+
+- **The ambition cap is not binding.** Bots barely hold two castles as it is (1.3–1.5), so
+  lifting it to three changes nothing. The cap is not the handicap it was expected to be.
+- **Shooting the points leader does not help**, within this noise.
+- **A wider band is a liability under points too**, as it was for survival: more wall to
+  repair, far more rounds failed, and territory per sealed round _fell_ (96 against 147).
+- **What the numbers point at instead: both tiers fail to seal about a quarter of their
+  rounds** (marshal 26%, gunner 24%), and a failed round forfeits every point of it and a
+  life. When marshal does seal it earns twice gunner's territory (147 against 73 per
+  sealed round). **The largest points lever is sealing reliably, not reaching further** —
+  start the next session by asking why a quarter of rounds fail: what the budget said,
+  how far short the wall was, and whether the plan was abandoned or never affordable.
+- **Seat bias is large and real** (11.4): marshal won 5 of 6 from seat 1 in two separate
+  runs, and 2 and 1 of 6 from seat 0. Every comparison here needs both seats.
+- The `ROOM_RADIUS` comment argues for two while the value is three; which one was
+  measured last is worth settling before the radius is touched again.
+
 ### 11.3 Two-player balance
 
 The worst thing in the project. At gunner, over ten seeds: **33.8 rounds average, three
