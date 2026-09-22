@@ -61,6 +61,13 @@ export const RulesetSchema = z
       damagesWalls: z.boolean(),
       damagesCastles: z.boolean(),
       damagesCannons: z.boolean(),
+      /**
+       * Whether a shot may destroy wall its own player built. Off, a target on your own
+       * island is refused outright and only a live opponent's wall is ever cleared —
+       * otherwise shooting a spare stretch of your own wall would score for damage you
+       * were going to repair anyway.
+       */
+      damagesOwnWalls: z.boolean(),
     }),
 
     build: z.strictObject({
@@ -141,6 +148,28 @@ export const RulesetSchema = z
        * which is why it cannot coexist with a shared piece sequence.
        */
       resetPieceScheduleOnContinue: z.boolean(),
+    }),
+
+    /**
+     * Points, banked at each build-phase resolution by every player holding a sealed
+     * castle. With a cap they decide most matches, so these weights are the balance.
+     */
+    scoring: z.strictObject({
+      /**
+       * The match ends at the resolution of this round, and the highest-scoring
+       * survivor wins. Null means no cap, which exists for tests about elimination:
+       * the game is balanced around the cap, and a host cannot choose to lift it.
+       */
+      maxRounds: z.number().int().positive().nullable(),
+      /** Per opponent's wall tile destroyed during the round. */
+      wallPoints: z.number().int().nonnegative(),
+      /** Times total enclosed tiles times total enclosed castles. */
+      tilePoints: z.number().int().nonnegative(),
+      /**
+       * Whether damage still scores for a player who ends the round without a sealed
+       * castle. Off by default: failing to seal forfeits the round's points entirely.
+       */
+      scoreDamageOnFailedRound: z.boolean(),
     }),
   })
   .refine((r) => r.players.max >= r.players.min, {

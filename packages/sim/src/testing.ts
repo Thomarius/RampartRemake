@@ -18,12 +18,26 @@ import {
  * `1`-`4` empty land belonging to that island (default is island 1)
  *
  * Adjacent `@` or `*` glyphs are grouped into one structure by bounding box.
+ *
+ * `islands`, when given, is a second picture of the same size in which a digit puts
+ * that tile on that island whatever the first picture holds. It is how a wall, castle
+ * or cannon is given to a player other than the first — which matters now that a
+ * shot damages only an opponent's wall. Any other glyph leaves the tile alone.
+ *
+ * Every wall is owned by the island it stands on, as it would be in play.
  */
-export function stateFromAscii(art: string, ruleset: Ruleset = defaultRuleset): MatchState {
-  const rows = art
-    .split('\n')
-    .map((r) => r.trim())
-    .filter((r) => r.length > 0);
+export function stateFromAscii(
+  art: string,
+  ruleset: Ruleset = defaultRuleset,
+  islands?: string,
+): MatchState {
+  const picture = (text: string): string[] =>
+    text
+      .split('\n')
+      .map((r) => r.trim())
+      .filter((r) => r.length > 0);
+  const rows = picture(art);
+  const overlay = islands === undefined ? [] : picture(islands);
   const height = rows.length;
   const width = Math.max(...rows.map((r) => r.length));
   const size = width * height;
@@ -42,8 +56,12 @@ export function stateFromAscii(art: string, ruleset: Ruleset = defaultRuleset): 
       const i = y * width + x;
       terrain[i] = Terrain.Land;
       islandId[i] = ch >= '1' && ch <= '9' ? Number(ch) : 1;
-      if (ch === '#') structure[i] = Structure.Wall;
-      else if (ch === '@') structure[i] = Structure.Castle;
+      const over = overlay[y]?.[x];
+      if (over !== undefined && over >= '1' && over <= '9') islandId[i] = Number(over);
+      if (ch === '#') {
+        structure[i] = Structure.Wall;
+        owner[i] = islandId[i] as number;
+      } else if (ch === '@') structure[i] = Structure.Castle;
       else if (ch === '*') structure[i] = Structure.Cannon;
     }
   }
@@ -100,6 +118,8 @@ export function stateFromAscii(art: string, ruleset: Ruleset = defaultRuleset): 
     pieceIndex: 0,
     continuesRemaining: 0,
     pieceRound: 0,
+    score: 0,
+    wallsDestroyed: 0,
   }));
 
   return {
@@ -124,8 +144,9 @@ export function stateFromAscii(art: string, ruleset: Ruleset = defaultRuleset): 
     shots: [],
     nextCannonId: cannons.length,
     nextShotId: 0,
-    winner: null,
+    winners: [],
     draw: false,
+    endedBy: null,
     events: [],
   };
 }
@@ -148,6 +169,14 @@ export function beginMatch(state: MatchState): MatchState {
  */
 export function withoutContinues(ruleset: Ruleset): Ruleset {
   return { ...ruleset, elimination: { ...ruleset.elimination, continues: 0 } };
+}
+
+/**
+ * A ruleset without the round cap, for anything about elimination or long matches:
+ * with it, a match reaching `game_over` says nothing about whether anyone was beaten.
+ */
+export function withoutRoundCap(ruleset: Ruleset): Ruleset {
+  return { ...ruleset, scoring: { ...ruleset.scoring, maxRounds: null } };
 }
 
 /** A ruleset with compressed phases, so a whole match runs in a test in milliseconds. */

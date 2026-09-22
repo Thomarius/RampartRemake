@@ -36,7 +36,8 @@ LOBBY
 -> [enclosure resolved; a player with no enclosed castle spends a life or is out]
 -> CANNON_PLACE    place the cannons you earned, ending early once done
 -> COMBAT ...
--> GAME_OVER       last player standing; simultaneous elimination is a draw
+-> GAME_OVER       last player standing, or the best score at the round cap;
+                   simultaneous elimination is a draw
 ```
 
 Phase durations are in `ruleset.phases`. The intermission is not decoration: its length
@@ -106,8 +107,10 @@ exact on a square grid, so every island is pixel-identical at every player count
   fire**. Tune it against shots per cannon in round one, not against a match average.
 - Flight time scales with distance. Unlimited range. A shot destroys exactly the tile it
   hits; wider craters remain available through `shots.craterPattern`.
-- `fire()` does **not** restrict whose wall you may target. A player may legally shoot
-  their own wall or neutral rubble, which matters for any rule that rewards damage.
+- **Only an opponent's wall can be damaged.** `fire()` refuses a target on your own
+  island, and an impact clears a wall only if a live opponent owns it — so a wide crater
+  cannot reach your own, and an eliminated player's unowned rubble is indestructible.
+  `shots.damagesOwnWalls` turns this off; self-inflicted damage never scores either way.
 
 ### 1.5 Continues
 
@@ -226,8 +229,9 @@ reproduces it like any other choice.
 - **Sweep**: one marking pass over the wall graph, described in 1.3.
 - **Shots**: flight ticks from distance; on impact the target tile is cleared if it is
   wall. The shooter is known; the wall's owner must be read _before_ it is cleared.
-- **Scoring of a round**: resolve enclosure, award cannons, spend lives or eliminate,
-  strip the eliminated, re-apply enclosure, sweep, re-apply enclosure.
+- **Resolution of a round**: resolve enclosure, award cannons, spend lives or eliminate,
+  strip the eliminated, re-apply enclosure, sweep, re-apply enclosure, bank points, then
+  check for the end of the match — one player left, or the round cap.
 
 ---
 
@@ -334,11 +338,22 @@ Tests state expectations as ASCII pictures where the subject is geometric
 
 ## 11. Open work
 
-### 11.1 Round cap and points scoring — designed, not built
+### 11.1 Round cap and points scoring — 11.1a built, 11.1b not started
 
-Agreed in full, every open question settled, not started. Built in two steps: **11.1a** is the
-rules, with the cap read from config; **11.1b** lets a host change it in the lobby.
-Everything below is design.
+Agreed in full, every open question settled. Built in two steps: **11.1a** is the rules,
+with the cap read from config — **done**; **11.1b** lets a host change it in the lobby —
+not started. Below is the design both follow.
+
+**First measurement under the agreed rules**, four three-player gunner matches: two
+decided on points at round 10, two by elimination at rounds 7 and 9. Per surviving
+player-round, 64 territory points against 24 for damage — 73/27, against the 65/35
+predicted above, because self-inflicted damage and rubble no longer count. Four matches
+is a smoke test, not a balance figure.
+
+**The difficulty ladder test reads differently under the cap.** `bot.test.ts` scores
+gunner against recruit by position at 20,000 ticks; with the cap ending matches near that
+point the lead fell from 5 of 8 to 4, so the test now runs uncapped. It is a survival
+question, which is what 11.2 is about to change — re-measure the ladder then (11.4).
 
 #### The rules
 

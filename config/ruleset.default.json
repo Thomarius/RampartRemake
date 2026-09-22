@@ -28,7 +28,8 @@
     "craterPattern": "single",
     "damagesWalls": true,
     "damagesCastles": false,
-    "damagesCannons": false
+    "damagesCannons": false,
+    "damagesOwnWalls": false
   },
   "build": {
     "sharedPieceSequence": false,
@@ -160,5 +161,11 @@
     "continues": 2,
     "extraCannonsPerContinue": 1,
     "resetPieceScheduleOnContinue": true
+  },
+  "scoring": {
+    "maxRounds": 10,
+    "wallPoints": 2,
+    "tilePoints": 1,
+    "scoreDamageOnFailedRound": false
   }
 }

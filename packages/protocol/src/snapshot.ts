@@ -47,6 +47,8 @@ const PlayerSchema = z.strictObject({
   pieceIndex: z.number().int().nonnegative(),
   continuesRemaining: z.number().int().nonnegative(),
   pieceRound: z.number().int().nonnegative(),
+  score: z.number().int().nonnegative(),
+  wallsDestroyed: z.number().int().nonnegative(),
 });
 
 const CastleSchema = z.strictObject({
@@ -106,8 +108,9 @@ export const SnapshotSchema = z.strictObject({
   shots: z.array(ShotSchema),
   nextCannonId: z.number().int().nonnegative(),
   nextShotId: z.number().int().nonnegative(),
-  winner: z.number().int().nullable(),
+  winners: z.array(z.number().int().nonnegative()),
   draw: z.boolean(),
+  endedBy: z.enum(['elimination', 'round_cap']).nullable(),
 });
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
@@ -131,8 +134,9 @@ export function captureSnapshot(state: MatchState): Snapshot {
     shots: state.shots.map((s) => ({ ...s })),
     nextCannonId: state.nextCannonId,
     nextShotId: state.nextShotId,
-    winner: state.winner,
+    winners: [...state.winners],
     draw: state.draw,
+    endedBy: state.endedBy,
   };
 }
 
@@ -159,7 +163,8 @@ export function applySnapshot(state: MatchState, snapshot: Snapshot): void {
   state.shots = snapshot.shots.map((s) => ({ ...s }));
   state.nextCannonId = snapshot.nextCannonId;
   state.nextShotId = snapshot.nextShotId;
-  state.winner = snapshot.winner;
+  state.winners = [...snapshot.winners];
   state.draw = snapshot.draw;
+  state.endedBy = snapshot.endedBy;
   state.events = [];
 }

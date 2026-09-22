@@ -20,7 +20,8 @@ export type Rejection =
   | 'out_of_range'
   | 'unknown_castle'
   | 'castle_taken'
-  | 'already_selected';
+  | 'already_selected'
+  | 'own_island';
 
 export function playerOf(state: MatchState, id: number): PlayerState | null {
   return state.players[id] ?? null;

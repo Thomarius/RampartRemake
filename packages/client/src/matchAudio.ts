@@ -101,13 +101,14 @@ export class MatchAudio {
           break;
 
         case 'game_over':
-          // A draw is every survivor eliminated together, which nobody won.
+          // A draw is every survivor eliminated together, which nobody won. A shared
+          // win on points is still a win for each of them.
           this.audio.music(
             this.watching
               ? event.draw
                 ? 'music_defeat'
                 : 'music_victory'
-              : event.winner === this.humanPlayer
+              : event.winners.includes(this.humanPlayer)
                 ? 'music_victory'
                 : 'music_defeat',
           );

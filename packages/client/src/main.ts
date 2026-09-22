@@ -17,6 +17,7 @@ import { lobbyMarkup } from './lobby.js';
 import { Hud, type IslandBanner } from './hud.js';
 import { MatchAudio } from './matchAudio.js';
 import { LocalMatch } from './localMatch.js';
+import { announcementLines } from './scores.js';
 import { ServerConnection } from './net/connection.js';
 import { NetworkMatch } from './net/networkMatch.js';
 import { Scene, createTheme } from './render/scene.js';
@@ -498,6 +499,8 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     (session.state.ruleset.phases.transitionBannerMs * session.state.ruleset.tickRateHz) / 1000,
   );
   let announcedAt: number | null = null;
+  /** Set by a resolution, so the announcement after it carries the standings. */
+  let resolvedSinceAnnounce = false;
 
   /** Fires the announcement once the end-of-phase pause is over, and once only. */
   function announceWhenDue(): void {
@@ -509,7 +512,12 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     if (announcedAt === state.phaseEndTick) return;
     if (state.tick < state.phaseEndTick - bannerTicks) return;
     announcedAt = state.phaseEndTick;
-    hud.announce(state.pendingPhase, state.ruleset.phases.transitionBannerMs);
+    hud.announce(
+      state.pendingPhase,
+      state.ruleset.phases.transitionBannerMs,
+      announcementLines(state, resolvedSinceAnnounce),
+    );
+    resolvedSinceAnnounce = false;
   }
 
   function applyEvents(events: readonly MatchEvent[]): void {
@@ -530,6 +538,10 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
           structuresChanged = true;
           break;
         case 'round_resolved':
+          resolvedSinceAnnounce = true;
+          structuresChanged = true;
+          territoryChanged = true;
+          break;
         case 'player_eliminated':
           structuresChanged = true;
           territoryChanged = true;

@@ -8,6 +8,7 @@ import {
   type MatchState,
   withoutContinues,
   type Rejection,
+  withoutRoundCap,
 } from '@rampart/sim';
 import { describe, expect, it } from 'vitest';
 
@@ -238,7 +239,14 @@ describe('difficulty', () => {
           [strong, weak],
           [weak, strong],
         ] as Difficulty[][]) {
-          const { state } = play(seed, order as Difficulty[], 20_000);
+          // Uncapped: this reads position at a fixed tick, and the cap ends a match
+          // near it, moving the moment measured. With the cap the lead was 4 of 8.
+          const { state } = play(
+            seed,
+            order as Difficulty[],
+            20_000,
+            withoutRoundCap(defaultRuleset),
+          );
           const strongSeat = order[0] === strong ? 0 : 1;
           const score = (id: number): number =>
             (state.players[id]?.eliminated ? -100 : 0) +

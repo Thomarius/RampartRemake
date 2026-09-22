@@ -19,9 +19,15 @@ import {
 } from './match.js';
 import { canPlacePiece, currentPieceId, legalCannonPlacements } from './placement.js';
 import { pieceCells } from './pieces.js';
-import { Structure, type MatchEvent, type MatchState, type PlayerState } from './types.js';
+import {
+  Structure,
+  type MatchEvent,
+  type MatchState,
+  type Phase,
+  type PlayerState,
+} from './types.js';
 import { recordRandomPlayout, scriptedAction } from './playout.js';
-import { beginMatch, fastRuleset, withoutContinues } from './testing.js';
+import { beginMatch, fastRuleset, withoutContinues, withoutRoundCap } from './testing.js';
 
 // Continues off by default here. Most of these tests are about the phase machine and
 // about elimination, and a life spent instead of a knockout would quietly change what
@@ -29,7 +35,9 @@ import { beginMatch, fastRuleset, withoutContinues } from './testing.js';
 function options(
   playerCount: number,
   seed = 42,
-  ruleset = withoutContinues(fastRuleset()),
+  // Uncapped by default: most of these are about the round machine and elimination,
+  // which a cap would end first. The cap has its own tests.
+  ruleset = withoutRoundCap(withoutContinues(fastRuleset())),
 ): MatchOptions {
   return {
     seed,
@@ -209,8 +217,9 @@ describe('round resolution', () => {
     expect(state.players[1]!.eliminated).toBe(true);
     expect(state.players[0]!.eliminated).toBe(false);
     expect(state.phase).toBe('game_over');
-    expect(state.winner).toBe(0);
+    expect(state.winners).toEqual([0]);
     expect(state.draw).toBe(false);
+    expect(state.endedBy).toBe('elimination');
   });
 
   it('calls a draw when the last players fail together', () => {
@@ -220,7 +229,7 @@ describe('round resolution', () => {
     }
     runToResolution(state);
     expect(state.phase).toBe('game_over');
-    expect(state.winner).toBeNull();
+    expect(state.winners).toEqual([]);
     expect(state.draw).toBe(true);
   });
 
@@ -284,7 +293,7 @@ describe('full match', () => {
     const { state } = recordRandomPlayout(options(3, 5), 5, 60_000);
     expect(state.phase).toBe('game_over');
     expect(state.players.filter((p) => !p.eliminated).length).toBeLessThanOrEqual(1);
-    if (state.winner !== null) expect(state.players[state.winner]!.eliminated).toBe(false);
+    for (const id of state.winners) expect(state.players[id]!.eliminated).toBe(false);
   });
 
   it('keeps cycling rounds for as long as nobody breaks a wall', () => {
@@ -391,7 +400,9 @@ describe('intermission', () => {
       step(state);
       if (state.phase !== previous) {
         if (previous === 'intermission') starts.push(state.phase);
-        else expect(state.phase).toBe('intermission');
+        // The end of a match has a banner of its own, and at the cap it follows the
+        // final build phase directly.
+        else if ((state.phase as Phase) !== 'game_over') expect(state.phase).toBe('intermission');
         previous = state.phase;
       }
     }

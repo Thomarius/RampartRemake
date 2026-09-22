@@ -44,6 +44,13 @@ export interface PlayerState {
    * `round` exactly.
    */
   pieceRound: number;
+  /** Points banked at resolutions. Only a sealed round adds to it. */
+  score: number;
+  /**
+   * Opponents' wall tiles this player destroyed since the last resolution — not yet
+   * points, because failing to seal forfeits them.
+   */
+  wallsDestroyed: number;
 }
 
 export interface Castle {
@@ -129,13 +136,28 @@ export type MatchEvent =
     }
   | { kind: 'walls_swept'; tick: number; tiles: number[] }
   | { kind: 'player_eliminated'; tick: number; player: number; round: number }
-  | { kind: 'game_over'; tick: number; winner: number | null; draw: boolean };
+  | {
+      kind: 'game_over';
+      tick: number;
+      winners: number[];
+      draw: boolean;
+      endedBy: MatchEnd;
+    };
+
+/**
+ * How a match ended: by one player outlasting the rest, or by reaching the round cap
+ * with several still in, when the highest score among them wins.
+ */
+export type MatchEnd = 'elimination' | 'round_cap';
 
 export interface RoundResult {
   player: number;
   enclosedCastles: number;
   cannonsAwarded: number;
   eliminated: boolean;
+  /** Banked this resolution, so nobody downstream has to recompute the formula. */
+  territoryPoints: number;
+  damagePoints: number;
 }
 
 export interface MatchState {
@@ -171,8 +193,13 @@ export interface MatchState {
   nextCannonId: number;
   nextShotId: number;
 
-  winner: number | null;
+  /**
+   * Empty until the match ends, and empty after a draw. More than one is a shared win
+   * on points at the cap, which is not a draw: those players did win.
+   */
+  winners: number[];
   draw: boolean;
+  endedBy: MatchEnd | null;
 
   /** Drained by the server each tick and broadcast; never part of the state hash. */
   events: MatchEvent[];

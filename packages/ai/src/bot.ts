@@ -222,6 +222,9 @@ export class Bot {
       const i = y * state.width + x;
       if (state.structure[i] !== Structure.Wall || taken.has(i)) continue;
       if (state.islandId[i] === state.players[this.playerId]?.islandId) continue;
+      // Rubble left by an eliminated player is nobody's, and only an opponent's wall
+      // can be damaged, so a shot there would land and change nothing.
+      if (state.owner[i] === 0) continue;
       return { kind: 'fire', player: this.playerId, x, y };
     }
     return null;

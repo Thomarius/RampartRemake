@@ -52,6 +52,7 @@ export function stopgapAction(state: MatchState, playerId: number, rng: Rng): Ac
         const i = y * state.width + x;
         if (state.structure[i] !== Structure.Wall) continue;
         if (state.islandId[i] === player.islandId) continue;
+        if (state.owner[i] === 0) continue; // rubble cannot be damaged
         return { kind: 'fire', player: playerId, x, y };
       }
       return null;

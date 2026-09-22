@@ -35,6 +35,8 @@ interface Args {
   map: boolean;
   difficulties: Difficulty[];
   stats: string | null;
+  /** Overrides `scoring.maxRounds`; undefined keeps the ruleset's, null lifts the cap. */
+  maxRounds: number | null | undefined;
 }
 
 /**
@@ -64,6 +66,7 @@ function parseArgs(argv: string[]): Args {
     map: false,
     difficulties: ['gunner'],
     stats: null,
+    maxRounds: undefined,
   };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
@@ -79,6 +82,10 @@ function parseArgs(argv: string[]): Args {
         break;
       case '--seed':
         args.seed = Number(value);
+        i++;
+        break;
+      case '--max-rounds':
+        args.maxRounds = value === 'none' ? null : Number(value);
         i++;
         break;
       case '--max-ticks':
@@ -105,7 +112,7 @@ function parseArgs(argv: string[]): Args {
       case '--help':
         console.log(
           'usage: npm start -w @rampart/headless -- [--matches N] [--players N] [--seed N] ' +
-            `[--max-ticks N] [--difficulty ${DIFFICULTIES.join('|')}[,...]] [--stats FILE] [--map]`,
+            `[--max-ticks N] [--max-rounds N|none] [--difficulty ${DIFFICULTIES.join('|')}[,...]] [--stats FILE] [--map]`,
         );
         process.exit(0);
     }
@@ -116,7 +123,9 @@ function parseArgs(argv: string[]): Args {
 function describeOutcome(state: MatchState): string {
   if (state.phase !== 'game_over') return `unfinished (${state.phase}, round ${state.round})`;
   if (state.draw) return 'draw';
-  return state.winner === null ? 'no winner' : `player ${state.winner}`;
+  if (state.winners.length === 0) return 'no winner';
+  const who = state.winners.map((id) => `player ${id}`).join(' + ');
+  return state.endedBy === 'round_cap' ? `${who} on points` : `${who} last standing`;
 }
 
 // ------------------------------------------------------------------------- stats
@@ -143,6 +152,10 @@ interface StatRow {
   piecesPlaced: number;
   piecesBudget: number;
   shotsFired: number;
+  territoryPoints: number;
+  damagePoints: number;
+  /** Banked total after this round. */
+  score: number;
 }
 
 const STAT_COLUMNS: (keyof StatRow)[] = [
@@ -160,6 +173,9 @@ const STAT_COLUMNS: (keyof StatRow)[] = [
   'piecesPlaced',
   'piecesBudget',
   'shotsFired',
+  'territoryPoints',
+  'damagePoints',
+  'score',
 ];
 
 /**
@@ -222,7 +238,7 @@ function summariseStats(rows: StatRow[]): void {
   if (byTier.size === 0) return;
 
   console.log('\nper surviving player-round, averaged:');
-  console.log('  tier     sealed  owned  active  idle%   room  wall  pieces/budget');
+  console.log('  tier     sealed  owned  active  idle%   room  wall  pieces/budget   terr   dmg');
   for (const tier of DIFFICULTIES) {
     const list = byTier.get(tier);
     if (list === undefined) continue;
@@ -240,7 +256,13 @@ function summariseStats(rows: StatRow[]): void {
           .toFixed(1)
           .padStart(4)}  ${mean(list.map((r) => r.wallTiles))
           .toFixed(0)
-          .padStart(4)}  ${(used * 100).toFixed(0).padStart(11)}%`,
+          .padStart(4)}  ${(used * 100).toFixed(0).padStart(11)}%  ${mean(
+          list.map((r) => r.territoryPoints),
+        )
+          .toFixed(0)
+          .padStart(5)}  ${mean(list.map((r) => r.damagePoints))
+          .toFixed(0)
+          .padStart(4)}`,
     );
   }
 }
@@ -286,6 +308,11 @@ console.log(
   `running ${args.matches} match(es), ${args.players} bots (${table.join(', ')})\n`,
 );
 
+const ruleset =
+  args.maxRounds === undefined
+    ? bundle.ruleset
+    : { ...bundle.ruleset, scoring: { ...bundle.ruleset.scoring, maxRounds: args.maxRounds } };
+
 const started = Date.now();
 const outcomes = new Map<string, number>();
 const wins = new Map<Difficulty, number>();
@@ -299,7 +326,7 @@ for (let i = 0; i < args.matches; i++) {
   const seed = args.seed + i;
   const state = createMatch({
     seed,
-    ruleset: bundle.ruleset,
+    ruleset,
     terrainConfig: bundle.terrain,
     players: Array.from({ length: args.players }, (_, p) => ({
       name: `${seatTier(p)}${p}`,
@@ -355,6 +382,9 @@ for (let i = 0; i < args.matches; i++) {
             piecesPlaced: placed.get(result.player) ?? 0,
             piecesBudget: piecesBudget(bundle, tier),
             shotsFired: fired.get(result.player) ?? 0,
+            territoryPoints: result.territoryPoints,
+            damagePoints: result.damagePoints,
+            score: state.players[result.player]?.score ?? 0,
           });
         }
         placed.clear();
@@ -366,8 +396,9 @@ for (let i = 0; i < args.matches; i++) {
 
   const outcome = describeOutcome(state);
   outcomes.set(outcome, (outcomes.get(outcome) ?? 0) + 1);
-  if (state.phase === 'game_over' && state.winner !== null && !state.draw) {
-    const tier = seatTier(state.winner);
+  // A shared win counts for each player who shares it.
+  for (const winner of state.phase === 'game_over' ? state.winners : []) {
+    const tier = seatTier(winner);
     wins.set(tier, (wins.get(tier) ?? 0) + 1);
   }
   totalTicks += state.tick;

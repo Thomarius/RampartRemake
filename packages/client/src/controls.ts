@@ -112,9 +112,14 @@ export class Controls {
         else this.cue('piece_invalid');
         return;
       }
-      case 'combat':
-        this.submit({ kind: 'fire', player, x: tile.x, y: tile.y });
+      case 'combat': {
+        // Your own island is refused by the sim, so say so here rather than send it.
+        const own = this.state.islandId[tile.y * this.state.width + tile.x];
+        const mine = own === this.state.players[player]?.islandId;
+        if (mine && !this.state.ruleset.shots.damagesOwnWalls) this.cue('piece_invalid');
+        else this.submit({ kind: 'fire', player, x: tile.x, y: tile.y });
         return;
+      }
       case 'build':
         if (canPlacePiece(this.state, player, this.rotation, tile.x, tile.y) !== null) {
           this.cue('piece_invalid');

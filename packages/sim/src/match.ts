@@ -66,6 +66,8 @@ export function createMatch(options: MatchOptions): MatchState {
     pieceIndex: 0,
     continuesRemaining: options.ruleset.elimination.continues,
     pieceRound: 0,
+    score: 0,
+    wallsDestroyed: 0,
   }));
 
   const structure = new Uint8Array(size);
@@ -103,8 +105,9 @@ export function createMatch(options: MatchOptions): MatchState {
     shots: [],
     nextCannonId: 0,
     nextShotId: 0,
-    winner: null,
+    winners: [],
     draw: false,
+    endedBy: null,
     events: [],
   };
 
@@ -261,19 +264,37 @@ function stripEliminated(state: MatchState, playerId: number): void {
   }
 }
 
+/**
+ * Whether the match ends at this resolution, and if so who won.
+ *
+ * Outlasting everyone wins however the scores stand. At the cap the highest score
+ * among those still in wins, and a tie is shared — a player who is out never wins on
+ * points, which is what keeps attacking worth it for somebody behind.
+ */
 function checkGameOver(state: MatchState): boolean {
   const alive = alivePlayers(state);
-  if (alive.length > 1) return false;
+  const { maxRounds } = state.ruleset.scoring;
+  const capped = maxRounds !== null && state.round >= maxRounds;
+  if (alive.length > 1 && !capped) return false;
   state.pendingPhase = null;
-  state.winner = alive.length === 1 ? (alive[0] as PlayerState).id : null;
-  state.draw = alive.length === 0 && state.ruleset.elimination.simultaneousIsDraw;
+  if (alive.length > 1) {
+    const top = Math.max(...alive.map((p) => p.score));
+    state.winners = alive.filter((p) => p.score === top).map((p) => p.id);
+    state.draw = false;
+    state.endedBy = 'round_cap';
+  } else {
+    state.winners = alive.map((p) => p.id);
+    state.draw = alive.length === 0 && state.ruleset.elimination.simultaneousIsDraw;
+    state.endedBy = 'elimination';
+  }
   state.phase = 'game_over';
   state.phaseEndTick = state.tick;
   state.events.push({
     kind: 'game_over',
     tick: state.tick,
-    winner: state.winner,
+    winners: [...state.winners],
     draw: state.draw,
+    endedBy: state.endedBy,
   });
   return true;
 }
@@ -321,6 +342,8 @@ function resolveRound(state: MatchState): void {
           enclosedCastles: 0,
           cannonsAwarded: player.cannonsToPlace,
           eliminated: false,
+          territoryPoints: 0,
+          damagePoints: 0,
         });
         continue;
       }
@@ -329,7 +352,14 @@ function resolveRound(state: MatchState): void {
       player.eliminatedRound = state.round;
       player.cannonsToPlace = 0;
       eliminatedNow.push(player.id);
-      results.push({ player: player.id, enclosedCastles: 0, cannonsAwarded: 0, eliminated: true });
+      results.push({
+        player: player.id,
+        enclosedCastles: 0,
+        cannonsAwarded: 0,
+        eliminated: true,
+        territoryPoints: 0,
+        damagePoints: 0,
+      });
       continue;
     }
 
@@ -344,6 +374,8 @@ function resolveRound(state: MatchState): void {
       enclosedCastles: enclosed,
       cannonsAwarded: award,
       eliminated: false,
+      territoryPoints: 0,
+      damagePoints: 0,
     });
   }
 
@@ -380,6 +412,11 @@ function resolveRound(state: MatchState): void {
     }
   }
 
+  // Scored last, so the territory counted is the territory that will face the next
+  // barrage. The results were already announced, but events are read only once the
+  // step returns, so filling them in here is still in time.
+  scoreRound(state, results);
+
   if (checkGameOver(state)) return;
 
   const anyToPlace = state.players.some((p) => !p.eliminated && p.cannonsToPlace > 0);
@@ -391,6 +428,38 @@ function resolveRound(state: MatchState): void {
   if (continued.length > 0 || eliminatedNow.length > 0) {
     state.phaseEndTick += ticksFor(state.ruleset.phases.continueBannerMs, state.ruleset.tickRateHz);
   }
+}
+
+/**
+ * Banks the round's points: opponents' wall destroyed, plus enclosed tiles times
+ * enclosed castles, both as totals across every region a player holds. Totals rather
+ * than per region, so two separate loops are worth what one loop around both would be
+ * — and the product grows with the square of what a player holds, which is what
+ * makes a tight wall around a single castle lose on the clock.
+ *
+ * A player who ends the round without a sealed castle forfeits all of it, damage
+ * included, unless `scoreDamageOnFailedRound` says otherwise.
+ */
+function scoreRound(state: MatchState, results: RoundResult[]): void {
+  const { wallPoints, tilePoints, scoreDamageOnFailedRound } = state.ruleset.scoring;
+  const tiles = new Array<number>(state.players.length).fill(0);
+  for (let i = 0; i < state.territory.length; i++) {
+    const owner = state.territory[i] as number;
+    if (owner > 0) tiles[owner - 1] = (tiles[owner - 1] as number) + 1;
+  }
+
+  for (const result of results) {
+    const player = state.players[result.player] as PlayerState;
+    if (player.eliminated) continue;
+    const sealed = player.enclosedCastles > 0;
+    result.territoryPoints = sealed
+      ? tilePoints * (tiles[player.id] as number) * player.enclosedCastles
+      : 0;
+    result.damagePoints =
+      sealed || scoreDamageOnFailedRound ? wallPoints * player.wallsDestroyed : 0;
+    player.score += result.territoryPoints + result.damagePoints;
+  }
+  for (const player of state.players) player.wallsDestroyed = 0;
 }
 
 /** Begins the phase an intermission was holding. */
@@ -643,6 +712,8 @@ export function hashMatchState(state: MatchState): string {
     h.i32(p.enclosedCastles);
     h.i32(p.cannonsToPlace);
     h.i32(p.pieceIndex);
+    h.i32(p.score);
+    h.i32(p.wallsDestroyed);
   }
 
   h.bytes(state.terrain);
@@ -667,7 +738,9 @@ export function hashMatchState(state: MatchState): string {
       .i32(s.impactTick);
   }
 
-  h.nullable(state.winner);
+  h.u32(state.winners.length);
+  for (const id of state.winners) h.i32(id);
   h.bool(state.draw);
+  h.u32(state.endedBy === null ? 0 : state.endedBy === 'elimination' ? 1 : 2);
   return h.hex;
 }

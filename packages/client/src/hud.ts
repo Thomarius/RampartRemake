@@ -1,4 +1,6 @@
 import { playerCssColour } from './colours.js';
+import { escape } from './lobby.js';
+import { endOfMatchText, roundLabel, standingsLine } from './scores.js';
 import {
   PIECE_CATALOGUE,
   currentPieceId,
@@ -77,13 +79,21 @@ export class Hud {
    * Announces a phase with a banner that sweeps down the screen, as the original
    * did. Phases change without warning otherwise, and a player who does not notice
    * that combat has ended spends the first seconds of the build phase shooting.
+   *
+   * `lines` ride along underneath — the standings after a resolution, and the call
+   * for the final round — so neither needs a pause of its own.
    */
-  announce(phase: Phase, durationMs: number): void {
+  announce(phase: Phase, durationMs: number, lines: readonly string[] = []): void {
     const text = PHASE_CALL[phase];
     if (text === '') return;
     const banner = document.createElement('div');
     banner.className = 'phase-call';
     banner.textContent = text;
+    for (const line of lines) {
+      const small = document.createElement('small');
+      small.textContent = line;
+      banner.append(small);
+    }
     // The simulation holds the next phase until this has left the screen, so the
     // travel time comes from the ruleset rather than the stylesheet.
     banner.style.animationDuration = `${durationMs}ms`;
@@ -146,9 +156,9 @@ export class Hud {
             : ' · last life';
         const status = p.eliminated
           ? `eliminated round ${p.eliminatedRound}`
-          : `${p.enclosedCastles} castle${p.enclosedCastles === 1 ? '' : 's'} · ` +
+          : `${p.score} pts · ${p.enclosedCastles} castle${p.enclosedCastles === 1 ? '' : 's'} · ` +
             `${live}/${cannons.length} guns${lives}`;
-        return `<li class="${classes}"><b style="background:${playerCssColour(p.id)}"></b>${p.name}<span>${status}</span></li>`;
+        return `<li class="${classes}"><b style="background:${playerCssColour(p.id)}"></b>${escape(p.name)}<span>${status}</span></li>`;
       })
       .join('');
 
@@ -173,18 +183,11 @@ export class Hud {
     }
 
     let banner = '';
-    if (state.phase === 'game_over' && humanPlayer < 0) {
-      const text = state.draw
-        ? 'Draw — nobody held a castle'
-        : `${state.players[state.winner ?? 0]?.name ?? 'Nobody'} wins`;
-      banner = `<div class="banner">${text}<small>press R for the menu</small></div>`;
-    } else if (state.phase === 'game_over') {
-      const text = state.draw
-        ? 'Draw — nobody held a castle'
-        : state.winner === humanPlayer
-          ? 'You win'
-          : `${state.players[state.winner ?? 0]?.name ?? 'Nobody'} wins`;
-      banner = `<div class="banner">${text}<small>press R to play again</small></div>`;
+    if (state.phase === 'game_over') {
+      const text = escape(endOfMatchText(state, humanPlayer));
+      const table = escape(standingsLine(state));
+      const again = humanPlayer < 0 ? 'press R for the menu' : 'press R to play again';
+      banner = `<div class="banner">${text}<small>${table}</small><small>${again}</small></div>`;
     } else if (human?.eliminated) {
       banner = `<div class="banner">You were eliminated in round ${human.eliminatedRound}<small>watching the rest</small></div>`;
     }
@@ -194,7 +197,7 @@ export class Hud {
         <div class="phase">
           <strong>${waiting ? `Next: ${PHASE_LABEL[shown]}` : PHASE_LABEL[shown]}</strong>
           <span class="timer">${waiting ? '&nbsp;' : `${secondsLeft.toFixed(1)}s`}</span>
-          <span class="round">round ${state.round}</span>
+          <span class="round">${roundLabel(state)}</span>
         </div>
         <ul class="roster">${roster}</ul>
       </div>

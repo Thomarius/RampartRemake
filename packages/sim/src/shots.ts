@@ -95,6 +95,14 @@ export function fire(
   if (tx < 0 || ty < 0 || tx >= state.width || ty >= state.height) {
     return { rejection: 'out_of_bounds' };
   }
+  // Refused rather than fired and wasted: a shot here could only ever hit your own
+  // wall, which neither damages it nor scores.
+  if (
+    !state.ruleset.shots.damagesOwnWalls &&
+    state.islandId[ty * state.width + tx] === player.islandId
+  ) {
+    return { rejection: 'own_island' };
+  }
 
   const cannon = findReadyCannon(state, playerId, tx, ty);
   if (!cannon) return { rejection: 'no_ready_cannon' };
@@ -127,6 +135,11 @@ export function fire(
 /**
  * Lands every shot due this tick. Craters clear walls only — castles and cannons
  * are indestructible, so a breach is the sole thing artillery can achieve.
+ *
+ * Only a live opponent's wall is cleared unless `damagesOwnWalls` says otherwise, and
+ * only that ever credits the shooter. Checked here as well as at `fire`, because a
+ * crater wider than one tile reaches ground the aim never pointed at. The owner is
+ * read before the tile is cleared, since clearing it is what zeroes the owner.
  */
 export function resolveImpacts(state: MatchState): void {
   if (state.shots.length === 0) return;
@@ -140,6 +153,8 @@ export function resolveImpacts(state: MatchState): void {
     }
 
     const destroyed: number[] = [];
+    const shooter = state.players[shot.owner];
+    const shooterIsland = shooter?.islandId ?? 0;
     if (state.ruleset.shots.damagesWalls) {
       for (const [ox, oy] of offsets) {
         const tx = shot.toX + ox;
@@ -147,6 +162,9 @@ export function resolveImpacts(state: MatchState): void {
         if (tx < 0 || ty < 0 || tx >= state.width || ty >= state.height) continue;
         const i = ty * state.width + tx;
         if (state.structure[i] !== Structure.Wall) continue;
+        const opponents = state.owner[i] !== 0 && state.owner[i] !== shooterIsland;
+        if (!opponents && !state.ruleset.shots.damagesOwnWalls) continue;
+        if (opponents && shooter) shooter.wallsDestroyed++;
         state.structure[i] = Structure.Empty;
         state.owner[i] = 0;
         destroyed.push(i);

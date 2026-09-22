@@ -9,6 +9,7 @@ import {
   type Action,
   type MatchState,
   withoutContinues,
+  withoutRoundCap,
 } from '@rampart/sim';
 import { describe, expect, it } from 'vitest';
 
@@ -28,7 +29,9 @@ function playOut(
 ): MatchState {
   const state = createMatch({
     seed,
-    ruleset: withoutContinues(defaultRuleset),
+    // Uncapped: "reaches a conclusion" below means somebody was beaten, which the
+    // cap would make true by itself.
+    ruleset: withoutRoundCap(withoutContinues(defaultRuleset)),
     terrainConfig: defaultTerrainConfig,
     players: Array.from({ length: playerCount }, (_, i) => ({ name: `bot${i}`, isBot: true })),
   });

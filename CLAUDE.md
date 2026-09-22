@@ -76,8 +76,9 @@ Full detail in PLAN.md §1. The parts that surprise people:
   configured.**
 - **A wall must turn its corners.** The escape flood is 8-connected while the wall is
   not, so a diagonal join does not seal. The coastline is worth nothing.
-- **Only walls are destructible**, and a shot removes exactly the tile it hits. `fire()`
-  does not check whose wall you target — you may legally shoot your own.
+- **Only walls are destructible**, and a shot removes exactly the tile it hits — and only
+  an opponent's. `fire()` refuses your own island, and an eliminated player's rubble is
+  indestructible.
 - **Cannons go inert outside sealed territory.** This is the game's main corrective and
   the source of most bot trouble.
 - **Flight time _is_ the reload** — a cannon cannot fire again until its shot lands.
@@ -102,7 +103,8 @@ colours, tier descriptions).
 
 **M7, the balance pass, is where the work is.** PLAN.md §11 lists it in priority order:
 
-1. **Round cap and points scoring** — fully designed in §11.1, not started. A match ends
+1. **Round cap and points scoring** — the rules are built (§11.1a); host-settable lobby
+   settings (§11.1b) are not. A match ends
    after `maxRounds` or when one player is left; if two or more remain the highest score
    wins. Measured beforehand: most matches would reach the cap, so **the scoring formula
    becomes the game's balance** rather than a tie-breaker.

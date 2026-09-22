@@ -285,6 +285,15 @@ body {
   animation: sweep 4s linear forwards;
 }
 
+.phase-call small {
+  display: block;
+  margin-top: 0.5rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: none;
+}
+
 @keyframes sweep {
   from {
     top: -12%;

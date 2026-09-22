@@ -99,7 +99,16 @@ describe('match audio', () => {
       kind: 'round_resolved',
       tick: 1,
       round: 1,
-      results: [{ player: HUMAN, enclosedCastles, cannonsAwarded: 2, eliminated }],
+      results: [
+        {
+          player: HUMAN,
+          enclosedCastles,
+          cannonsAwarded: 2,
+          eliminated,
+          territoryPoints: 0,
+          damagePoints: 0,
+        },
+      ],
     });
 
     match.handle([resolved(1)]);
@@ -123,7 +132,16 @@ describe('match audio', () => {
         kind: 'round_resolved',
         tick: 1,
         round: 3,
-        results: [{ player: HUMAN, enclosedCastles: 0, cannonsAwarded: 0, eliminated: true }],
+        results: [
+          {
+            player: HUMAN,
+            enclosedCastles: 0,
+            cannonsAwarded: 0,
+            eliminated: true,
+            territoryPoints: 0,
+            damagePoints: 0,
+          },
+        ],
       },
       { kind: 'player_eliminated', tick: 1, player: HUMAN, round: 3 },
     ]);
@@ -132,16 +150,29 @@ describe('match audio', () => {
 
   it('plays victory only for the player who actually won', () => {
     const won = setup();
-    won.match.handle([{ kind: 'game_over', tick: 1, winner: HUMAN, draw: false }]);
+    won.match.handle([
+      { kind: 'game_over', tick: 1, winners: [HUMAN], draw: false, endedBy: 'elimination' },
+    ]);
     expect(won.audio.tracks).toEqual(['music_victory']);
 
     const lost = setup();
-    lost.match.handle([{ kind: 'game_over', tick: 1, winner: 1, draw: false }]);
+    lost.match.handle([
+      { kind: 'game_over', tick: 1, winners: [1], draw: false, endedBy: 'elimination' },
+    ]);
     expect(lost.audio.tracks).toEqual(['music_defeat']);
+
+    // A shared win on points is a win for each player who shares it.
+    const shared = setup();
+    shared.match.handle([
+      { kind: 'game_over', tick: 1, winners: [1, HUMAN], draw: false, endedBy: 'round_cap' },
+    ]);
+    expect(shared.audio.tracks).toEqual(['music_victory']);
 
     // A draw is every survivor eliminated together, which nobody won.
     const drawn = setup();
-    drawn.match.handle([{ kind: 'game_over', tick: 1, winner: null, draw: true }]);
+    drawn.match.handle([
+      { kind: 'game_over', tick: 1, winners: [], draw: true, endedBy: 'elimination' },
+    ]);
     expect(drawn.audio.tracks).toEqual(['music_defeat']);
   });
 
@@ -152,7 +183,16 @@ describe('match audio', () => {
         kind: 'round_resolved',
         tick: 1,
         round: 1,
-        results: [{ player: 0, enclosedCastles: 2, cannonsAwarded: 3, eliminated: false }],
+        results: [
+          {
+            player: 0,
+            enclosedCastles: 2,
+            cannonsAwarded: 3,
+            eliminated: false,
+            territoryPoints: 0,
+            damagePoints: 0,
+          },
+        ],
       },
     ]);
     expect(audio.sfx).toEqual([]);

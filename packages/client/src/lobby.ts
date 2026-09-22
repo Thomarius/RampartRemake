@@ -35,7 +35,7 @@ function label(tier: string): string {
   return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
-function escape(text: string): string {
+export function escape(text: string): string {
   return text.replace(
     /[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string,
