@@ -336,23 +336,69 @@ Tests state expectations as ASCII pictures where the subject is geometric
 
 ### 11.1 Round cap and points scoring — designed, not built
 
-Agreed in full and not started. Everything below is design.
+Agreed in full, every open question settled, not started. Built in two steps: **11.1a** is the
+rules, with the cap read from config; **11.1b** lets a host change it in the lobby.
+Everything below is design.
 
 #### The rules
 
-A match ends after `maxRounds` (default 10), or earlier when one player is left, as now.
+A match ends at the resolution of round `maxRounds` (default 10), or earlier when one
+player is left, as now. `null` means no cap and exists for tests about elimination: **the
+game is planned and balanced with the cap in place**, so an uncapped match is a testing
+tool, not a mode.
+
 If two or more are still in it at the cap, the highest score among them wins; a tie is a
 shared win. **A player who is out cannot win however many points they had** — being
 eliminated is worse than any score, which is what keeps aggression worth it when behind.
+Simultaneous elimination stays a draw whatever the scores, at the cap or before it.
 
 Points are awarded at each build-phase resolution, to every player holding a valid
 territory with at least one castle:
 
-- `wallPoints` (default 2) for each wall tile that player destroyed during the round.
-- `tilePoints` (default 1) for each enclosed tile, multiplied by their castle count.
+- `wallPoints` (default 2) for each opponent's wall tile that player destroyed during the
+  round.
+- `tilePoints` (default 1) × **total enclosed tiles × total enclosed castles**. Totals, not
+  per region: two separate loops of 30 tiles with one castle each score 60 × 2 = 120,
+  exactly as one loop holding both would. The product grows with the square of what a
+  player holds, which is the point — a tight wall around one castle loses on the clock.
+
+**An enclosed tile is `territory[i] === id + 1`**, as the enclosure solver already defines
+it: every non-wall tile of a sealed region holding one of the player's castles, including
+the castle's own tiles, cannon footprints and any enclosed water. Placing a cannon or
+holding a castle does not diminish the area. The wall itself never counts.
 
 A player who ends the round without a valid territory scores **nothing for that round**,
-including the damage they dealt. They may spend a continue as usual.
+including the damage they dealt. They spend a continue as usual — in the final round too,
+where they lose a life and stay in contention on points. The wipe may be skipped in that
+case if it proves simpler, since nothing follows it.
+
+**The HUD shows banked scores only**, updated at each resolution — never a running damage
+tally, which could still be forfeited by failing to seal. Alongside it the round as
+"Round 3 / 10", and a notice when the final round begins.
+
+#### Only opponents' walls can be damaged
+
+This changes §1.4 and the CLAUDE.md rule "you may legally shoot your own"; update both when
+it lands. Today `fire()` has no island check at all, so a player could shoot a spare
+stretch of their own wall for two points a tile and rebuild it in the build phase they
+were spending anyway. **Decided: a player can damage only opposing players' walls, so
+they can only score on opponents.**
+
+- `fire()` rejects a target on the shooter's own island with a new rejection,
+  `own_island`. Both bots already skip their own island (`bot.ts`, `stopgap.ts`), so the
+  soak's assertion that bots never ask for a refused move should keep holding. The client
+  should not submit such a click at all.
+- `resolveImpacts` clears a wall tile only if its owner is a live opponent —
+  `owner !== 0 && owner !== shooter.islandId`, read **before** the tile is cleared — and
+  credits the shooter. Checked at impact as well as at fire, so a crater wider than one
+  tile cannot slip past it; with teams, "opponent" becomes "not on my team".
+- Consequence: rubble left by an eliminated player is unowned, so it is now
+  indestructible. It sits on a dead island, so nothing is lost — but the bot's random
+  fallback target in `bot.ts` must skip unowned wall or it wastes shots on it.
+- Consequence: a player can no longer shoot their own stranded wall out of ground a
+  cannon needs; only an opponent can remove it. Accepted.
+- Configurable as `shots.damagesOwnWalls` (default false), beside the existing
+  `damagesWalls/Castles/Cannons`, so the rule is not hardcoded.
 
 #### Why it is expected to work, and what it really changes
 
@@ -372,69 +418,84 @@ default weights:
 | walls destroyed, as points      | 16.8 -> 34                     | 13.9 -> 28 |
 | split                           | 65% territory / 35% aggression | 76% / 24%  |
 
+These were taken before the formula was settled and counted self-inflicted damage, so the
+territory and damage rows need retaking under the agreed rules — the first measurement
+once 11.1a lands.
+
 **The cap is not a tie-breaker, it is the main win condition** — most matches will be
 decided on points rather than by elimination. That makes the scoring formula the game's
 balance, and the elimination rules the exception. Worth holding in mind when tuning: the
 split will drift further toward territory as play improves, because tiles times castles
-grows with the square-ish term while damage stays flat.
-
-#### Which walls score
-
-Only a wall belonging to somebody else. `state.owner[i]` already carries the island for
-each wall tile and is cleared to zero when a player is eliminated or a wall is swept, so
-the test is cheap — but it has to be read **before** `resolveImpacts` clears it.
-
-Shooting your own wall must not score, because nothing prevents it: `fire()` has no
-island check at all, so a player could shoot a spare stretch of their own wall for two
-points a tile and rebuild it in the build phase they were spending anyway.
-
-**Recommended: score nothing for it rather than forbidding it.** Since 10n the sweep
-leaves stranded wall standing as an obstacle, and clearing your own rubble out of the
-ground a cannon needs is now a legitimate use of a shot. Forbidding self-fire would take
-that away to fix a problem that scoring zero already fixes. One line either way.
-
-Rubble left by an eliminated player is unowned, so it scores nothing under the same test.
-That is also fine on its own terms: shooting rubble spends a shot without touching a live
-wall, which helps every opponent.
+grows quadratically while damage stays flat.
 
 Note that this cannot be balance-tested by the usual soak until 11.2 lands.
 
-#### What has to change
+#### 11.1a — the rules
 
-**Config** (`ruleset.scoring`): `maxRounds`, `wallPoints`, `tilePoints`, and
-`scoreDamageOnFailedRound` (default false) — the last so the alternative to the
-forfeit rule can be measured later without a code change.
+**Config.** `ruleset.scoring`: `maxRounds` (positive integer or `null`), `wallPoints`,
+`tilePoints`, and `scoreDamageOnFailedRound` (default false) — the last so the
+alternative to the forfeit rule can be measured later without a code change. Plus
+`shots.damagesOwnWalls`.
 
-**Sim.** `PlayerState` gains `score` and a per-round `wallsDestroyed`. `resolveImpacts`
-credits the shooter, reading the victim's owner before clearing it. `resolveRound` scores
-every surviving player, then resets the accumulators. `checkGameOver` gains the cap.
+**Sim.**
 
-Scoring is measured **after** the sweep and its `applyEnclosure`, so the territory scored
-is the territory that will face the next barrage. A loop that encloses anything can never
-be swept, so in practice this should equal the pre-sweep figure; defining it removes the
-ambiguity rather than relying on that.
+- `PlayerState` gains `score` and a per-round `wallsDestroyed`. Both go into the state
+  hash and the snapshot's `PlayerSchema`.
+- `fire()` gains `own_island`; `resolveImpacts` the opponent check and the credit.
+- `resolveRound` scores every surviving player, then resets every accumulator, including
+  those that scored nothing. Scoring is measured **after** the sweep and its
+  `applyEnclosure`, so the territory scored is the territory that will face the next
+  barrage. A loop that encloses anything can never be swept, so in practice this equals
+  the pre-sweep figure; defining it removes the ambiguity rather than relying on that.
+- `round_resolved` results carry the territory and damage points awarded, so neither the
+  client nor the headless harness recomputes them.
+- `checkGameOver` gains the cap: `maxRounds !== null && state.round >= maxRounds`, checked
+  at the same point as now, after the resolution. The last round's cannon phase is never
+  played.
 
-**A shared win needs a shape for it.** `MatchState.winner` is `number | null` today.
-Ties are rare but real, so this becomes a list, and the change ripples through the
-snapshot schema, the client's end-of-match banner and several tests. Worth doing
-properly rather than encoding "shared" as a draw, because a shared win is not a draw.
+**The end of a match.** `winner: number | null` becomes `winners: number[]`; `draw` stays;
+`endedBy: 'elimination' | 'round_cap'` is added, set with them, so the banner can say "wins
+on points". One survivor → `[them]`; none → `[]` and a draw; at the cap → every survivor
+sharing the top score. A shared win is not a draw. The `game_over` event carries the same
+fields. This ripples through the snapshot schema (bump `PROTOCOL_VERSION`), the end text
+in `hud.ts`, `matchAudio.ts` (victory when the human is among the winners), the headless
+win count, and the tests in `match.test.ts`.
 
-**Lobby settings, built as a mechanism rather than a special case.** Only `maxRounds` is
-settable now, but game speed, team mode and special weapons are coming, so:
+**Client.** Scores in the HUD roster, the round counter, and the leaderboard carried by the
+phase announcement that already follows a build phase — so it costs no extra pause. The
+final table on the game-over screen. The table is built by a pure function and tested like
+`lobbyMarkup` and `bannersFor`, since headless Chrome cannot check anything that depends
+on the clock.
+
+**Headless.** Score columns in `--stats` (territory points, damage points, running score),
+`--max-rounds N|none`, and outcomes split by `endedBy` — won on points against won by
+elimination.
+
+**Tests.** A `withoutRoundCap` helper alongside `withoutContinues`, for anything about
+elimination or long matches. `stopgap.test.ts` asserts that two-player matches reach
+`game_over`, which the cap would make trivially true; it runs uncapped.
+
+#### 11.1b — lobby settings, built as a mechanism rather than a special case
+
+Only `maxRounds` is settable now, but game speed, team mode and special weapons are
+coming, so:
 
 - `config/server.default.json` declares what a host may change and within what bounds —
-  which keeps "no rule is hardcoded" true, since the _range_ is configuration too.
+  which keeps "no rule is hardcoded" true, since the _range_ is configuration too. An
+  explicit list of typed settings (`maxRounds: { min, max }`), not generic path overrides
+  into the ruleset.
 - The room validates a host's setting against those bounds, ignores a guest's, and locks
-  them once the match starts, exactly as bot difficulties already work.
-- The match ruleset is the server's with the host's overrides applied, and travels in the
-  snapshot as it always has. Determinism is unaffected.
+  them once the match starts, exactly as bot difficulties already work — `configure`
+  gains the settings, and the `room` broadcast carries them so guests see what they are
+  about to play.
+- The match ruleset is the server's with the host's overrides applied, re-validated
+  through `RulesetSchema`, and travels in the snapshot as it always has. Determinism is
+  unaffected.
 - The same control appears in the offline menu, or the two paths diverge and the round
-  limit cannot be felt out offline.
-
-**Client.** Scores in the HUD roster, and the leaderboard carried by the phase
-announcement that already follows a build phase — so it costs no extra pause. The table
-is built by a pure function and tested like `lobbyMarkup` and `bannersFor`, since
-headless Chrome cannot check anything that depends on the clock.
+  limit cannot be felt out offline. The client already has the bounds through
+  `defaultConfigBundle`.
+- **A host cannot choose "unlimited".** The game is balanced around the cap, so the
+  bounds are integers only and `null` stays reachable solely through config, for tests.
 
 ### 11.2 Teach the bots to play for points
 
