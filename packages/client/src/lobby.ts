@@ -1,4 +1,5 @@
 import type { Difficulty } from '@rampart/ai';
+import type { MatchSettings, SettingBounds } from '@rampart/config';
 import type { Seat } from '@rampart/protocol';
 
 import { playerCssColour } from './colours.js';
@@ -20,6 +21,8 @@ export interface LobbyView {
   humanPlayer: number;
   seats: readonly Seat[];
   bots: readonly Difficulty[];
+  settings: MatchSettings;
+  settingBounds: SettingBounds;
 }
 
 /** What each tier actually does, since "gunner" tells a new player nothing. */
@@ -40,6 +43,23 @@ export function escape(text: string): string {
     /[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string,
   );
+}
+
+/** Every whole number in a range, as options with one selected. */
+export function rangeOptions(min: number, max: number, selected: number): string {
+  return Array.from({ length: max - min + 1 }, (_, i) => min + i)
+    .map((n) => `<option value="${n}"${n === selected ? ' selected' : ''}>${n}</option>`)
+    .join('');
+}
+
+/** The match settings: a control for the host, a statement for everyone else. */
+function settingsRow(view: LobbyView, isHost: boolean): string {
+  const { maxRounds } = view.settings;
+  if (!isHost) return `<p class="note settings">${maxRounds} rounds, then the best score wins.</p>`;
+  const { min, max } = view.settingBounds.maxRounds;
+  return `<label class="settings">Rounds
+    <select id="max-rounds" aria-label="Rounds">${rangeOptions(min, max, maxRounds)}</select>
+  </label>`;
 }
 
 function seatRow(view: LobbyView, index: number, isHost: boolean, explain: boolean): string {
@@ -95,6 +115,7 @@ export function lobbyMarkup(view: LobbyView): string {
       </div>
       <p class="note">${note}</p>
       <ul class="seats">${rows}</ul>
+      ${settingsRow(view, isHost)}
       ${
         isHost
           ? '<button id="begin">Start match</button>'

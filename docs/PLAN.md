@@ -338,11 +338,11 @@ Tests state expectations as ASCII pictures where the subject is geometric
 
 ## 11. Open work
 
-### 11.1 Round cap and points scoring — 11.1a built, 11.1b not started
+### 11.1 Round cap and points scoring — built
 
-Agreed in full, every open question settled. Built in two steps: **11.1a** is the rules,
-with the cap read from config — **done**; **11.1b** lets a host change it in the lobby —
-not started. Below is the design both follow.
+Built in two steps: **11.1a**, the rules with the cap read from config, and **11.1b**, a
+host choosing the cap in the lobby within `server.lobbySettings` (5 to 20 rounds). Both
+done. Below is the design both follow; what remains is 11.2 and tuning the weights.
 
 **First measurement under the agreed rules**, four three-player gunner matches: two
 decided on points at round 10, two by elimination at rounds 7 and 9. Per surviving

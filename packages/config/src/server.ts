@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { SettingBoundsSchema } from './settings.js';
+
 export const ServerConfigSchema = z.strictObject({
   port: z.number().int().min(1).max(65535),
   host: z.string().min(1),
@@ -26,6 +28,9 @@ export const ServerConfigSchema = z.strictObject({
 
   /** Skill of the bots that fill empty seats and cover dropped players. */
   botDifficulty: z.enum(['recruit', 'gunner', 'marshal']),
+
+  /** What a host may change in the lobby, and within what bounds. */
+  lobbySettings: SettingBoundsSchema,
 
   snapshot: z.strictObject({
     onPhaseChange: z.boolean(),

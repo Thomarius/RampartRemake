@@ -1,7 +1,17 @@
-import type { AiConfig, Ruleset, ServerConfig, TerrainConfig } from '@rampart/config';
+import {
+  applySettings,
+  defaultSettings,
+  mergeSettings,
+  type AiConfig,
+  type MatchSettings,
+  type Ruleset,
+  type ServerConfig,
+  type TerrainConfig,
+} from '@rampart/config';
 import { Bot, type Difficulty } from '@rampart/ai';
 import {
   ActionSchema,
+  PROTOCOL_VERSION,
   captureSnapshot,
   type ClientMessage,
   type Seat as WireSeat,
@@ -80,6 +90,8 @@ export class Room {
   private hostId = 0;
   /** Skill of the bot in each seat, which the host may change before the match starts. */
   private readonly botDifficulties: Difficulty[];
+  /** Settings the host may change before the match starts, within the server's bounds. */
+  private settings: MatchSettings;
   private idle = 0;
 
   constructor(options: RoomOptions) {
@@ -89,6 +101,7 @@ export class Room {
     this.botDifficulties = new Array<Difficulty>(options.playerCount).fill(
       options.server.botDifficulty as Difficulty,
     );
+    this.settings = defaultSettings(options.ruleset, options.server.lobbySettings);
   }
 
   get started(): boolean {
@@ -178,8 +191,16 @@ export class Room {
         // Only the host, and only while the table is still being set.
         if (seat.playerId !== this.hostId || this.state !== null) return;
         for (let i = 0; i < this.botDifficulties.length; i++) {
-          const wanted = message.bots[i];
+          const wanted = message.bots?.[i];
           if (wanted !== undefined) this.botDifficulties[i] = wanted as Difficulty;
+        }
+        if (message.settings !== undefined) {
+          // Only the fields actually sent: absent ones keep their current value.
+          const change = Object.fromEntries(
+            Object.entries(message.settings).filter(([, v]) => v !== undefined),
+          ) as Partial<MatchSettings>;
+          const next = mergeSettings(this.settings, change, this.options.server.lobbySettings);
+          if (next !== null) this.settings = next;
         }
         this.broadcastRoom();
         return;
@@ -219,7 +240,9 @@ export class Room {
 
     this.state = createMatch({
       seed: this.rng.nextU32(),
-      ruleset: this.options.ruleset,
+      // The server's rules with the host's settings over them. It travels in the
+      // snapshot like any ruleset, so every client runs exactly these.
+      ruleset: applySettings(this.options.ruleset, this.settings),
       terrainConfig: this.options.terrain,
       players: this.seats.map((seat) => ({ name: seat.name, isBot: seat.bot })),
     });
@@ -308,7 +331,7 @@ export class Room {
   private sendWelcome(seat: Seat): void {
     seat.connection?.send({
       type: 'welcome',
-      protocol: 1,
+      protocol: PROTOCOL_VERSION,
       code: this.code,
       playerId: seat.playerId,
       token: seat.token,
@@ -328,6 +351,8 @@ export class Room {
       seats: this.wireSeats(),
       playerCount: this.options.playerCount,
       bots: [...this.botDifficulties],
+      settings: { ...this.settings },
+      settingBounds: this.options.server.lobbySettings,
       hostId: this.hostId,
       started: this.started,
     });

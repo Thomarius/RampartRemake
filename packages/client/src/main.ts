@@ -1,9 +1,14 @@
 import {
   ArtStyleSchema,
+  applySettings,
   defaultArtConfig,
   defaultConfigBundle,
+  defaultSettings,
+  mergeSettings,
   validateConfigBundle,
   type ArtStyle,
+  type MatchSettings,
+  type SettingBounds,
 } from '@rampart/config';
 import { DIFFICULTIES, type Difficulty } from '@rampart/ai';
 import type { Seat } from '@rampart/protocol';
@@ -13,7 +18,7 @@ import { Audio } from './audio.js';
 import { Controls } from './controls.js';
 import { bannersFor, type LifeLost } from './banners.js';
 import { playerCssColour } from './colours.js';
-import { lobbyMarkup } from './lobby.js';
+import { lobbyMarkup, rangeOptions } from './lobby.js';
 import { Hud, type IslandBanner } from './hud.js';
 import { MatchAudio } from './matchAudio.js';
 import { LocalMatch } from './localMatch.js';
@@ -98,6 +103,20 @@ interface Setup {
   seed: number;
   style: ArtStyle;
   name: string;
+  /** The host's choices, offline as online, so a round limit can be felt out alone. */
+  settings: MatchSettings;
+}
+
+const SETTING_BOUNDS = defaultConfigBundle.server.lobbySettings;
+const DEFAULT_SETTINGS = defaultSettings(defaultConfigBundle.ruleset, SETTING_BOUNDS);
+
+/** An offline match on the default rules with the menu's settings over them. */
+function localMatchFor(setup: Setup): LocalMatch {
+  return new LocalMatch({
+    seed: setup.seed,
+    seats: setup.seats,
+    ruleset: applySettings(defaultConfigBundle.ruleset, setup.settings),
+  });
 }
 
 const DEFAULT_BOT: Difficulty = 'gunner';
@@ -130,6 +149,12 @@ function readCommon(): Omit<Setup, 'seats'> {
       document.querySelector<HTMLSelectElement>('#style')?.value,
     ),
     name: document.querySelector<HTMLInputElement>('#name')?.value.trim() || 'Player',
+    settings: {
+      maxRounds: Number(
+        document.querySelector<HTMLSelectElement>('#max-rounds')?.value ??
+          DEFAULT_SETTINGS.maxRounds,
+      ),
+    },
   };
 }
 
@@ -161,6 +186,13 @@ function showMenu(): void {
             (n) => `<option value="${n}"${n === DEFAULT_PLAYERS ? ' selected' : ''}>${n}</option>`,
           ).join('')}
         </select>
+      </label>
+      <label>Rounds
+        <select id="max-rounds">${rangeOptions(
+          SETTING_BOUNDS.maxRounds.min,
+          SETTING_BOUNDS.maxRounds.max,
+          DEFAULT_SETTINGS.maxRounds,
+        )}</select>
       </label>
       <div id="seats" class="seats-config"></div>
       <button id="solo">Play offline</button>
@@ -219,10 +251,9 @@ function showMenu(): void {
   document.querySelector('#solo')?.addEventListener('click', () => {
     audio.play('select');
     const setup: Setup = { ...readCommon(), seats: readSeats() };
-    void runSession(
-      localSession(new LocalMatch({ seed: setup.seed, seats: setup.seats })),
-      setup,
-    ).catch((error: unknown) => showError('Failed to start match', error));
+    void runSession(localSession(localMatchFor(setup)), setup).catch((error: unknown) =>
+      showError('Failed to start match', error),
+    );
   });
 
   document.querySelector('#host')?.addEventListener('click', () => {
@@ -269,6 +300,8 @@ async function startOnline(setup: Setup, code: string | null): Promise<void> {
 
   let seats: Seat[] = [];
   let bots: Difficulty[] = [];
+  let settings: MatchSettings = setup.settings;
+  let settingBounds: SettingBounds = SETTING_BOUNDS;
   let playerCount = setup.seats.length;
   let hostId = -1;
   let roomCode = code ?? '';
@@ -280,11 +313,16 @@ async function startOnline(setup: Setup, code: string | null): Promise<void> {
       case 'welcome':
         roomCode = message.code;
         hostId = message.hostId;
+        // A new room opens on the server's defaults; the host carries the menu's
+        // choice across rather than having to make it twice.
+        if (code === null) connection.send({ type: 'configure', settings: setup.settings });
         sessionStorage.setItem(TOKEN_KEY, `${message.code}:${message.token}`);
         break;
       case 'room':
         seats = message.seats;
         bots = [...message.bots];
+        settings = message.settings;
+        settingBounds = message.settingBounds;
         playerCount = message.playerCount;
         hostId = message.hostId;
         if (!message.started) renderLobby();
@@ -314,6 +352,14 @@ async function startOnline(setup: Setup, code: string | null): Promise<void> {
       humanPlayer: match.humanPlayer,
       seats,
       bots,
+      settings,
+      settingBounds,
+    });
+
+    const rounds = document.querySelector<HTMLSelectElement>('#max-rounds');
+    rounds?.addEventListener('change', () => {
+      audio.play('select');
+      connection.send({ type: 'configure', settings: { maxRounds: Number(rounds.value) } });
     });
 
     for (const field of document.querySelectorAll<HTMLSelectElement>('.bot-select')) {
@@ -597,6 +643,12 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
   frame = requestAnimationFrame(loop);
 }
 
+/** `?rounds=N`, ignored when it is outside what a host could choose. */
+function settingsFromParams(): MatchSettings {
+  const rounds = Number(params.get('rounds') ?? DEFAULT_SETTINGS.maxRounds);
+  return mergeSettings(DEFAULT_SETTINGS, { maxRounds: rounds }, SETTING_BOUNDS) ?? DEFAULT_SETTINGS;
+}
+
 if (params.get('autostart') === '1') {
   const count = Number(params.get('players') ?? 3);
   // ?watch=1 fills every seat with a bot, which is how a match is observed rather
@@ -610,8 +662,9 @@ if (params.get('autostart') === '1') {
     seed: Number(params.get('seed') ?? 1),
     style: preferredStyle,
     name: 'Player',
+    settings: settingsFromParams(),
   };
-  const match = new LocalMatch({ seed: setup.seed, seats: setup.seats });
+  const match = localMatchFor(setup);
   const phase = params.get('snapshot');
   if (phase !== null && PHASES.includes(phase as Phase)) match.fastForwardTo(phase as Phase);
   void runSession(localSession(match), setup).catch((error: unknown) =>
@@ -629,6 +682,7 @@ if (params.get('autostart') === '1') {
     seed: Number(params.get('seed') ?? 1),
     style: preferredStyle,
     name: params.get('name') ?? 'Player',
+    settings: settingsFromParams(),
   };
   void startOnline(setup, joining).catch((error: unknown) =>
     showError(joining !== null ? 'Could not join' : 'Could not host', error),

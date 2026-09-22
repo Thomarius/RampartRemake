@@ -17,6 +17,12 @@
     "graceMs": 120000,
     "botTakeoverDelayMs": 5000
   },
+  "lobbySettings": {
+    "maxRounds": {
+      "min": 5,
+      "max": 20
+    }
+  },
   "snapshot": {
     "onPhaseChange": true,
     "keepaliveIntervalMs": 15000

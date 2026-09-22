@@ -16,6 +16,9 @@ import {
   defaultRuleset,
   defaultServerConfig,
   defaultTerrainConfig,
+  applySettings,
+  defaultSettings,
+  mergeSettings,
   validateConfigBundle,
 } from './index.js';
 
@@ -166,5 +169,39 @@ describe('cross-file validation', () => {
         terrain: { ...defaultTerrainConfig, startingWall: { ringRadiusTiles: 40 } },
       }),
     ).toThrow(/Invalid configuration/);
+  });
+});
+
+describe('lobby settings', () => {
+  const bounds = { maxRounds: { min: 5, max: 20 } };
+
+  it('opens on the ruleset cap, pulled inside the bounds', () => {
+    const rules = (maxRounds: number | null) => ({
+      ...defaultRuleset,
+      scoring: { ...defaultRuleset.scoring, maxRounds },
+    });
+    expect(defaultSettings(rules(10), bounds)).toEqual({ maxRounds: 10 });
+    expect(defaultSettings(rules(99), bounds)).toEqual({ maxRounds: 20 });
+    // Uncapped is a testing setup; a room cannot offer it, so it opens at the longest.
+    expect(defaultSettings(rules(null), bounds)).toEqual({ maxRounds: 20 });
+  });
+
+  it('refuses a change outside the bounds rather than clamping it', () => {
+    expect(mergeSettings({ maxRounds: 10 }, { maxRounds: 7 }, bounds)).toEqual({ maxRounds: 7 });
+    expect(mergeSettings({ maxRounds: 10 }, { maxRounds: 21 }, bounds)).toBeNull();
+    expect(mergeSettings({ maxRounds: 10 }, { maxRounds: 4 }, bounds)).toBeNull();
+  });
+
+  it('applies over the ruleset and re-validates the result', () => {
+    expect(applySettings(defaultRuleset, { maxRounds: 7 }).scoring.maxRounds).toBe(7);
+    expect(() => applySettings(defaultRuleset, { maxRounds: 0 })).toThrow();
+  });
+
+  it("insists the bounds include the ruleset's own cap", () => {
+    const problems = validateConfigBundle({
+      ...defaultConfigBundle,
+      server: { ...defaultServerConfig, lobbySettings: { maxRounds: { min: 12, max: 20 } } },
+    });
+    expect(problems.some((p) => p.includes('lobbySettings.maxRounds'))).toBe(true);
   });
 });

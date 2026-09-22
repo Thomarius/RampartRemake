@@ -83,6 +83,17 @@ export function validateConfigBundle(bundle: ConfigBundle): string[] {
     problems.push(`server: botDifficulty "${bundle.server.botDifficulty}" has no profile.`);
   }
 
+  // A ruleset whose own cap a host could not pick would open every room on a value the
+  // lobby then clamps away from, so the default is not the default anyone plays.
+  const rounds = ruleset.scoring.maxRounds;
+  const bounds = bundle.server.lobbySettings.maxRounds;
+  if (rounds !== null && (rounds < bounds.min || rounds > bounds.max)) {
+    problems.push(
+      `server: lobbySettings.maxRounds ${bounds.min}-${bounds.max} does not include the ` +
+        `ruleset's maxRounds of ${rounds}.`,
+    );
+  }
+
   return problems;
 }
 

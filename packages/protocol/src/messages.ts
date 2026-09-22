@@ -1,10 +1,10 @@
-import { DifficultySchema } from '@rampart/config';
+import { DifficultySchema, MatchSettingsSchema, SettingBoundsSchema } from '@rampart/config';
 import { z } from 'zod';
 
 import { SnapshotSchema } from './snapshot.js';
 
 /** Bumped on any breaking change to the message set; mismatched clients are rejected. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /**
  * A player's intent. The server overwrites `player` with the sender's own seat before
@@ -64,9 +64,14 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('ready'), ready: z.boolean() }),
   /**
    * Host only, before the match starts: the skill of the bots filling the empty
-   * seats, indexed by seat. Entries for seats a person holds are ignored.
+   * seats, indexed by seat, and any match settings to change. Entries for seats a
+   * person holds are ignored, and so is a setting outside the server's bounds.
    */
-  z.strictObject({ type: z.literal('configure'), bots: z.array(DifficultySchema) }),
+  z.strictObject({
+    type: z.literal('configure'),
+    bots: z.array(DifficultySchema).optional(),
+    settings: MatchSettingsSchema.partial().optional(),
+  }),
   z.strictObject({ type: z.literal('start') }),
   z.strictObject({ type: z.literal('action'), action: ActionSchema }),
   z.strictObject({ type: z.literal('ping'), t: z.number() }),
@@ -91,6 +96,9 @@ export const ServerMessageSchema = z.discriminatedUnion('type', [
     playerCount: z.number().int().min(2).max(8),
     /** Skill of the bot in each seat, so everyone can see what they are about to face. */
     bots: z.array(DifficultySchema),
+    /** The match settings as they stand, and what the host may set them to. */
+    settings: MatchSettingsSchema,
+    settingBounds: SettingBoundsSchema,
     hostId: z.number().int().nonnegative(),
     started: z.boolean(),
   }),

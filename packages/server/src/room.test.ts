@@ -295,6 +295,50 @@ describe('bot difficulty', () => {
     expect(lastRoom(host).bots).toEqual(before);
   });
 
+  it('lets the host set the round limit, and plays the match on it', () => {
+    const r = room(3);
+    const host = new TestClient('host');
+    r.join(host, 'Ada');
+    const { min, max } = defaultConfigBundle.server.lobbySettings.maxRounds;
+    expect(lastRoom(host).settingBounds.maxRounds).toEqual({ min, max });
+
+    r.handle(host, { type: 'configure', settings: { maxRounds: min } });
+    expect(lastRoom(host).settings.maxRounds).toBe(min);
+    // Setting one thing leaves the other alone.
+    expect(lastRoom(host).bots).toHaveLength(3);
+
+    r.start();
+    run(r, 5);
+    // It travels in the snapshot's ruleset, so every client runs on it.
+    expect(host.state!.ruleset.scoring.maxRounds).toBe(min);
+  });
+
+  it('refuses a round limit outside the bounds, and a guest setting one at all', () => {
+    const r = room(3);
+    const host = new TestClient('host');
+    const guest = new TestClient('guest');
+    r.join(host, 'Ada');
+    r.join(guest, 'Bo');
+    const before = lastRoom(host).settings.maxRounds;
+    const { min, max } = defaultConfigBundle.server.lobbySettings.maxRounds;
+
+    r.handle(host, { type: 'configure', settings: { maxRounds: max + 1 } });
+    r.handle(host, { type: 'configure', settings: { maxRounds: min - 1 } });
+    r.handle(guest, { type: 'configure', settings: { maxRounds: min } });
+    expect(lastRoom(host).settings.maxRounds).toBe(before);
+  });
+
+  it('locks the round limit once the match is under way', () => {
+    const r = room(3);
+    const host = new TestClient('host');
+    r.join(host, 'Ada');
+    r.start();
+    const before = lastRoom(host).settings.maxRounds;
+    const { min } = defaultConfigBundle.server.lobbySettings.maxRounds;
+    r.handle(host, { type: 'configure', settings: { maxRounds: min } });
+    expect(lastRoom(host).settings.maxRounds).toBe(before);
+  });
+
   it('starts a match that plays on with the configured bots', () => {
     const r = room(3);
     const host = new TestClient('host');

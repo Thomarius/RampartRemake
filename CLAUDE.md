@@ -26,8 +26,9 @@ wait rather than assuming it hung.
 
 Client dev query parameters: `?autostart=1&players=3&seed=7`, `&snapshot=build` to jump
 to a phase, `&speed=10`, `&style=flat|pixel`, `&watch=1&bots=marshal` to observe a bot
-match. Online: `?host=8` opens a room, `?join=CODE` joins one, `&name=Bo` sets the name.
-All are reachable from the menu too, which configures every seat individually.
+match, `&rounds=12` for the round cap. Online: `?host=8` opens a room, `?join=CODE` joins
+one, `&name=Bo` sets the name. All are reachable from the menu too, which configures every
+seat individually.
 
 ## Layout
 
@@ -103,8 +104,8 @@ colours, tier descriptions).
 
 **M7, the balance pass, is where the work is.** PLAN.md §11 lists it in priority order:
 
-1. **Round cap and points scoring** — the rules are built (§11.1a); host-settable lobby
-   settings (§11.1b) are not. A match ends
+1. **Round cap and points scoring** — built (§11.1), including the host's choice of cap
+   in the lobby and the offline menu. A match ends
    after `maxRounds` or when one player is left; if two or more remain the highest score
    wins. Measured beforehand: most matches would reach the cap, so **the scoring formula
    becomes the game's balance** rather than a tie-breaker.
