@@ -285,6 +285,48 @@ body {
   animation: sweep 4s linear forwards;
 }
 
+.phase-call small.news {
+  color: var(--accent);
+  font-size: 1.1rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+table.final {
+  margin: 0.9rem auto 0.2rem;
+  border-collapse: collapse;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+table.final td {
+  padding: 0.2rem 0.7rem;
+  text-align: left;
+}
+
+table.final td:nth-child(1),
+table.final td:nth-child(3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+table.final td b {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 0.5rem;
+}
+
+table.final tr.out {
+  opacity: 0.45;
+}
+
+table.final tr.you td:nth-child(2) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .phase-call small {
   display: block;
   margin-top: 0.5rem;

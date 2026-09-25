@@ -55,14 +55,20 @@ export function standingsLine(state: MatchState): string {
     .join(' · ');
 }
 
+export interface AnnouncementLine {
+  text: string;
+  /** Set in the accent colour: news, rather than the standings' plain record. */
+  emphasis: boolean;
+}
+
 /**
  * The lines carried under a phase announcement. The standings follow a resolution,
  * which is the only time scores change, so the leaderboard costs no pause of its own.
  */
-export function announcementLines(state: MatchState, afterResolution: boolean): string[] {
-  const lines: string[] = [];
-  if (finalRoundNext(state)) lines.push('Final round');
-  if (afterResolution) lines.push(standingsLine(state));
+export function announcementLines(state: MatchState, afterResolution: boolean): AnnouncementLine[] {
+  const lines: AnnouncementLine[] = [];
+  if (finalRoundNext(state)) lines.push({ text: 'Final round', emphasis: true });
+  if (afterResolution) lines.push({ text: standingsLine(state), emphasis: false });
   return lines;
 }
 

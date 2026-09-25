@@ -131,10 +131,15 @@ export class PixelTheme implements Theme {
 
     const variants = this.art.generators.terrain.grassVariants;
 
-    for (let y = 0; y < state.height; y++) {
-      for (let x = 0; x < state.width; x++) {
+    // Water runs past the board to the window's edge. Drawn only across the grid, the
+    // animated sea stopped in a hard rectangle with the page's flat blue beyond it.
+    const marginX = Math.ceil(view.originX / view.tile) + 1;
+    const marginY = Math.ceil(view.originY / view.tile) + 1;
+    for (let y = -marginY; y < state.height + marginY; y++) {
+      for (let x = -marginX; x < state.width + marginX; x++) {
+        const inside = x >= 0 && y >= 0 && x < state.width && y < state.height;
         const i = y * state.width + x;
-        if (state.terrain[i] !== Terrain.Land) {
+        if (!inside || state.terrain[i] !== Terrain.Land) {
           this.waterSprites.push(this.place(this.terrainLayer, KEY.water(0), view, x, y));
           continue;
         }
@@ -257,6 +262,23 @@ export class PixelTheme implements Theme {
     this.animateWater(frame.deltaMs);
     this.effectLayer.removeChildren();
     this.effectLayer.addChild(this.craters, g);
+
+    // An inert cannon reads as struck through, as in the flat style: it survives but
+    // cannot fire. A darker tint alone was too faint to tell at a glance.
+    for (const cannon of state.cannons) {
+      if (cannon.active) continue;
+      const x = tileX(view, cannon.x);
+      const y = tileY(view, cannon.y);
+      const w = view.tile * cannon.w;
+      const h = view.tile * cannon.h;
+      const inset = Math.max(1, Math.floor(view.tile / 6));
+      g.moveTo(x + inset, y + inset);
+      g.lineTo(x + w - inset, y + h - inset);
+      g.stroke({
+        width: Math.max(2, Math.floor(view.tile / 6)),
+        color: hex(this.art.palette.uiInvalid),
+      });
+    }
 
     const now = state.tick + frame.tickFraction;
     for (const shot of state.shots) {

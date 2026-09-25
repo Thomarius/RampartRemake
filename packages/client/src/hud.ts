@@ -1,6 +1,6 @@
 import { playerCssColour } from './colours.js';
 import { escape } from './lobby.js';
-import { endOfMatchText, roundLabel, standingsLine } from './scores.js';
+import { endOfMatchText, roundLabel, standings, type AnnouncementLine } from './scores.js';
 import {
   PIECE_CATALOGUE,
   currentPieceId,
@@ -83,7 +83,7 @@ export class Hud {
    * `lines` ride along underneath — the standings after a resolution, and the call
    * for the final round — so neither needs a pause of its own.
    */
-  announce(phase: Phase, durationMs: number, lines: readonly string[] = []): void {
+  announce(phase: Phase, durationMs: number, lines: readonly AnnouncementLine[] = []): void {
     const text = PHASE_CALL[phase];
     if (text === '') return;
     const banner = document.createElement('div');
@@ -91,7 +91,8 @@ export class Hud {
     banner.textContent = text;
     for (const line of lines) {
       const small = document.createElement('small');
-      small.textContent = line;
+      small.textContent = line.text;
+      if (line.emphasis) small.className = 'news';
       banner.append(small);
     }
     // The simulation holds the next phase until this has left the screen, so the
@@ -191,9 +192,19 @@ export class Hud {
     let banner = '';
     if (state.phase === 'game_over') {
       const text = escape(endOfMatchText(state, humanPlayer));
-      const table = escape(standingsLine(state));
+      // A table rather than a line: with more than three players a single line of
+      // names and numbers could not be read at a glance.
+      const rows = standings(state)
+        .map(
+          (s, rank) =>
+            `<tr class="${s.eliminated ? 'out' : ''}${s.player === humanPlayer ? ' you' : ''}">` +
+            `<td>${rank + 1}</td><td><b style="background:${playerCssColour(s.player)}"></b>${escape(s.name)}</td>` +
+            `<td>${s.score}</td><td>${s.eliminated ? 'out' : ''}</td></tr>`,
+        )
+        .join('');
+      const table = `<table class="final">${rows}</table>`;
       const again = humanPlayer < 0 ? 'press R for the menu' : 'press R to play again';
-      banner = `<div class="banner">${text}<small>${table}</small><small>${again}</small></div>`;
+      banner = `<div class="banner">${text}${table}<small>${again}</small></div>`;
     } else if (human?.eliminated) {
       banner = `<div class="banner">You were eliminated in round ${human.eliminatedRound}<small>watching the rest</small></div>`;
     }
@@ -202,7 +213,13 @@ export class Hud {
       <div class="bar">
         <div class="phase">
           <strong>${waiting ? `Next: ${PHASE_LABEL[shown]}` : PHASE_LABEL[shown]}</strong>
-          <span class="timer">${waiting ? '&nbsp;' : `${secondsLeft.toFixed(1)}s`}</span>
+          ${
+            // Hidden rather than removed, so the round label does not jump sideways
+            // every intermission; and there is no clock to show once the match is over.
+            waiting || state.phase === 'game_over'
+              ? `<span class="timer" style="visibility:hidden">${secondsLeft.toFixed(1)}s</span>`
+              : `<span class="timer">${secondsLeft.toFixed(1)}s</span>`
+          }
           <span class="round">${roundLabel(state)}</span>
         </div>
         <ul class="roster">${roster}</ul>

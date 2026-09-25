@@ -80,13 +80,19 @@ export class Scene {
   }
 
   /** Recomputes the fit of the grid into the canvas. */
-  resize(state: MatchState, width: number, height: number): void {
+  /**
+   * Fits the board to the window below `topInset` pixels, which the HUD bar occupies.
+   * Centred in the whole window instead, the top island's first rows sat under the bar
+   * whenever the window was the height that limited the tile size.
+   */
+  resize(state: MatchState, width: number, height: number, topInset = 0): void {
     this.app.renderer.resize(width, height);
-    const tile = Math.max(1, Math.floor(Math.min(width / state.width, height / state.height)));
+    const usable = Math.max(1, height - topInset);
+    const tile = Math.max(1, Math.floor(Math.min(width / state.width, usable / state.height)));
     this.view = {
       tile,
       originX: Math.floor((width - tile * state.width) / 2),
-      originY: Math.floor((height - tile * state.height) / 2),
+      originY: topInset + Math.floor((usable - tile * state.height) / 2),
     };
   }
 

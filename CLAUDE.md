@@ -19,6 +19,7 @@ npm run dev   -w @rampart/client    # play offline at http://localhost:5173
 npm start     -w @rampart/server    # serves the built client at http://localhost:8080
 npm start     -w @rampart/headless -- --matches 8 --players 3 --difficulty gunner --stats out.csv
 npm start     -w @rampart/headless -- --map --players 3 --seed 2   # print a map as ASCII
+tools/screenshots.sh /tmp/shots [scene...]   # client in fixed states, against the dev server
 ```
 
 `npm run check` takes a few minutes, mostly bot matches. Run it in the background and
@@ -165,9 +166,11 @@ the hypothesis.
   opens. Do not assert on it except at a resolution; a bot deciding on it must count
   afresh with `computeEnclosure`, which is what cost the bots a quarter of their rounds.
 - **Headless Chrome cannot verify anything time-dependent in the client.** A watched match
-  is still on round 0 after 120s of virtual time at 10x speed. It catches a crash on load
-  and nothing else — pull the logic into a pure function and test that, as `banners.ts`
-  and `lobby.ts` do.
+  is still on round 0 after 120s of virtual time at 10x speed. Pull the logic into a pure
+  function and test that, as `banners.ts`, `lobby.ts` and `scores.ts` do. It can still be
+  _looked at_: in real time, Playwright's screenshot command renders fine, and
+  `tools/screenshots.sh` uses `&snapshot=PHASE&round=N` plus a wait to reach a state —
+  an announcement, the final round, game over.
 - **A test asserting "failing to seal ends your match" needs `withoutContinues`**, and so
   does anything measuring the piece-size ramp: a continue rewinds the schedule, so the
   build rate climbs back instead of falling.

@@ -74,7 +74,7 @@ describe('the round counter', () => {
 
   it('carries the standings only after a resolution', () => {
     const s = state({ players: [player(0, 'Ada', 12), player(1, 'Bo', 30, true)] });
-    expect(announcementLines(s, true)).toEqual(['Ada 12 · Bo 30 (out)']);
+    expect(announcementLines(s, true)).toEqual([{ text: 'Ada 12 · Bo 30 (out)', emphasis: false }]);
     expect(announcementLines(s, false)).toEqual([]);
   });
 });

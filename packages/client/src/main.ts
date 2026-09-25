@@ -128,6 +128,9 @@ function localMatchFor(setup: Setup): LocalMatch {
 
 const DEFAULT_BOT: Difficulty = 'gunner';
 
+/** Height of the HUD's top bar — the phase, timer and roster — kept clear of the board. */
+const HUD_BAR_PX = 64;
+
 /** Every seat count the rules allow, offered in the menu. */
 const PLAYER_COUNTS = Array.from(
   { length: defaultConfigBundle.ruleset.players.max - defaultConfigBundle.ruleset.players.min + 1 },
@@ -522,7 +525,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
   if (session.humanPlayer >= 0) controls.attach();
 
   const fit = (): void => {
-    scene.resize(session.state, globalThis.innerWidth, globalThis.innerHeight);
+    scene.resize(session.state, globalThis.innerWidth, globalThis.innerHeight, HUD_BAR_PX);
     scene.drawTerrain(session.state);
     scene.drawTerritory(session.state, computeEnclosure(session.state).territory);
     scene.drawStructures(session.state);
@@ -679,7 +682,10 @@ if (params.get('autostart') === '1') {
   };
   const match = localMatchFor(setup);
   const phase = params.get('snapshot');
-  if (phase !== null && PHASES.includes(phase as Phase)) match.fastForwardTo(phase as Phase);
+  // &round=N stops at that phase in round N or later, for looking at a match deep in.
+  if (phase !== null && PHASES.includes(phase as Phase)) {
+    match.fastForwardTo(phase as Phase, Number(params.get('round') ?? 0));
+  }
   void runSession(localSession(match), setup).catch((error: unknown) =>
     showError('Failed to start match', error),
   );

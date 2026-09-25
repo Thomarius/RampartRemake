@@ -100,8 +100,9 @@ export class LocalMatch {
    * scripted driver. Dev only: it exists so a given phase can be put on screen
    * deterministically, without waiting out the clock or playing to get there.
    */
-  fastForwardTo(phase: Phase, maxTicks = 40_000): void {
-    while (this.state.phase !== phase && this.state.tick < maxTicks && !this.finished) {
+  fastForwardTo(phase: Phase, fromRound = 0, maxTicks = 40_000): void {
+    const arrived = (): boolean => this.state.phase === phase && this.state.round >= fromRound;
+    while (!arrived() && this.state.tick < maxTicks && !this.finished) {
       for (const player of this.state.players) {
         if (player.eliminated) continue;
         const action = this.botFor(player.id).think(this.state, this.rng);
