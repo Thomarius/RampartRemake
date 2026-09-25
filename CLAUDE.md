@@ -107,9 +107,10 @@ colours, tier descriptions).
 1. **Round cap and points scoring — done** (§1.7, ARCHIVE 10r). A match ends at
    `maxRounds` or when one player is left; at the cap the best surviving score wins. Most
    matches reach the cap, so **the scoring formula is the game's balance**.
-2. **Tune the scoring weights** (§11.2). The bots now play for points (ARCHIVE 10s), and a
-   soak says careful play is a turtle: three-player matches never end by elimination. The
-   target — how often elimination, how long a match — has to be agreed first.
+2. **Elimination tuning** (§11.2) — planned, waiting on the user's own play. Target: half
+   of 3–4 player matches end with one player left before the cap. Weights stay; levers
+   are one continue instead of two and a new placement delay, measured against careful
+   bots and an ambitious points-driven one that stands in for human play.
 3. **Two-player balance** (§11.3), to be re-measured under the cap before anything is tried.
 4. Measurements never taken (§11.4): seat bias beyond three players, the full ladder.
 5. Bots as personality × skill (§11.6), independent of balance.

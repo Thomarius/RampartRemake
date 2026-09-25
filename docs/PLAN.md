@@ -394,30 +394,70 @@ every resolution against an independent search, not only on unit pictures.
 
 The rules are §1.7, the lobby setting §6; how they were settled is ARCHIVE 10r.
 
-### 11.2 Tune the scoring weights
+### 11.2 Elimination tuning — planned, waiting on human play
 
-The bots now play for points (ARCHIVE 10s), so a soak can judge the weights — and what it
-says is that **careful play under the defaults is a turtle**. Three gunners, eight
-matches, before and after the bots learned to close a breach first:
+**Agreed 2026-09-25, not started.** The user is playing a few matches first, so the
+tuning is not fitted to the bots and misses the human experience.
 
-|                            | before | after |
-| -------------------------- | ------ | ----- |
-| rounds forfeited           | 22%    | 11%   |
-| territory per sealed round | 80     | 41    |
-| castles held               | 1.17   | 0.92  |
-| damage points per round    | 25     | 33    |
-| matches won by elimination | 3/8    | 0/8   |
+**Target:** at three and four players, about **half of matches end with one player left
+before the cap**, under the default rules — a 10-round cap, combat and build phases as
+they are. Demanding: it needs two or three players knocked out, each failing to seal
+one time more than their lives allow, inside ten rounds. Today's bots manage 0 of 8.
 
-Later fixes (no idling, no pinned cannons) took territory back to 52 and castles to 1.03,
-but three-player matches still never end by elimination: a tight wall around one castle,
-and every match to the cap — what the scoring was meant to punish.
+**The weights stay.** They were taken from the original and are believed sound, and they
+barely decide how often somebody is knocked out: that comes from how often walls fail
+(attack against repair speed), how many lives there are, and how many rounds there are
+to fail in. The weights decide who wins at the cap, and shape eliminations only through
+how much risk players take. The formula already rewards size strongly — two castles in 60
+tiles score 120 a round against 30 for one in 30, so the bigger wall is worth trying
+unless it fails more than about 75% of the time. That the bots turtle anyway is their
+risk model (affordability, never points), not the formula.
 
-Levers, none tried: `tilePoints` against `wallPoints`; the territory term's shape (the
-product rewards a second castle, which few reach); and whether damage should need a
-sealed round (`scoreDamageOnFailedRound`). **The target has to be decided first** — what
-share of matches should end by elimination, and how long a match should run — then a
-small grid, measured on eliminations, match length and the win split between tiers, both
-seats.
+**The soak's limit.** It measures bots, and today's are careful: they forfeit about 11% of
+rounds, which makes three failures in ten rounds — two continues and the last — roughly
+a one-in-forty event per player. A person reaching for more ground fails more often.
+Human testing is not available at scale, so the bots have to bracket human play instead.
+
+Before this state, three gunners over eight matches, before and after bots learned to
+close a breach first (10s): forfeits 22% -> 11%, territory per sealed round 80 -> 41,
+castles 1.17 -> 0.92, matches won by elimination 3/8 -> 0/8. Later fixes took territory
+back to 52 and castles to 1.03; eliminations stayed at zero.
+
+**Levers agreed:** continues 2 -> 1; **a placement delay**, new; and, to be measured rather
+than assumed, bot targeting. **Not levers:** the cap length, and combat and build times.
+
+#### Steps
+
+1. **Baseline at three and four players**, current rules — all-gunner, all-marshal, and a
+   mixed table with baron. Share ending with one player left, eliminations per match,
+   lives spent, forfeit rate, and the round each elimination happens in. Measurement only.
+2. **An ambitious, points-driven personality**, the first piece of 11.6: it chooses plans
+   by expected points rather than by affordability alone — bigger walls, more castles,
+   more risk — standing in for the way people play. Every lever is then measured against
+   both the careful bots and this one, and the answer should lie between them.
+3. **Placement delay, `build.placementCooldownMs`**: after placing a piece, a player
+   cannot place another until it has passed. Enforced by the sim for everyone, in ticks
+   and per player, so it stays deterministic and is hashed and snapshotted. The client
+   shows the cooldown on the piece preview. Bots wait for it, and **their budget must
+   include it** — an optimistic estimate of how many pieces fit a phase is exactly what
+   cost them a quarter of their rounds (10s). Per piece, a fixed time, to start with;
+   scaling with piece size is the variant to try if a fixed delay is too blunt. Default 0
+   until measured.
+4. **A small grid**: continues 2 or 1, delay 0 and a few values up to about a second —
+   measured at three and four players against both ends of the bracket, both seats.
+   Choose the setting nearest half on a mixed table.
+5. **Guardrails before choosing**, so the target is not bought with a worse game: hardly
+   anyone out in rounds 1–2 (an early knockout feels bad, and continues exist to prevent
+   it); the ladder still ordered; two players not noticeably worse (11.3).
+
+**Targeting, a third lever to measure in step 4.** Bots that pick targets shoot the
+strongest opponent, which spreads damage and keeps everyone alive — the opposite of what
+this target needs. Finishing off the weakest, as a personality trait (11.6), may matter
+as much as either rule.
+
+**What to take from the user's play first:** whether building already feels tight at
+default speed, whether a delay would feel like a penalty or like the original's pace,
+and how often a person actually loses a castle — the number the whole bracket rests on.
 
 ### 11.3 Two-player balance
 
