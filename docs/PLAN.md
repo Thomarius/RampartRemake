@@ -551,6 +551,49 @@ finished on 1,198 points on average against gunner's 719.
 - The `ROOM_RADIUS` comment argues for two while the value is three; which one was
   measured last is worth settling before the radius is touched again.
 
+**Second session, 2026-09-25: why rounds fail, and the fix.** Headless `--stats` gained
+`repairAtBuild`, `repairLeft` and `repairStuck`: the cells the tightest seal needed as the
+build phase opened, the cells still missing on its last tick, and how many of those no
+piece in the player's bag could cover. Instrumenting did not change play (identical
+hashes with and without `--stats`).
+
+- **Every failed round was affordable.** The tightest repair was 3–12 cells against a
+  budget of 42–47 per phase, and the bot ended **1–3 cells short** having spent the whole
+  phase. About 30% of failures ended on a hole no piece in the bag could fill; the rest on
+  cells that could have been filled.
+- **Two causes in `decide()`.** A breached bot asked for the _widest_ affordable wall
+  first, and the estimate (3.5 cells a piece) is optimistic once the bag widens. And
+  `enclosedCastles` is not refreshed when shots land, only by placements and resolutions,
+  so as a breached phase opened the bot believed it was sealed and planned for a wall
+  that no longer stood — the stale path is where most of its second castles came from.
+- **Fix, kept: count sealed castles afresh, and when breached close the tightest wall
+  that keeps the guns before anything else.** Room is bought afterwards by the existing
+  branches. Marshal alone with it, against two old gunners: forfeited rounds 26% -> 9%,
+  wins 7 of 11 -> 10 of 12, and seat 0 went from 2 of 6 to 5 of 6. The tight-first half
+  carries most of it (9 of 12 and 11% without the fresh count).
+- **With every tier on it the ladder holds**: marshal beats two gunners 9 of 12 (4 from
+  seat 0, 5 from seat 1), gunner beats two recruits 9 of 12.
+- **Tried and dropped:** preferring the roomiest repair within 3 cells of the tightest.
+  Territory 41 -> 47, no change in forfeits; not worth the code on eight matches.
+
+**What this does to the game, and it is now the open question for tuning.** Three gunners,
+eight matches, old code against new:
+
+|                            | old  | new  |
+| -------------------------- | ---- | ---- |
+| rounds forfeited           | 22%  | 11%  |
+| territory per sealed round | 80   | 41   |
+| castles held               | 1.17 | 0.92 |
+| damage points per round    | 25   | 33   |
+| matches won by elimination | 3/8  | 0/8  |
+
+Careful play under the current weights is a tight wall around one castle, nobody is
+knocked out, and every match goes to the cap — the turtle the scoring was meant to punish.
+The bots are now good enough for a soak to say so, which was the point of 11.2. **Next:
+tune the weights against this.** Levers, none tried: `tilePoints` against `wallPoints`;
+the territory term's shape (the product rewards a second castle, but nobody reaches one);
+and whether damage should need a sealed round at all (`scoreDamageOnFailedRound`).
+
 ### 11.3 Two-player balance
 
 The worst thing in the project. At gunner, over ten seeds: **33.8 rounds average, three

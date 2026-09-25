@@ -149,8 +149,10 @@ separately. Prefer this to watching; watching is for forming the hypothesis.
   put a gun, and the most fragile one. Nearly every bot problem traces back to this.
 - **`cannonsToPlace` is zero for the whole build phase**; it is set at the resolution that
   ends it. Judge cannon room against the reward about to be earned.
-- **`enclosedCastles` is live during a build phase**, so it is legitimately 0 mid-repair.
-  Do not assert on it except at a resolution.
+- **`enclosedCastles` is refreshed by placements and resolutions, not by shots landing.**
+  It is legitimately 0 mid-repair, and it still says "sealed" as a breached build phase
+  opens. Do not assert on it except at a resolution; a bot deciding on it must count
+  afresh with `computeEnclosure`, which is what cost the bots a quarter of their rounds.
 - **Headless Chrome cannot verify anything time-dependent in the client.** A watched match
   is still on round 0 after 120s of virtual time at 10x speed. It catches a crash on load
   and nothing else — pull the logic into a pure function and test that, as `banners.ts`

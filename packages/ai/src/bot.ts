@@ -2,6 +2,7 @@ import { defaultAiConfig, type AiConfig, type BotProfile } from '@rampart/config
 import {
   NEIGHBOURS_8,
   Structure,
+  computeEnclosure,
   Terrain,
   canPlaceCannon,
   canPlacePiece,
@@ -397,12 +398,33 @@ export class Bot {
   private decide(state: MatchState): number[] {
     const player = state.players[this.playerId];
     if (!player) return [];
-    const sealed = player.enclosedCastles;
+    // Counted afresh rather than read from `enclosedCastles`, which placements and
+    // resolutions refresh but landing shots do not: as a breached build phase opens it
+    // still says sealed, and the first plan of the phase was made for a wall that stood.
+    const sealed = computeEnclosure(state).enclosedCastlesByPlayer[this.playerId] ?? 0;
     const budget = this.piecesAffordable(state) * this.profile.riskMargin;
     const affordable = (plan: SealPlan | null): boolean =>
       plan !== null && plan.cost / 3.5 <= budget;
 
     if (sealed === 0) {
+      // Close the breach before anything else, with the tightest wall that keeps the
+      // guns; room is bought afterwards, once something is sealed, by the branches
+      // below. Asking for the roomy wall first is what lost rounds: every failed round
+      // in a 2026-09-25 soak had a repair of 3-12 cells against a budget of 42-47, and
+      // ended 1-3 cells short with the phase spent on a wider plan that did not close.
+      // Tight first took marshal from 26% of rounds forfeited to 9%, and from 7 of 11
+      // wins against two gunners to 10 of 12.
+      const tight = cheapestPlanFor(
+        state,
+        this.playerId,
+        1,
+        this.profile.maxCastles,
+        this.unreachable,
+        true,
+        0,
+      );
+      if (affordable(tight)) return (tight as SealPlan).tiles;
+
       // Reaching for two castles while unenclosed is the real gamble: it is more
       // cannons if it lands and elimination if it does not. Only when it clearly fits.
       if (this.profile.maxCastles > 1) {

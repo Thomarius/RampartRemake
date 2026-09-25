@@ -4,15 +4,18 @@ import { fileURLToPath } from 'node:url';
 
 import { validateConfigBundle, type ConfigBundle } from '@rampart/config';
 import { loadConfigBundle } from '@rampart/config/node';
-import { Bot, DIFFICULTIES, cannonRoom, type Difficulty } from '@rampart/ai';
+import { Bot, DIFFICULTIES, cannonRoom, cheapestPlanFor, type Difficulty } from '@rampart/ai';
 import {
   Rng,
   Structure,
+  Terrain,
   applyAction,
   createMatch,
   drainEvents,
   generateTerrain,
   hashMatchState,
+  pieceCells,
+  poolForRound,
   renderAscii,
   step,
   type MatchState,
@@ -156,6 +159,18 @@ interface StatRow {
   damagePoints: number;
   /** Banked total after this round. */
   score: number;
+  /**
+   * Cells the tightest possible seal needed as the build phase opened, and how many it
+   * still needed on the phase's last tick. Together they say why a round failed:
+   * a repair larger than the phase could ever build, or one that fit and was missed.
+   */
+  repairAtBuild: number;
+  repairLeft: number;
+  /**
+   * Of the cells still missing on the last tick, how many no piece in this player's bag
+   * could cover at all — holes the round's pieces are too big for.
+   */
+  repairStuck: number;
 }
 
 const STAT_COLUMNS: (keyof StatRow)[] = [
@@ -176,6 +191,9 @@ const STAT_COLUMNS: (keyof StatRow)[] = [
   'territoryPoints',
   'damagePoints',
   'score',
+  'repairAtBuild',
+  'repairLeft',
+  'repairStuck',
 ];
 
 /**
@@ -200,6 +218,33 @@ function wallTilesOf(state: MatchState, playerId: number): number {
     if (state.structure[i] === Structure.Wall && state.islandId[i] === islandId) tiles++;
   }
   return tiles;
+}
+
+/** Whether any piece in the player's current bag can legally cover tile `i`. */
+function coverable(state: MatchState, playerId: number, i: number): boolean {
+  const player = state.players[playerId];
+  if (player === undefined) return false;
+  const tx = i % state.width;
+  const ty = (i - tx) / state.width;
+  const fits = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= state.width || y >= state.height) return false;
+    const j = y * state.width + x;
+    return (
+      state.terrain[j] === Terrain.Land &&
+      state.structure[j] === Structure.Empty &&
+      state.islandId[j] === player.islandId
+    );
+  };
+  for (const id of poolForRound(state.ruleset, player.pieceRound).ids) {
+    for (let rotation = 0; rotation < 4; rotation++) {
+      const cells = pieceCells(id, rotation);
+      // Every way of laying this piece so that one of its cells lands on the tile.
+      for (const [ax, ay] of cells) {
+        if (cells.every(([cx, cy]) => fits(tx - ax + cx, ty - ay + cy))) return true;
+      }
+    }
+  }
+  return false;
 }
 
 function writeStats(path: string, rows: StatRow[]): void {
@@ -340,6 +385,16 @@ for (let i = 0; i < args.matches; i++) {
   // Reset at every resolution, so a row counts only its own round's work.
   const placed = new Map<number, number>();
   const fired = new Map<number, number>();
+  const repairAtBuild = new Map<number, number>();
+  const repairLeft = new Map<number, number>();
+  const repairStuck = new Map<number, number>();
+  /**
+   * The tightest wall that would seal a castle, in cells still to fill — zero for a wall
+   * that stands. Asked of the min cut rather than of `enclosedCastles`, which is not
+   * recomputed when shots land and so still says "sealed" as a breached phase opens.
+   */
+  const tightestRepair = (id: number): number =>
+    cheapestPlanFor(state, id, 1, 1)?.cost ?? Number.POSITIVE_INFINITY;
 
   while (state.phase !== 'game_over' && state.tick < args.maxTicks) {
     for (const player of state.players) {
@@ -350,8 +405,24 @@ for (let i = 0; i < args.matches; i++) {
     const events = drainEvents(state);
     if (args.stats === null) continue;
 
+    // Measured once as the phase opens and once on its last tick, which is the last
+    // moment before the resolution wipes a failed island.
+    if (state.phase === 'build' && state.tick === state.phaseEndTick - 1) {
+      for (const p of state.players) {
+        if (p.eliminated) continue;
+        const plan = cheapestPlanFor(state, p.id, 1, 1);
+        repairLeft.set(p.id, plan?.cost ?? Number.POSITIVE_INFINITY);
+        const missing = plan?.tiles.filter((i) => state.structure[i] === Structure.Empty) ?? [];
+        repairStuck.set(p.id, missing.filter((i) => !coverable(state, p.id, i)).length);
+      }
+    }
+
     for (const event of events) {
-      if (event.kind === 'piece_placed') {
+      if (event.kind === 'phase_changed' && event.phase === 'build') {
+        for (const p of state.players) {
+          if (!p.eliminated) repairAtBuild.set(p.id, tightestRepair(p.id));
+        }
+      } else if (event.kind === 'piece_placed') {
         placed.set(event.player, (placed.get(event.player) ?? 0) + 1);
       } else if (event.kind === 'shot_fired') {
         fired.set(event.shot.owner, (fired.get(event.shot.owner) ?? 0) + 1);
@@ -385,10 +456,16 @@ for (let i = 0; i < args.matches; i++) {
             territoryPoints: result.territoryPoints,
             damagePoints: result.damagePoints,
             score: state.players[result.player]?.score ?? 0,
+            repairAtBuild: repairAtBuild.get(result.player) ?? 0,
+            repairLeft: repairLeft.get(result.player) ?? 0,
+            repairStuck: repairStuck.get(result.player) ?? 0,
           });
         }
         placed.clear();
         fired.clear();
+        repairAtBuild.clear();
+        repairLeft.clear();
+        repairStuck.clear();
       }
     }
   }
