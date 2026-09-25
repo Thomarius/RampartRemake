@@ -1171,3 +1171,156 @@ Names are escaped. They come from other players and the server caps their length
 their content.
 
 Three copies of "player colour as CSS" became one, in `colours.ts`.
+
+## 10r. The round cap and points scoring
+
+Before this a match ended only when one player was left, and between competent bots
+that could take thirty rounds or never happen. A match now ends at the resolution of
+round `scoring.maxRounds` (10), or earlier when one player is left; at the cap the best
+score among the survivors wins. The rules are in PLAN.md §1.7; this records how they
+were settled and what was measured.
+
+### Measured before anything was built
+
+At the bot play of the day, four of eight three-player matches and seven of eight
+two-player matches would have reached round 10. **So the cap is not a tie-breaker, it is
+the main win condition**, and the scoring formula is the game's balance with elimination
+the exception. The default weights split about 65/35 territory to damage at three
+players and 76/24 at two.
+
+### Questions that reading the code turned up
+
+- **Territory is total tiles times total castles**, not summed per region. Two separate
+  one-castle loops of 30 tiles score 120, exactly as one loop holding both would.
+- **An enclosed tile is whatever the solver marks as the player's territory** — castle
+  and cannon footprints included, so placing a gun never costs points.
+- **Self-fire.** `fire()` had no island check at all, so a player could shoot a spare
+  stretch of their own wall for two points a tile and rebuild it in a build phase they
+  were spending anyway. The plan had recommended scoring it zero and leaving it legal;
+  the decision was to forbid it. `fire()` refuses your own island, and an impact clears a
+  wall only if a live opponent owns it — checked at impact too, so a wide crater cannot
+  reach your own. An eliminated player's rubble is therefore indestructible, and a player
+  can no longer clear their own stranded wall from ground a cannon needs. Both accepted.
+- **A shared win is not a draw**, so `winner` became `winners`, beside `draw` and a new
+  `endedBy`. The snapshot changed shape and `PROTOCOL_VERSION` went to 2, then 3 with the
+  lobby settings. The welcome message had been sending a hardcoded 1 regardless.
+- **Failing to seal in the final round still costs a life.** Nothing follows it, but the
+  normal path needs no special case.
+- **`maxRounds` is nullable, for tests only.** The game is balanced around the cap and a
+  host cannot lift it. `withoutRoundCap` sits beside `withoutContinues`.
+
+### Lobby settings, as a mechanism
+
+Only `maxRounds` is settable, but game speed, team mode and special weapons are meant to
+follow, so it is an explicit list of typed settings in `config/src/settings.ts` with
+bounds in `server.lobbySettings` (5 to 20 rounds), not overrides by path into the
+ruleset. The room accepts a change only from the host, before the start, and only inside
+the bounds — refused whole rather than clamped — then applies it over the server's
+ruleset and re-validates through `RulesetSchema`. The result travels in the snapshot, so
+determinism is untouched. The offline menu has the same control, and a host's menu choice
+carries into the room they open. The validator refuses bounds that exclude the ruleset's
+own cap.
+
+### Things found along the way
+
+- **The HUD roster put player names into `innerHTML` unescaped**, and online they come
+  from other clients.
+- **`stateFromAscii` gave walls no owner**, so every wall in a test picture was rubble on
+  island 1. It now owns walls by island and takes an optional island overlay picture.
+- **The gunner-over-recruit position test changed result, not meaning**: it reads
+  position at 20,000 ticks, which the cap now ends matches close to, and the lead fell
+  from 5 of 8 to 4. It runs uncapped.
+
+First measurement under the rules, four three-player gunner matches: two decided on
+points at round 10, two by elimination. Territory 64 per surviving player-round against
+24 for damage, 73/27 — damage fell once self-inflicted hits and rubble stopped counting.
+
+## 10s. Teaching the bots to play for points
+
+Bots were tuned for survival, and a soak cannot judge scoring weights while they play
+for survival. This is where they learned otherwise — mostly by finding out they were
+losing rounds they could have won.
+
+### Three levers that did nothing
+
+Marshal alone changed, in one seat against two gunners, both seats. Baseline 7 of 11.
+
+| Change, marshal only                    | wins    | castles | forfeited rounds |
+| --------------------------------------- | ------- | ------- | ---------------- |
+| none                                    | 7 of 11 | 1.46    | 26%              |
+| `maxCastles` 2 -> 3                     | 6 of 11 | 1.50    | 26%              |
+| target the rival with the highest score | 5 of 11 | 1.47    | 27%              |
+| `ROOM_RADIUS` 3 -> 4                    | 1 of 12 | 1.09    | 43%              |
+
+The ambition cap was not binding — bots barely held two castles — so the handicap
+expected under points was not there. A wider band was badly worse, as it was for
+survival. What the numbers did show: **both tiers forfeited about a quarter of their
+rounds**, and each forfeit costs the whole round and a life.
+
+### Why a quarter of rounds failed
+
+Headless `--stats` gained `repairAtBuild`, `repairLeft` and `repairStuck` — the cells the
+tightest seal needed as the build phase opened, the cells still missing on its last
+tick, and how many of those no piece in the bag could cover. Hashes are identical with
+and without `--stats`, so measuring does not disturb play.
+
+**Every failed round was affordable**: a tightest repair of 3–12 cells against a budget
+of 42–47, ended 1–3 cells short with the whole phase spent. About 30% ended on a hole no
+piece in the bag fitted; the rest on cells that could have been filled. Two causes in
+`decide()`: a breached bot asked for the _widest_ affordable wall first, against an
+estimate of 3.5 cells a piece that is optimistic once the bag widens; and it read
+`enclosedCastles`, which landing shots do not refresh, so as a breached phase opened it
+believed it was sealed. Most of its second castles came from that stale path.
+
+**The fix: count sealed castles afresh, and when breached close the tightest wall that
+keeps the guns before anything else.** Marshal alone with it: forfeits 26% -> 9%, wins 7
+of 11 -> 10 of 12, and from seat 0, 2 of 6 -> 5 of 6 — most of the seat bias seen that
+week was this bug. With every tier on it the ladder held. Preferring the roomiest repair
+within three cells of the tightest was tried and dropped for no measurable gain.
+
+**What it did to the game**: with every bot careful, three gunners forfeited half as
+often (22% -> 11%) but held half the territory (80 -> 41 per sealed round), and eight
+matches produced no eliminations at all. Careful play under the default weights is a
+tight wall around one castle — the turtle the scoring was meant to punish. A finding
+about the weights, visible now that the bots play for points.
+
+### Three faults seen watching a match
+
+- **"The sea counted as wall."** It did not. An independent check — a search outward
+  from each castle rather than the solver's flood inward — agrees with the sim at every
+  resolution of three full matches, and is now a test. The display was wrong: territory
+  is refreshed at placements and resolutions, not when shots land, so a castle breached
+  in combat stayed shaded as sealed. The client now draws territory and counts castles
+  from a fresh `computeEnclosure`. Display only.
+- **Cannons against a coastal wall.** Clearance treated a wall with the sea behind it
+  like an inland one, and in a tight ring every spot touches a wall, so range decided —
+  toward the enemy, where the coast usually is. A spot is now _pinned_ if a wall block
+  beside it has nothing buildable beyond, and pinned spots are taken only when nothing
+  else exists.
+- **Idle beside an unwalled castle.** Thickening targets no piece could reach were marked
+  unreachable, but `thickenTargets` never consulted that set, so the bot got them back,
+  failed, and paused for the rest of the phase without reaching `spareWork`. Build
+  choices are now tried in turn, skipping dead ends, and spare time reaches for every
+  castle on the island. Pieces laid against time available went 95% -> 105%, territory
+  41 -> 52.
+
+The cramped-walls test held one seed to 0.5 while the soak average sits at 50–56%, so it
+flipped with any change. It now measures three seeds against 0.6.
+
+### Is thickening worth it — the baron
+
+Two profile switches, `thickens` and `expandsWhenSealed`. Each variant with marshal's
+speed and aim, against two gunners, twenty matches (equal play wins about 7):
+
+| Variant                                   | wins of 20 |
+| ----------------------------------------- | ---------- |
+| marshal as it is                          | 13         |
+| marshal, thickening off                   | 12         |
+| no thickening, eager expansion            | 9          |
+| eager expansion, thickening kept, `max` 4 | 14         |
+
+Dropping thickening changes nothing; dropping it while expanding eagerly is worse — the
+wall an expansion relies on while it is being built is the wall being shot. The 14 did
+not survive a forty-match rerun (seeds 101–120): 28 against marshal's 29. It was kept
+anyway as the **baron** tier, for variety rather than strength — marshal's skill,
+`maxCastles` 4, eager expansion, thickening kept.

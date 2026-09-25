@@ -35,16 +35,16 @@ const GUN_REACH = 12;
  * Ground the wall must take in around each castle.
  *
  * Without it the planner returns the tightest wall that works, which is the wall with
- * no room inside for a gun.
+ * no room inside for a gun. Room is worth paying for; more room than the reward can
+ * spend is just a longer bill, repaired every round under fire.
  *
- * Two, not three, and the difference is not small. Three tiles buys a band with room
- * for about fourteen cannons against a reward of three a round — ground that has to be
- * walled and then repaired every round under fire, for guns that will never be built.
- * Marshal matches went from never finishing to finishing in 2.3 rounds, all three
- * players wiped out together in a barrage none of them could out-repair. At two the
- * band holds six or seven, the wall is short enough to maintain, and matches run four
- * rounds with nobody idle. Room is worth paying for; more room than the reward can
- * spend is just a longer bill.
+ * Three, re-swept for the rectangular islands of ARCHIVE 10l. It was two on the wedge
+ * map, where three bought room for fourteen cannons against a reward of three a round
+ * and all three players were wiped out together by round three. A compact rectangle
+ * makes a tight cut cheaper, so the same constant meant something different: at two,
+ * marshal's room for another cannon fell to 1.8, and three took it back to 7.3. Four was
+ * tried under points scoring (10s) and was badly worse — one win in twelve, rounds
+ * forfeited 26% to 43%.
  */
 const ROOM_RADIUS = 3;
 

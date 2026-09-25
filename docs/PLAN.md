@@ -33,7 +33,7 @@ LOBBY
 -> CANNON_PLACE    place your opening cannons inside that ring
 -> COMBAT          click targets; cannons lob shots at enemy walls
 -> BUILD           place wall pieces on your island
--> [enclosure resolved; a player with no enclosed castle spends a life or is out]
+-> [enclosure resolved; points banked; a player with no enclosed castle spends a life or is out]
 -> CANNON_PLACE    place the cannons you earned, ending early once done
 -> COMBAT ...
 -> GAME_OVER       last player standing, or the best score at the round cap;
@@ -140,6 +140,30 @@ Note the consequence: **one-cell pieces stop being dealt after the early rounds*
 one-tile gap with no free neighbour cannot be filled at all. That is why a cannon jammed
 against its own wall is a defensive problem and not merely an ugly one.
 
+### 1.7 Scoring and the round cap
+
+A match ends at the resolution of round `scoring.maxRounds` (default 10; a host picks 5
+to 20), or earlier when one player is left. **The cap is the main win condition, not a
+tie-breaker**: most matches reach it, so the scoring formula is the game's balance and
+elimination the exception. At the cap the highest score among those still in wins, and a
+tie is a shared win — which is not a draw. **A player who is out cannot win however many
+points they had**, which keeps attacking worth it for somebody behind. Simultaneous
+elimination is a draw whatever the scores.
+
+Points are banked at each build-phase resolution, after the sweep, by every player holding
+a sealed castle:
+
+- `wallPoints` for each **opponent's** wall tile they destroyed that round;
+- `tilePoints` × **total enclosed tiles × total enclosed castles**, across every region
+  they hold. Totals, not per region: two one-castle loops of 30 tiles score 120, as one
+  loop around both would. An enclosed tile is `territory === id + 1`, castle and cannon
+  footprints included, so placing a gun never costs points.
+
+Failing to seal forfeits the round's points, damage included
+(`scoreDamageOnFailedRound` turns that off), and spends a life as usual — in the final
+round too. The HUD shows banked scores only, never a running tally that could still be
+forfeited. `maxRounds: null` lifts the cap for tests; no host can choose it.
+
 ---
 
 ## 2. Technology
@@ -185,19 +209,20 @@ RampartRemake/
 an unknown key is an error, not a silently ignored one. The ruleset travels in the match
 snapshot, because a client on different rules would desync rather than merely look wrong.
 
-| File                   | Governs                                                                                                                                                    |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ruleset.default.json` | Phase lengths, cannon rewards and footprint, shot flight and damage, the piece catalogue and its size schedule, enclosure rules, elimination and continues |
-| `terrain.default.json` | Island size and shape, the generation box, castle placement, the starting ring, the per-player-count pattern table                                         |
-| `ai.default.json`      | One profile per difficulty, in milliseconds and human units                                                                                                |
-| `art.default.json`     | Palettes, per-player colour ramps, sprite generator parameters                                                                                             |
-| `audio.manifest.json`  | Cue names to files; see `assets/audio/README.md` for what fires each one                                                                                   |
-| `server.default.json`  | Ports, room limits, rate limits, reconnect grace                                                                                                           |
+| File                   | Governs                                                                                                                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ruleset.default.json` | Phase lengths, cannon rewards and footprint, shot flight and damage, the piece catalogue and its size schedule, enclosure rules, elimination and continues, scoring and the round cap |
+| `terrain.default.json` | Island size and shape, the generation box, castle placement, the starting ring, the per-player-count pattern table                                                                    |
+| `ai.default.json`      | One profile per bot tier: pace and aim in milliseconds and human units, and playstyle switches                                                                                        |
+| `art.default.json`     | Palettes, per-player colour ramps, sprite generator parameters                                                                                                                        |
+| `audio.manifest.json`  | Cue names to files; see `assets/audio/README.md` for what fires each one                                                                                                              |
+| `server.default.json`  | Ports, room limits, rate limits, reconnect grace, and the bounds of what a host may set in the lobby                                                                                  |
 
 `validateConfigBundle` checks what a single file cannot: that there are at least as many
 player palettes as allowed players, that every playable count has a pattern, that a cannon
-fits inside a starting ring, that the island does not fill its generation box, and that
-every audio cue in code exists in the manifest.
+fits inside a starting ring, that the island does not fill its generation box, that the
+lobby's round bounds include the ruleset's own cap, and that every audio cue in code exists
+in the manifest.
 
 ---
 
@@ -247,6 +272,11 @@ sender's seat**, so a client cannot act for someone else.
 - A dropped seat is handed to a bot so the match does not stall; the player gets their seat
   back on reconnect within the grace period.
 - Rooms are found by a short code from an alphabet chosen to avoid ambiguous characters.
+- **Lobby settings are a mechanism, not a special case**: an explicit list of typed
+  settings (`config/src/settings.ts`), bounded by `server.lobbySettings`, accepted only
+  from the host before the start, refused whole when out of bounds, and applied over the
+  server's ruleset — which is re-validated and travels in the snapshot. Only `maxRounds`
+  exists so far; game speed and team mode are meant to join it.
 
 ---
 
@@ -267,7 +297,13 @@ and a corrupt file is silent rather than noisy.
 watched match is still on round 0 after two minutes of virtual time, because the render
 loop is barely driven; headless Chrome catches a crash on load and nothing else. The
 pattern that works is to pull the decision out into a pure function and test that —
-`bannersFor` in `banners.ts`, `lobbyMarkup` in `lobby.ts`.
+`bannersFor` in `banners.ts`, `lobbyMarkup` in `lobby.ts`, the score text in `scores.ts`.
+
+**Territory is drawn as the board stands, not as the sim last recorded it.** The sim
+refreshes `territory` at placements and resolutions but not when shots land, since a
+breach only counts at a resolution; drawn from state, a castle breached in combat stayed
+shaded as sealed. The client recomputes the enclosure for display whenever structures
+change, and the roster counts castles from it.
 
 ---
 
@@ -282,20 +318,33 @@ construction, and the soak asserts they never ask for a move the rules refuse.
   island alone, which is exact and far faster than the whole grid.
 - **A minimum cut is the _tightest_ wall that works** — which is exactly the wall with
   nowhere to put a gun, and the most fragile one. Nearly every bot problem traces back to
-  this. `widestAffordable` therefore asks for room first and gives it up a tile at a time
-  until the plan fits the phase's budget; a tight wall is the last rung, not the first.
+  this. Once sealed, `widestAffordable` asks for room first and gives it up a tile at a
+  time until the plan fits the phase's budget.
+- **But when breached, the tightest wall that keeps the guns comes first**, and room is
+  bought once something is sealed. Asking for room first is what lost a quarter of all
+  rounds 1–3 cells short (ARCHIVE 10s). A bot counts its sealed castles with
+  `computeEnclosure`, never from `enclosedCastles`, which landing shots do not refresh.
+- **Cannons are never pinned when there is any alternative**: a spot beside a wall block
+  with nothing buildable beyond it is where one shot makes a hole only a one-cell piece
+  fits. Then clearance from wall and shore, then range.
 - **Attacking is a 0-1 BFS** from the border, free across open ground and one per wall
   block, which finds the thinnest part of a defence. One shot per tile: a shot destroys
   exactly the tile it hits, so a second is always wasted.
 - **Pace is in human units** — milliseconds per placement, scaling with piece size — so a
   bot slows as the piece schedule widens, for the same reason a person does.
-- A bot whose plan is standing **thickens or reaches further rather than idling**.
+- A bot **does not idle while anything is worth building**. Choices are tried in turn —
+  the plan, thickening, the next castle (up to every castle on the island), more room,
+  and finally any tile against the outside of its wall — skipping tiles already found
+  unreachable, and a failed fit falls through to the next rather than pausing.
   Affordability governs whether to commit to a plan over staying alive; it does not govern
   spending time nobody else wants.
 
-Difficulty tiers differ in aim quality, target choice, ambition, replanning rate and pace.
-**The head-to-head records in the archive are historical**: they were measured on the
-wedge map that 10l replaced, and have not been re-run.
+Four tiers: **recruit**, **gunner** and **marshal** differ in aim, target choice, ambition,
+replanning rate and pace; **baron** has marshal's skill with a different playstyle —
+reaching for the next castle the moment it holds one (`expandsWhenSealed`, `maxCastles`
+4). It is as strong as marshal, not stronger, and exists for variety. Measured 2026-09-25
+at three players, both seats: marshal beats two gunners 29 of 40, baron 28; gunner beats
+two recruits 9 of 12. Records in the archive from before 10l are historical.
 
 ---
 
@@ -316,8 +365,11 @@ wedge map that 10l replaced, and have not been re-run.
   watching. Watching is for forming the hypothesis.
 
 Tests state expectations as ASCII pictures where the subject is geometric
-(`stateFromAscii`). A test that asserts "failing to seal ends your match" needs
-`withoutContinues`, and so does anything measuring the piece-size ramp.
+(`stateFromAscii`, with an optional island overlay for walls and castles that belong to
+someone other than island 1). A test that asserts "failing to seal ends your match" needs
+`withoutContinues`, and so does anything measuring the piece-size ramp; anything about
+elimination or long matches needs `withoutRoundCap`. Enclosure in real play is checked at
+every resolution against an independent search, not only on unit pictures.
 
 ---
 
@@ -338,329 +390,34 @@ Tests state expectations as ASCII pictures where the subject is geometric
 
 ## 11. Open work
 
-### 11.1 Round cap and points scoring — built
+### 11.1 Round cap and points scoring — done
 
-Built in two steps: **11.1a**, the rules with the cap read from config, and **11.1b**, a
-host choosing the cap in the lobby within `server.lobbySettings` (5 to 20 rounds). Both
-done. Below is the design both follow; what remains is 11.2 and tuning the weights.
+The rules are §1.7, the lobby setting §6; how they were settled is ARCHIVE 10r.
 
-**First measurement under the agreed rules**, four three-player gunner matches: two
-decided on points at round 10, two by elimination at rounds 7 and 9. Per surviving
-player-round, 64 territory points against 24 for damage — 73/27, against the 65/35
-predicted above, because self-inflicted damage and rubble no longer count. Four matches
-is a smoke test, not a balance figure.
+### 11.2 Tune the scoring weights
 
-**The difficulty ladder test reads differently under the cap.** `bot.test.ts` scores
-gunner against recruit by position at 20,000 ticks; with the cap ending matches near that
-point the lead fell from 5 of 8 to 4, so the test now runs uncapped. It is a survival
-question, which is what 11.2 is about to change — re-measure the ladder then (11.4).
+The bots now play for points (ARCHIVE 10s), so a soak can judge the weights — and what it
+says is that **careful play under the defaults is a turtle**. Three gunners, eight
+matches, before and after the bots learned to close a breach first:
 
-#### The rules
+|                            | before | after |
+| -------------------------- | ------ | ----- |
+| rounds forfeited           | 22%    | 11%   |
+| territory per sealed round | 80     | 41    |
+| castles held               | 1.17   | 0.92  |
+| damage points per round    | 25     | 33    |
+| matches won by elimination | 3/8    | 0/8   |
 
-A match ends at the resolution of round `maxRounds` (default 10), or earlier when one
-player is left, as now. `null` means no cap and exists for tests about elimination: **the
-game is planned and balanced with the cap in place**, so an uncapped match is a testing
-tool, not a mode.
+Later fixes (no idling, no pinned cannons) took territory back to 52 and castles to 1.03,
+but three-player matches still never end by elimination: a tight wall around one castle,
+and every match to the cap — what the scoring was meant to punish.
 
-If two or more are still in it at the cap, the highest score among them wins; a tie is a
-shared win. **A player who is out cannot win however many points they had** — being
-eliminated is worse than any score, which is what keeps aggression worth it when behind.
-Simultaneous elimination stays a draw whatever the scores, at the cap or before it.
-
-Points are awarded at each build-phase resolution, to every player holding a valid
-territory with at least one castle:
-
-- `wallPoints` (default 2) for each opponent's wall tile that player destroyed during the
-  round.
-- `tilePoints` (default 1) × **total enclosed tiles × total enclosed castles**. Totals, not
-  per region: two separate loops of 30 tiles with one castle each score 60 × 2 = 120,
-  exactly as one loop holding both would. The product grows with the square of what a
-  player holds, which is the point — a tight wall around one castle loses on the clock.
-
-**An enclosed tile is `territory[i] === id + 1`**, as the enclosure solver already defines
-it: every non-wall tile of a sealed region holding one of the player's castles, including
-the castle's own tiles, cannon footprints and any enclosed water. Placing a cannon or
-holding a castle does not diminish the area. The wall itself never counts.
-
-A player who ends the round without a valid territory scores **nothing for that round**,
-including the damage they dealt. They spend a continue as usual — in the final round too,
-where they lose a life and stay in contention on points. The wipe may be skipped in that
-case if it proves simpler, since nothing follows it.
-
-**The HUD shows banked scores only**, updated at each resolution — never a running damage
-tally, which could still be forfeited by failing to seal. Alongside it the round as
-"Round 3 / 10", and a notice when the final round begins.
-
-#### Only opponents' walls can be damaged
-
-This changes §1.4 and the CLAUDE.md rule "you may legally shoot your own"; update both when
-it lands. Today `fire()` has no island check at all, so a player could shoot a spare
-stretch of their own wall for two points a tile and rebuild it in the build phase they
-were spending anyway. **Decided: a player can damage only opposing players' walls, so
-they can only score on opponents.**
-
-- `fire()` rejects a target on the shooter's own island with a new rejection,
-  `own_island`. Both bots already skip their own island (`bot.ts`, `stopgap.ts`), so the
-  soak's assertion that bots never ask for a refused move should keep holding. The client
-  should not submit such a click at all.
-- `resolveImpacts` clears a wall tile only if its owner is a live opponent —
-  `owner !== 0 && owner !== shooter.islandId`, read **before** the tile is cleared — and
-  credits the shooter. Checked at impact as well as at fire, so a crater wider than one
-  tile cannot slip past it; with teams, "opponent" becomes "not on my team".
-- Consequence: rubble left by an eliminated player is unowned, so it is now
-  indestructible. It sits on a dead island, so nothing is lost — but the bot's random
-  fallback target in `bot.ts` must skip unowned wall or it wastes shots on it.
-- Consequence: a player can no longer shoot their own stranded wall out of ground a
-  cannon needs; only an opponent can remove it. Accepted.
-- Configurable as `shots.damagesOwnWalls` (default false), beside the existing
-  `damagesWalls/Castles/Cannons`, so the rule is not hardcoded.
-
-#### Why it is expected to work, and what it really changes
-
-The scoring is aimed squarely at the failure mode this project keeps returning to: a
-minimal enclosure that survives forever. Under points, a tight wall around one castle
-scores almost nothing and loses on the clock.
-
-Measured first, because it changes what this feature is. At today's bot play, with the
-default weights:
-
-|                                 | 3 players                      | 2 players  |
-| ------------------------------- | ------------------------------ | ---------- |
-| matches reaching round 10       | 4 of 8                         | 7 of 8     |
-| enclosed tiles per player-round | 35                             | 42         |
-| castles                         | 1.16                           | 1.35       |
-| territory points                | 62                             | 87         |
-| walls destroyed, as points      | 16.8 -> 34                     | 13.9 -> 28 |
-| split                           | 65% territory / 35% aggression | 76% / 24%  |
-
-These were taken before the formula was settled and counted self-inflicted damage, so the
-territory and damage rows need retaking under the agreed rules — the first measurement
-once 11.1a lands.
-
-**The cap is not a tie-breaker, it is the main win condition** — most matches will be
-decided on points rather than by elimination. That makes the scoring formula the game's
-balance, and the elimination rules the exception. Worth holding in mind when tuning: the
-split will drift further toward territory as play improves, because tiles times castles
-grows quadratically while damage stays flat.
-
-Note that this cannot be balance-tested by the usual soak until 11.2 lands.
-
-#### 11.1a — the rules
-
-**Config.** `ruleset.scoring`: `maxRounds` (positive integer or `null`), `wallPoints`,
-`tilePoints`, and `scoreDamageOnFailedRound` (default false) — the last so the
-alternative to the forfeit rule can be measured later without a code change. Plus
-`shots.damagesOwnWalls`.
-
-**Sim.**
-
-- `PlayerState` gains `score` and a per-round `wallsDestroyed`. Both go into the state
-  hash and the snapshot's `PlayerSchema`.
-- `fire()` gains `own_island`; `resolveImpacts` the opponent check and the credit.
-- `resolveRound` scores every surviving player, then resets every accumulator, including
-  those that scored nothing. Scoring is measured **after** the sweep and its
-  `applyEnclosure`, so the territory scored is the territory that will face the next
-  barrage. A loop that encloses anything can never be swept, so in practice this equals
-  the pre-sweep figure; defining it removes the ambiguity rather than relying on that.
-- `round_resolved` results carry the territory and damage points awarded, so neither the
-  client nor the headless harness recomputes them.
-- `checkGameOver` gains the cap: `maxRounds !== null && state.round >= maxRounds`, checked
-  at the same point as now, after the resolution. The last round's cannon phase is never
-  played.
-
-**The end of a match.** `winner: number | null` becomes `winners: number[]`; `draw` stays;
-`endedBy: 'elimination' | 'round_cap'` is added, set with them, so the banner can say "wins
-on points". One survivor → `[them]`; none → `[]` and a draw; at the cap → every survivor
-sharing the top score. A shared win is not a draw. The `game_over` event carries the same
-fields. This ripples through the snapshot schema (bump `PROTOCOL_VERSION`), the end text
-in `hud.ts`, `matchAudio.ts` (victory when the human is among the winners), the headless
-win count, and the tests in `match.test.ts`.
-
-**Client.** Scores in the HUD roster, the round counter, and the leaderboard carried by the
-phase announcement that already follows a build phase — so it costs no extra pause. The
-final table on the game-over screen. The table is built by a pure function and tested like
-`lobbyMarkup` and `bannersFor`, since headless Chrome cannot check anything that depends
-on the clock.
-
-**Headless.** Score columns in `--stats` (territory points, damage points, running score),
-`--max-rounds N|none`, and outcomes split by `endedBy` — won on points against won by
-elimination.
-
-**Tests.** A `withoutRoundCap` helper alongside `withoutContinues`, for anything about
-elimination or long matches. `stopgap.test.ts` asserts that two-player matches reach
-`game_over`, which the cap would make trivially true; it runs uncapped.
-
-#### 11.1b — lobby settings, built as a mechanism rather than a special case
-
-Only `maxRounds` is settable now, but game speed, team mode and special weapons are
-coming, so:
-
-- `config/server.default.json` declares what a host may change and within what bounds —
-  which keeps "no rule is hardcoded" true, since the _range_ is configuration too. An
-  explicit list of typed settings (`maxRounds: { min, max }`), not generic path overrides
-  into the ruleset.
-- The room validates a host's setting against those bounds, ignores a guest's, and locks
-  them once the match starts, exactly as bot difficulties already work — `configure`
-  gains the settings, and the `room` broadcast carries them so guests see what they are
-  about to play.
-- The match ruleset is the server's with the host's overrides applied, re-validated
-  through `RulesetSchema`, and travels in the snapshot as it always has. Determinism is
-  unaffected.
-- The same control appears in the offline menu, or the two paths diverge and the round
-  limit cannot be felt out offline. The client already has the bounds through
-  `defaultConfigBundle`.
-- **A host cannot choose "unlimited".** The game is balanced around the cap, so the
-  bounds are integers only and `null` stays reachable solely through config, for tests.
-
-### 11.2 Teach the bots to play for points
-
-Deliberately a second step. Their ladder is survival-shaped and their ambition is capped at
-two castles because reaching further was measured to _lose_ — a finding about surviving,
-not about scoring. Under points, more castles is strictly better, so that cap becomes a
-handicap.
-
-Until this lands, **a soak cannot tell whether the scoring weights are right**: a
-points-decided match between current bots goes to whoever accidentally held more ground.
-This is the first feature here shipping without the tool that tuned everything else.
-
-**First session, 2026-09-22: three levers tried, none kept.** Marshal in one seat against
-two gunners, three players, six matches with marshal in seat 0 and six in seat 1, changing
-marshal alone so gunner is the control. Baseline: marshal won 7 of 11 decided matches and
-finished on 1,198 points on average against gunner's 719.
-
-| Change, marshal only                    | marshal wins | final score | castles | forfeited rounds |
-| --------------------------------------- | ------------ | ----------- | ------- | ---------------- |
-| none (baseline)                         | 7 of 11      | 1,198       | 1.46    | 26%              |
-| `maxCastles` 2 -> 3                     | 6 of 11      | 1,176       | 1.50    | 26%              |
-| target the rival with the highest score | 5 of 11      | 1,172       | 1.47    | 27%              |
-| `ROOM_RADIUS` 3 -> 4                    | 1 of 12      | 459         | 1.09    | 43%              |
-
-- **The ambition cap is not binding.** Bots barely hold two castles as it is (1.3–1.5), so
-  lifting it to three changes nothing. The cap is not the handicap it was expected to be.
-- **Shooting the points leader does not help**, within this noise.
-- **A wider band is a liability under points too**, as it was for survival: more wall to
-  repair, far more rounds failed, and territory per sealed round _fell_ (96 against 147).
-- **What the numbers point at instead: both tiers fail to seal about a quarter of their
-  rounds** (marshal 26%, gunner 24%), and a failed round forfeits every point of it and a
-  life. When marshal does seal it earns twice gunner's territory (147 against 73 per
-  sealed round). **The largest points lever is sealing reliably, not reaching further** —
-  start the next session by asking why a quarter of rounds fail: what the budget said,
-  how far short the wall was, and whether the plan was abandoned or never affordable.
-- **Seat bias is large and real** (11.4): marshal won 5 of 6 from seat 1 in two separate
-  runs, and 2 and 1 of 6 from seat 0. Every comparison here needs both seats.
-- The `ROOM_RADIUS` comment argues for two while the value is three; which one was
-  measured last is worth settling before the radius is touched again.
-
-**Second session, 2026-09-25: why rounds fail, and the fix.** Headless `--stats` gained
-`repairAtBuild`, `repairLeft` and `repairStuck`: the cells the tightest seal needed as the
-build phase opened, the cells still missing on its last tick, and how many of those no
-piece in the player's bag could cover. Instrumenting did not change play (identical
-hashes with and without `--stats`).
-
-- **Every failed round was affordable.** The tightest repair was 3–12 cells against a
-  budget of 42–47 per phase, and the bot ended **1–3 cells short** having spent the whole
-  phase. About 30% of failures ended on a hole no piece in the bag could fill; the rest on
-  cells that could have been filled.
-- **Two causes in `decide()`.** A breached bot asked for the _widest_ affordable wall
-  first, and the estimate (3.5 cells a piece) is optimistic once the bag widens. And
-  `enclosedCastles` is not refreshed when shots land, only by placements and resolutions,
-  so as a breached phase opened the bot believed it was sealed and planned for a wall
-  that no longer stood — the stale path is where most of its second castles came from.
-- **Fix, kept: count sealed castles afresh, and when breached close the tightest wall
-  that keeps the guns before anything else.** Room is bought afterwards by the existing
-  branches. Marshal alone with it, against two old gunners: forfeited rounds 26% -> 9%,
-  wins 7 of 11 -> 10 of 12, and seat 0 went from 2 of 6 to 5 of 6. The tight-first half
-  carries most of it (9 of 12 and 11% without the fresh count).
-- **With every tier on it the ladder holds**: marshal beats two gunners 9 of 12 (4 from
-  seat 0, 5 from seat 1), gunner beats two recruits 9 of 12.
-- **Tried and dropped:** preferring the roomiest repair within 3 cells of the tightest.
-  Territory 41 -> 47, no change in forfeits; not worth the code on eight matches.
-
-**Three issues seen watching a match, 2026-09-25.**
-
-- **"The sea counted as wall."** It does not: an independent check — a search outward
-  from each castle rather than the solver's flood inward — agrees with the sim at every
-  resolution of three full bot matches, and is now a test. What looked like it was the
-  display: the sim refreshes territory at placements and resolutions, not when shots
-  land, so a castle breached in combat stayed shaded as sealed, and the roster still
-  counted it, until somebody built. The client now draws territory and counts castles
-  from a fresh `computeEnclosure` whenever structures change. Display only; a breach
-  still counts at the resolution, and a player who fails there spends a life rather
-  than being eliminated while they have one.
-- **Cannons against a coastal wall.** Clearance did not separate a wall with the sea
-  behind it from an inland one, and in a tight ring every spot touches some wall, so
-  range decided — toward the enemy, which is where the coast usually is. A spot is now
-  _pinned_ if a wall block beside the cannon has nothing buildable beyond it; a shot
-  there leaves a hole only a one-cell piece fits. Pinned spots are taken only when
-  there is nothing else, then clearance, then range.
-- **Idle with a castle unwalled.** Thickening targets no piece could reach were marked
-  unreachable, but `thickenTargets` never consulted that set, so the bot got the same
-  targets back after its replan and paused for the rest of the phase — never reaching
-  `spareWork`. Build choices are now tried in turn (plan, thicken, next castle, room,
-  and finally any tile against the outside of its own wall), skipping known dead ends,
-  and a failed fit falls through instead of pausing. Spare time also reaches for every
-  castle on the island rather than stopping at the tier's `maxCastles`.
-
-Measured together, three gunners, eight matches: pieces laid against time available
-95% -> 105%, territory per sealed round 41 -> 52 (54 -> 63 at two players), castles
-0.92 -> 1.03, forfeits unchanged at 10–11%. Marshal against two gunners, both seats:
-7 of 12, against 9 of 12 before — gunner gained more from not idling; within the noise
-of twelve matches, but worth re-measuring. Still no eliminations at three players.
-
-**Is thickening worth it? A fourth tier, baron, 2026-09-25.** Two profile switches:
-`thickens` (whether thickening is a build priority at all) and `expandsWhenSealed` (once a
-castle is sealed, plan for the next straight away, whether or not the phase can close it).
-Baron is marshal's speed and aim with `maxCastles` 4, no thickening, eager expansion — so
-against marshal the playstyle is the only difference. Each variant against two gunners,
-ten matches from seat 0 and ten from seat 1; equal play would win about 7 of 20.
-
-| Variant (marshal's speed and aim)         | wins of 20 | forfeited | castles | territory |
-| ----------------------------------------- | ---------- | --------- | ------- | --------- |
-| marshal as it is                          | 13         | 10–12%    | 1.13    | 76        |
-| marshal, thickening off                   | 12         | 13%       | 1.17    | 78        |
-| baron: no thickening, eager expansion     | 9          | 14–16%    | 1.16    | 80        |
-| eager expansion, thickening kept, `max` 4 | 14         | 12–17%    | 1.22    | 87        |
-
-- **Dropping thickening alone changes nothing** (13 -> 12).
-- **Eager expansion pays only with thickening kept.** Without it baron forfeits more,
-  and the extra ground does not make up for the lost rounds: the wall an expansion
-  relies on while it is being built is the wall being shot.
-- 12, 13 and 14 are within noise (about +-2 at twenty matches); 9 against 14 is about
-  two deviations — suggestive, not settled. Against two marshals, in twelve matches,
-  baron won 6 where equal play would give 4, so the ordering is not yet clear.
-- **Rerun at forty matches (twenty per seat, seeds 101–120), the 14 was noise:** eager
-  expansion with thickening kept won 28 of 40 against two gunners, marshal as it is 29.
-  Territory 92 against 90, castles 1.22 against 1.21, forfeits 14–17% against 13–15%.
-- **Kept as variety, not strength:** baron is now that variant — marshal's skill,
-  `maxCastles` 4, eager expansion, thickening kept. As strong as marshal, and a
-  different game to play against. Marshal is unchanged.
-
-**What this does to the game, and it is the open question for tuning.** Three gunners,
-eight matches, old code against new:
-
-|                            | old  | new  |
-| -------------------------- | ---- | ---- |
-| rounds forfeited           | 22%  | 11%  |
-| territory per sealed round | 80   | 41   |
-| castles held               | 1.17 | 0.92 |
-| damage points per round    | 25   | 33   |
-| matches won by elimination | 3/8  | 0/8  |
-
-Careful play under the current weights is a tight wall around one castle, nobody is
-knocked out, and every match goes to the cap — the turtle the scoring was meant to punish.
-The bots are now good enough for a soak to say so, which was the point of 11.2. **Next:
-tune the weights against this.** Levers, none tried: `tilePoints` against `wallPoints`;
-the territory term's shape (the product rewards a second castle, but nobody reaches one);
-and whether damage should need a sealed round at all (`scoreDamageOnFailedRound`).
-
-**Later: split a bot into personality and skill.** Today a tier bundles both — pace
-and aim (`placement*Ms`, `fireIntervalMs`, `aimJitter`, `replanTicks`) with how it plays
-(`maxCastles`, `riskMargin`, `picksTarget`, `thickens`, `expandsWhenSealed`). Split them
-into two choices, **skill** (how fast it builds and fires, how well it aims) and
-**personality** (for instance aggressive, defensive, mixed), so a seat is a pair and the
-combinations make for more varied opponents. The profile fields already fall cleanly
-into the two groups; what is open is the set of personalities, how the lobby offers
-the pair, and whether `server.botDifficulty` becomes two settings.
+Levers, none tried: `tilePoints` against `wallPoints`; the territory term's shape (the
+product rewards a second castle, which few reach); and whether damage should need a
+sealed round (`scoreDamageOnFailedRound`). **The target has to be decided first** — what
+share of matches should end by elimination, and how long a match should run — then a
+small grid, measured on eliminations, match length and the win split between tiers, both
+seats.
 
 ### 11.3 Two-player balance
 
@@ -671,15 +428,18 @@ is healthy by comparison at 12.3 rounds. The bots are back to cramped walls with
 leaves no budget for room.
 
 Levers not yet tried: `cannons.maxTotal` (still `null`), the opening cannon count, and the
-combat-to-build ratio. The round cap may well absorb this on its own, which is a reason to
-do 11.1 first.
+combat-to-build ratio. **Needs re-measuring before anything is tried**: that figure predates
+the round cap and the bots of 10s. At the cap, eight two-player gunner matches all reached
+round 10, two ending by elimination. Best done after 11.2, since the weights change what
+balanced means.
 
 ### 11.4 Measurements never taken
 
-- **Seat bias.** A documented gotcha, hinted at twice, never measured. It matters more now
-  that grids at 6 and 8 give seats structurally different neighbourhoods.
-- **The difficulty ladder**, on the current map. `--difficulty marshal,gunner,recruit`
-  exists for it and has never been used.
+- **Seat bias** at 4, 6 and 8 players, where grids give seats structurally different
+  neighbourhoods. At three players the gap seen in 10s was mostly a bot bug; with it fixed
+  marshal wins about equally from seats 0 and 1.
+- **The full difficulty ladder**, every pairing and more than three players. Measured so
+  far only at three: marshal and baron over gunner, gunner over recruit.
 - **`resetPieceScheduleOnContinue`**, against the alternative. Only the "on" setting has
   ever run.
 
@@ -690,6 +450,17 @@ do 11.1 first.
 - The continue and elimination banners work but could be more impressive.
 - Islands look boxy; `coastlineRoughness` and `noiseFrequency` are config.
 - Rings at 5 and 7 players make considerably larger maps than grids would. One JSON edit.
+
+### 11.6 Bots as personality and skill
+
+Today a tier bundles two things: **skill** — pace and aim (`placement*Ms`,
+`fireIntervalMs`, `aimJitter`, `replanTicks`) — and **personality** — how it plays
+(`maxCastles`, `riskMargin`, `picksTarget`, `thickens`, `expandsWhenSealed`). Split them,
+so a seat is a pair and the combinations make for more varied opponents. The profile fields
+already fall cleanly into the two groups. Open: the set of personalities (for instance
+aggressive, defensive, expander), how the lobby offers the pair, and whether
+`server.botDifficulty` becomes two settings. Independent of balance, so it can run beside
+11.2.
 
 ---
 

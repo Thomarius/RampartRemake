@@ -104,16 +104,15 @@ colours, tier descriptions).
 
 **M7, the balance pass, is where the work is.** PLAN.md §11 lists it in priority order:
 
-1. **Round cap and points scoring** — built (§11.1), including the host's choice of cap
-   in the lobby and the offline menu. A match ends
-   after `maxRounds` or when one player is left; if two or more remain the highest score
-   wins. Measured beforehand: most matches would reach the cap, so **the scoring formula
-   becomes the game's balance** rather than a tie-breaker.
-2. **Teach the bots to play for points.** Deliberately second, and it blocks tuning: a
-   soak cannot tell whether the weights are right while bots optimise for survival.
-3. **Two-player balance** — the worst thing in the project. 33.8 rounds, three of ten
-   unfinished, cannon room 0.7. Three players is fine at 12.3.
-4. Measurements never taken: seat bias, the difficulty ladder on the current map.
+1. **Round cap and points scoring — done** (§1.7, ARCHIVE 10r). A match ends at
+   `maxRounds` or when one player is left; at the cap the best surviving score wins. Most
+   matches reach the cap, so **the scoring formula is the game's balance**.
+2. **Tune the scoring weights** (§11.2). The bots now play for points (ARCHIVE 10s), and a
+   soak says careful play is a turtle: three-player matches never end by elimination. The
+   target — how often elimination, how long a match — has to be agreed first.
+3. **Two-player balance** (§11.3), to be re-measured under the cap before anything is tried.
+4. Measurements never taken (§11.4): seat bias beyond three players, the full ladder.
+5. Bots as personality × skill (§11.6), independent of balance.
 
 **No audio files exist yet** beyond two test files; the user is producing them, and
 missing files are silent by design. `assets/audio/README.md` lists every cue.
@@ -124,14 +123,21 @@ missing files are silent by design. `assets/audio/README.md` lists every cue.
 sampled at the resolution that ends each build phase — castles sealed, cannons owned and
 active, cannon room, wall tiles, pieces placed against the pieces the tier had time for.
 A summary goes to the console. `--difficulty marshal,gunner,recruit` sets each seat
-separately. Prefer this to watching; watching is for forming the hypothesis.
+separately, `--max-rounds N|none` overrides the cap. Rows also carry points banked and,
+for diagnosing failed rounds, `repairAtBuild`, `repairLeft` and `repairStuck`: what the
+tightest seal needed as the phase opened, what was still missing at its end, and how much
+of that no piece in the bag could fill. Prefer this to watching; watching is for forming
+the hypothesis.
 
 ## What has already been tried, so it is not tried again
 
 - **Scaling fire rate with cannon count** made matches _longer_ and flattened the skill
   ordering. Reverted.
 - **Ambition is a liability for survival**: a marshal walling three castles lost to a
-  gunner walling two, so it is bounded at two. Expect points scoring to invert this.
+  gunner walling two, so it is bounded at two. Points scoring did _not_ invert this:
+  lifting marshal to three changed nothing, because bots rarely hold two.
+- **A wider room band** (`ROOM_RADIUS` 3 -> 4) is badly worse under points too: one win in
+  twelve, rounds forfeited 26% -> 43%.
 - **Making gunner purely defensive** produced six draws in eighteen — a turtle is very
   hard to kill.
 - **Three castles per island rather than four, closer together.** Measured and reverted:
