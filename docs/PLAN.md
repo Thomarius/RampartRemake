@@ -628,6 +628,12 @@ ten matches from seat 0 and ten from seat 1; equal play would win about 7 of 20.
 - 12, 13 and 14 are within noise (about +-2 at twenty matches); 9 against 14 is about
   two deviations — suggestive, not settled. Against two marshals, in twelve matches,
   baron won 6 where equal play would give 4, so the ordering is not yet clear.
+- **Rerun at forty matches (twenty per seat, seeds 101–120), the 14 was noise:** eager
+  expansion with thickening kept won 28 of 40 against two gunners, marshal as it is 29.
+  Territory 92 against 90, castles 1.22 against 1.21, forfeits 14–17% against 13–15%.
+- **Kept as variety, not strength:** baron is now that variant — marshal's skill,
+  `maxCastles` 4, eager expansion, thickening kept. As strong as marshal, and a
+  different game to play against. Marshal is unchanged.
 
 **What this does to the game, and it is the open question for tuning.** Three gunners,
 eight matches, old code against new:
@@ -646,6 +652,15 @@ The bots are now good enough for a soak to say so, which was the point of 11.2. 
 tune the weights against this.** Levers, none tried: `tilePoints` against `wallPoints`;
 the territory term's shape (the product rewards a second castle, but nobody reaches one);
 and whether damage should need a sealed round at all (`scoreDamageOnFailedRound`).
+
+**Later: split a bot into personality and skill.** Today a tier bundles both — pace
+and aim (`placement*Ms`, `fireIntervalMs`, `aimJitter`, `replanTicks`) with how it plays
+(`maxCastles`, `riskMargin`, `picksTarget`, `thickens`, `expandsWhenSealed`). Split them
+into two choices, **skill** (how fast it builds and fires, how well it aims) and
+**personality** (for instance aggressive, defensive, mixed), so a seat is a pair and the
+combinations make for more varied opponents. The profile fields already fall cleanly
+into the two groups; what is open is the set of personalities, how the lobby offers
+the pair, and whether `server.botDifficulty` becomes two settings.
 
 ### 11.3 Two-player balance
 

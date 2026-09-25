@@ -45,7 +45,7 @@
       "riskMargin": 1.0,
       "replanTicks": 20,
       "picksTarget": true,
-      "thickens": false,
+      "thickens": true,
       "expandsWhenSealed": true
     }
   }

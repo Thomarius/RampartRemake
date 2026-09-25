@@ -30,7 +30,7 @@ const TIER_BLURB: Record<Difficulty, string> = {
   recruit: 'wanders its aim, holds one castle',
   gunner: 'finds the weak point, reaches for two',
   marshal: 'rarely misses, and rethinks constantly',
-  baron: 'grabs castle after castle, never thickens a wall',
+  baron: 'reaches for the next castle the moment it holds one',
 };
 
 const TIERS: Difficulty[] = ['recruit', 'gunner', 'marshal', 'baron'];
