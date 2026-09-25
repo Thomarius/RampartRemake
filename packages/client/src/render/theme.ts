@@ -1,6 +1,6 @@
 import type { ArtConfig, ArtStyle } from '@rampart/config';
 import type { MatchState, Shot } from '@rampart/sim';
-import type { Container } from 'pixi.js';
+import type { Container, Graphics } from 'pixi.js';
 
 /**
  * A visual style.
@@ -83,6 +83,52 @@ export interface Ghost {
   footprint: { w: number; h: number } | null;
   /** Castles the player may choose, during castle selection. */
   selectable: readonly { x: number; y: number; w: number; h: number }[];
+  /** Tiles that would seal a castle, when nothing is sealed and the gap is small. */
+  leak: readonly number[];
+  /** The player's castles, when none of them is sealed. */
+  unsealed: readonly { x: number; y: number; w: number; h: number }[];
+}
+
+/**
+ * Marks a player's unsealed castles and the gap that would seal one. Shared by both
+ * styles: it is information, not decoration, and should read the same in either. It
+ * pulses, so it is not mistaken for part of the board.
+ */
+export function drawBuildHints(
+  g: Graphics,
+  state: MatchState,
+  view: ViewTransform,
+  ghost: Ghost,
+  art: ArtConfig,
+  nowMs: number,
+): void {
+  if (ghost.unsealed.length === 0 && ghost.leak.length === 0) return;
+  const pulse = 0.75 + 0.25 * Math.sin(nowMs / 180);
+  // The UI's ink rather than its red: red vanished on the red player's own island, and
+  // any one colour is some player's. Light reads on all of them.
+  const warn = hex(art.palette.uiInk);
+  for (const castle of ghost.unsealed) {
+    g.rect(
+      tileX(view, castle.x) - 2,
+      tileY(view, castle.y) - 2,
+      castle.w * view.tile + 4,
+      castle.h * view.tile + 4,
+    );
+    g.stroke({ width: Math.max(3, Math.round(view.tile / 7)), color: warn, alpha: pulse });
+  }
+  const inset = Math.max(1, Math.floor(view.tile / 8));
+  for (const i of ghost.leak) {
+    const x = i % state.width;
+    const y = (i - x) / state.width;
+    g.rect(
+      tileX(view, x) + inset,
+      tileY(view, y) + inset,
+      view.tile - inset * 2,
+      view.tile - inset * 2,
+    );
+    g.fill({ color: warn, alpha: pulse * 0.45 });
+    g.stroke({ width: 2, color: warn, alpha: pulse });
+  }
 }
 
 export function hex(value: string): number {

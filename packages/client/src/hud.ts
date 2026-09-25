@@ -36,6 +36,7 @@ export interface IslandBanner {
   text: string;
   colour: string;
   eliminated: boolean;
+  gain: boolean;
   /** Screen pixels, from `Scene.screenAt`. */
   x: number;
   y: number;
@@ -71,6 +72,10 @@ export class Hud {
     private readonly root: HTMLElement,
     private readonly bannerRoot: HTMLElement,
   ) {}
+
+  /** When the phase on screen began, so the time bar knows its whole length. */
+  private phaseKey = '';
+  private phaseStartTick = 0;
 
   /** Live banner nodes by player, kept across frames so their animation survives. */
   private readonly islandBanners = new Map<number, HTMLElement>();
@@ -130,6 +135,7 @@ export class Hud {
         node.textContent = banner.text;
       }
       node.classList.toggle('out', banner.eliminated);
+      node.classList.toggle('gain', banner.gain);
       node.style.borderColor = banner.colour;
       node.style.left = `${banner.x}px`;
       node.style.top = `${banner.y}px`;
@@ -146,6 +152,21 @@ export class Hud {
     const waiting = state.phase === 'intermission';
     const shown = waiting ? (state.pendingPhase ?? state.phase) : state.phase;
     const secondsLeft = Math.max(0, (state.phaseEndTick - state.tick) / state.ruleset.tickRateHz);
+
+    // A bar reads at the edge of vision in a way a number does not — the player is
+    // looking at their wall, not at the corner of the screen. Red for the last few
+    // seconds, when it matters most.
+    const key = `${state.phase}:${state.phaseEndTick}`;
+    if (key !== this.phaseKey) {
+      this.phaseKey = key;
+      this.phaseStartTick = state.tick;
+    }
+    const span = Math.max(1, state.phaseEndTick - this.phaseStartTick);
+    const left = Math.min(1, Math.max(0, (state.phaseEndTick - state.tick) / span));
+    const timebar =
+      waiting || state.phase === 'game_over'
+        ? ''
+        : `<div class="timebar${secondsLeft <= 3 ? ' urgent' : ''}"><i style="width:${(left * 100).toFixed(1)}%"></i></div>`;
     const human = state.players[humanPlayer];
     const colour = playerCssColour(humanPlayer);
 
@@ -224,6 +245,7 @@ export class Hud {
         </div>
         <ul class="roster">${roster}</ul>
       </div>
+      ${timebar}
       ${queue}
       ${cannonCount}
       <div class="hint">${humanPlayer < 0 ? '' : PHASE_HINT[state.phase]}</div>

@@ -3,6 +3,7 @@ import { Structure, Terrain, type MatchState } from '@rampart/sim';
 import { Graphics } from 'pixi.js';
 
 import {
+  drawBuildHints,
   hex,
   playerColour,
   tileX,
@@ -233,6 +234,8 @@ export class FlatTheme implements Theme {
       );
       g.stroke({ width: this.style.outlineWidthPx, color: hex(this.art.palette.uiAccent) });
     }
+
+    drawBuildHints(g, state, view, ghost, this.art, performance.now());
 
     if (!ghost.tile) return;
     const colour = ghost.valid ? hex(this.art.palette.uiValid) : hex(this.art.palette.uiInvalid);

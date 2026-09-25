@@ -19,7 +19,7 @@ describe('island banners', () => {
   it('announces a life lost, and stops once it is no longer news', () => {
     const lost = new Map<number, LifeLost>([[0, { remaining: 1, untilTick: 200 }]]);
     expect(bannersFor(state(150, [alive(0, 'Ada')]), lost)).toEqual([
-      { player: 0, text: 'Ada lost a life — 1 life left', eliminated: false },
+      { player: 0, text: 'Ada lost a life — 1 life left', eliminated: false, gain: false },
     ]);
     // The window is half-open: at untilTick it has already gone.
     expect(bannersFor(state(200, [alive(0, 'Ada')]), lost)).toEqual([]);
@@ -52,12 +52,29 @@ describe('island banners', () => {
     // the same round they last lost a life, "out" is the news that matters.
     const lost = new Map<number, LifeLost>([[0, { remaining: 0, untilTick: 200 }]]);
     expect(bannersFor(state(99_999, [knockedOut(0, 'Ada'), alive(1, 'Bo')]), lost)).toEqual([
-      { player: 0, text: 'Ada is out', eliminated: true },
+      { player: 0, text: 'Ada is out', eliminated: true, gain: false },
     ]);
   });
 
   it('clears the board once the match is over', () => {
     const over = state(500, [knockedOut(0, 'Ada'), alive(1, 'Bo')], 'game_over');
     expect(bannersFor(over, new Map())).toEqual([]);
+  });
+
+  it('shows the points an island just banked, and gives way to a lost life', () => {
+    const gained = new Map([
+      [0, { amount: 48, untilTick: 200 }],
+      [1, { amount: 30, untilTick: 200 }],
+    ]);
+    const lost = new Map<number, LifeLost>([[1, { remaining: 1, untilTick: 200 }]]);
+    const banners = bannersFor(state(150, [alive(0, 'Ada'), alive(1, 'Bo')]), lost, gained);
+    expect(banners).toEqual([
+      { player: 0, text: '+48', eliminated: false, gain: true },
+      { player: 1, text: 'Bo lost a life — 1 life left', eliminated: false, gain: false },
+    ]);
+    // Gone once it is no longer news, and never shown for nothing.
+    expect(bannersFor(state(200, [alive(0, 'Ada')]), new Map(), gained)).toEqual([]);
+    const none = new Map([[0, { amount: 0, untilTick: 200 }]]);
+    expect(bannersFor(state(1, [alive(0, 'Ada')]), new Map(), none)).toEqual([]);
   });
 });

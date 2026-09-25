@@ -478,6 +478,48 @@ table.final tr.you td:nth-child(2) {
   animation: island-banner-in 220ms ease-out;
 }
 
+/* Points banked: news, but good news, so it floats rather than sits. */
+.island-banner.gain {
+  border-color: var(--accent) !important;
+  color: var(--accent);
+  font-size: 1.3rem;
+  animation: island-gain 2.4s ease-out forwards;
+}
+
+@keyframes island-gain {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -30%);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -60%);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -140%);
+  }
+}
+
+.timebar {
+  position: absolute;
+  top: 64px;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: rgb(255 255 255 / 8%);
+}
+
+.timebar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.timebar.urgent i {
+  background: #e8505a;
+}
+
 /* An elimination stands until the match ends, so it reads as settled, not as news. */
 .island-banner.out {
   opacity: 0.85;

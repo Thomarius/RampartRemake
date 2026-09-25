@@ -155,23 +155,31 @@ export class Controls {
         : [];
 
     if (tile === null) {
-      return { tile: null, cells: [], valid: false, footprint: null, selectable };
+      return {
+        tile: null,
+        cells: [],
+        valid: false,
+        footprint: null,
+        selectable,
+        leak: [],
+        unsealed: [],
+      };
     }
 
     switch (state.phase) {
       case 'build': {
         const cells = pieceCells(currentPieceId(state, player), this.rotation);
         const valid = canPlacePiece(state, player, this.rotation, tile.x, tile.y) === null;
-        return { tile, cells, valid, footprint: null, selectable };
+        return { tile, cells, valid, footprint: null, selectable, leak: [], unsealed: [] };
       }
       case 'cannon_place': {
         const [w, h] = state.ruleset.cannons.footprint;
         const valid = canPlaceCannon(state, player, tile.x, tile.y) === null;
-        return { tile, cells: [], valid, footprint: { w, h }, selectable };
+        return { tile, cells: [], valid, footprint: { w, h }, selectable, leak: [], unsealed: [] };
       }
       case 'combat': {
         const valid = findReadyCannon(state, player, tile.x, tile.y) !== null;
-        return { tile, cells: [], valid, footprint: null, selectable };
+        return { tile, cells: [], valid, footprint: null, selectable, leak: [], unsealed: [] };
       }
       case 'castle_select': {
         return {
@@ -180,10 +188,20 @@ export class Controls {
           valid: this.castleAt(tile.x, tile.y) !== undefined,
           footprint: null,
           selectable,
+          leak: [],
+          unsealed: [],
         };
       }
       default:
-        return { tile, cells: [], valid: false, footprint: null, selectable };
+        return {
+          tile,
+          cells: [],
+          valid: false,
+          footprint: null,
+          selectable,
+          leak: [],
+          unsealed: [],
+        };
     }
   }
 }

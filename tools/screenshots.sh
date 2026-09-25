@@ -29,6 +29,7 @@ SCENES=(
   "game-over|$GAME&snapshot=game_over&style=flat|2000"
   "game-over-watched|$GAME&snapshot=game_over&watch=1&style=pixel|2000"
   "combat-close|$BASE/?autostart=1&players=2&seed=5&snapshot=combat&round=3&style=pixel|4200"
+  "gains|$GAME&snapshot=build&round=3&style=pixel|21800"
   "four-players|$BASE/?autostart=1&players=4&seed=3&snapshot=combat&round=3&style=pixel|3000"
 )
 

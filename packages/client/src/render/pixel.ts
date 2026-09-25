@@ -4,6 +4,7 @@ import { Container, Graphics, Sprite, Texture } from 'pixi.js';
 
 import { E, KEY, N, S, W, buildAtlas } from './pixel/generators.js';
 import {
+  drawBuildHints,
   hex,
   playerColour,
   tileX,
@@ -508,6 +509,8 @@ export class PixelTheme implements Theme {
       );
       g.stroke({ width: 2, color: hex(this.art.palette.uiAccent) });
     }
+
+    drawBuildHints(g, state, view, ghost, this.art, performance.now());
 
     if (!ghost.tile) return;
     const colour = ghost.valid ? hex(this.art.palette.uiValid) : hex(this.art.palette.uiInvalid);

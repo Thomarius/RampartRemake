@@ -23,13 +23,14 @@ import {
 
 import { Audio } from './audio.js';
 import { Controls } from './controls.js';
-import { bannersFor, type LifeLost } from './banners.js';
+import { bannersFor, type LifeLost, type PointsGained } from './banners.js';
 import { playerCssColour } from './colours.js';
 import { lobbyMarkup, rangeOptions } from './lobby.js';
 import { Hud, type IslandBanner } from './hud.js';
 import { MatchAudio } from './matchAudio.js';
 import { LocalMatch } from './localMatch.js';
 import { announcementLines } from './scores.js';
+import { buildHints, type BuildHints } from './hints.js';
 import { ServerConnection } from './net/connection.js';
 import { NetworkMatch } from './net/networkMatch.js';
 import { Scene, createTheme } from './render/scene.js';
@@ -495,10 +496,13 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
 
   /** Lives lost, and the tick each announcement stops being news. */
   const livesLost = new Map<number, LifeLost>();
+  const gained = new Map<number, PointsGained>();
+  /** What the board points out to a player building; see `hints.ts`. */
+  let hints: BuildHints = { leak: [], unsealed: [] };
 
   function drawIslandBanners(): void {
     const banners: IslandBanner[] = [];
-    for (const banner of bannersFor(session.state, livesLost)) {
+    for (const banner of bannersFor(session.state, livesLost, gained)) {
       const centre = islandCentre.get(banner.player);
       if (centre === undefined) continue;
       banners.push({
@@ -609,11 +613,23 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
         case 'cannon_placed':
           structuresChanged = true;
           break;
-        case 'round_resolved':
+        case 'round_resolved': {
+          // Shown over each island for as long as a lost life would be.
+          const hold = Math.ceil(
+            (session.state.ruleset.phases.continueBannerMs * 2 * session.state.ruleset.tickRateHz) /
+              1000,
+          );
+          for (const result of event.results) {
+            gained.set(result.player, {
+              amount: result.territoryPoints + result.damagePoints,
+              untilTick: event.tick + hold,
+            });
+          }
           resolvedSinceAnnounce = true;
           structuresChanged = true;
           territoryChanged = true;
           break;
+        }
         case 'player_eliminated':
           structuresChanged = true;
           territoryChanged = true;
@@ -647,6 +663,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     if (territoryChanged || structuresChanged) {
       live = computeEnclosure(session.state);
       scene.drawTerritory(session.state, live.territory);
+      hints = buildHints(session.state, session.humanPlayer, live);
     }
   }
 
@@ -664,7 +681,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     hud.update(session.state, session.humanPlayer, session.status(), live.enclosedCastlesByPlayer);
 
     scene.drawEffects(session.state, session.tickFraction, delta, live.castleEnclosed);
-    scene.drawOverlay(session.state, controls.ghost(), session.humanPlayer);
+    scene.drawOverlay(session.state, { ...controls.ghost(), ...hints }, session.humanPlayer);
     scene.render();
 
     frame = requestAnimationFrame(loop);
