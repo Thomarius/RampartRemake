@@ -113,6 +113,15 @@ export const ArtConfigSchema = z
         muzzleFlashFrames: z.number().int().positive(),
         craterDecalVariants: z.number().int().positive(),
         shotTrailLengthPx: z.number().int().nonnegative(),
+        /** Fragments thrown up by each wall block a shot destroys. */
+        debrisPerTile: z.number().int().nonnegative(),
+        debrisMs: z.number().int().positive(),
+        /**
+         * The board shakes when a shot breaks a wall on the player's own island — not
+         * for every impact, which across a whole map would be constant.
+         */
+        shakePx: z.number().nonnegative(),
+        shakeMs: z.number().int().positive(),
       }),
       reticle: z.strictObject({
         sizePx: z.number().int().positive(),

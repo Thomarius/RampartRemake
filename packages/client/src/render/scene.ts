@@ -1,10 +1,17 @@
 import { defaultArtConfig, type ArtConfig, type ArtStyle } from '@rampart/config';
-import type { MatchState } from '@rampart/sim';
+import type { MatchState, Shot } from '@rampart/sim';
 import { Application, Container } from 'pixi.js';
 
 import { FlatTheme } from './flat.js';
 import { PixelTheme } from './pixel.js';
-import { hex, type Ghost, type Theme, type ThemeLayers, type ViewTransform } from './theme.js';
+import {
+  hex,
+  type Debris,
+  type Ghost,
+  type Theme,
+  type ThemeLayers,
+  type ViewTransform,
+} from './theme.js';
 
 export type { Ghost, Theme, ViewTransform } from './theme.js';
 
@@ -131,16 +138,43 @@ export class Scene {
     this.theme.drawStructures(state, this.view);
   }
 
-  drawEffects(state: MatchState, tickFraction: number, deltaMs: number): void {
-    this.theme.drawEffects(state, this.view, { tickFraction, deltaMs });
+  drawEffects(
+    state: MatchState,
+    tickFraction: number,
+    deltaMs: number,
+    castleSealed: readonly boolean[],
+  ): void {
+    this.applyShake(deltaMs);
+    this.theme.drawEffects(state, this.view, { tickFraction, deltaMs, castleSealed });
+  }
+
+  /** Remaining shake, in milliseconds. */
+  private shaking = 0;
+
+  /** Shakes the board, for a hit on the player's own wall. */
+  shake(): void {
+    this.shaking = this.art.generators.fx.shakeMs;
+  }
+
+  private applyShake(deltaMs: number): void {
+    this.shaking = Math.max(0, this.shaking - deltaMs);
+    const amount = (this.shaking / this.art.generators.fx.shakeMs) * this.art.generators.fx.shakePx;
+    // Whole pixels: the pixel style is drawn on the pixel grid, and a fractional offset
+    // blurs every sprite on the board for the length of the shake.
+    this.app.stage.x = Math.round((Math.random() * 2 - 1) * amount);
+    this.app.stage.y = Math.round((Math.random() * 2 - 1) * amount);
   }
 
   drawOverlay(state: MatchState, ghost: Ghost, humanPlayer: number): void {
     this.theme.drawOverlay(state, this.view, ghost, humanPlayer);
   }
 
-  noteImpact(x: number, y: number): void {
-    this.theme.noteImpact(x, y);
+  noteImpact(x: number, y: number, debris: readonly Debris[]): void {
+    this.theme.noteImpact(x, y, debris);
+  }
+
+  noteShot(shot: Shot): void {
+    this.theme.noteShot(shot);
   }
 
   render(): void {

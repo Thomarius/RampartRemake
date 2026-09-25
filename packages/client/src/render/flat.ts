@@ -72,6 +72,9 @@ export class FlatTheme implements Theme {
     }
   }
 
+  /** The flat style stays plain: it is the one to debug against. */
+  noteShot(): void {}
+
   noteImpact(x: number, y: number): void {
     this.impacts.push({ x, y, age: 0 });
   }

@@ -1,5 +1,5 @@
 import type { ArtConfig } from '@rampart/config';
-import { Structure, Terrain, type MatchState } from '@rampart/sim';
+import { Structure, Terrain, type MatchState, type Shot } from '@rampart/sim';
 import { Container, Graphics, Sprite, Texture } from 'pixi.js';
 
 import { E, KEY, N, S, W, buildAtlas } from './pixel/generators.js';
@@ -8,6 +8,7 @@ import {
   playerColour,
   tileX,
   tileY,
+  type Debris,
   type EffectFrame,
   type Ghost,
   type Theme,
@@ -21,6 +22,25 @@ interface Blast {
   y: number;
   age: number;
 }
+
+/** A fragment of wall, in tile coordinates, thrown up by a shot. */
+interface Fragment {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  age: number;
+  colour: number;
+}
+
+/** Where a cannon points, and how long ago it last fired. */
+interface Aim {
+  angle: number;
+  firedAgo: number;
+}
+
+/** How long each recoil and muzzle-flash frame is held. */
+const FX_FRAME_MS = 50;
 
 /** Mixes a colour toward white, so tinting a texture shifts its hue without crushing it. */
 function washed(colour: number, amount: number): number {
@@ -59,6 +79,10 @@ export class PixelTheme implements Theme {
   private waterFrame = -1;
   private waterElapsed = 0;
   private blasts: Blast[] = [];
+  private fragments: Fragment[] = [];
+  /** By cannon id. A gun that has never fired faces the nearest enemy castle. */
+  private aims = new Map<number, Aim>();
+  private bannerElapsed = 0;
   private craters: Container = new Container();
 
   constructor(seed = 1) {
@@ -251,8 +275,54 @@ export class PixelTheme implements Theme {
     }
   }
 
-  noteImpact(x: number, y: number): void {
+  noteImpact(x: number, y: number, debris: readonly Debris[]): void {
     this.blasts.push({ x, y, age: 0 });
+    const count = this.art.generators.fx.debrisPerTile;
+    for (const block of debris) {
+      const colour = playerColour(this.art, block.owner, 'base');
+      for (let k = 0; k < count; k++) {
+        // Cosmetic, so an ordinary random source: nothing here reaches the sim.
+        const spread = (Math.random() - 0.5) * 2;
+        this.fragments.push({
+          x: block.x + 0.5,
+          y: block.y + 0.5,
+          vx: spread * 2.2,
+          vy: -2.5 - Math.random() * 2.5,
+          age: 0,
+          colour,
+        });
+      }
+    }
+  }
+
+  noteShot(shot: Shot): void {
+    const angle = Math.atan2(shot.toX - shot.fromX, -(shot.toY - shot.fromY));
+    this.aims.set(shot.cannonId, { angle, firedAgo: 0 });
+  }
+
+  /** Aims a cannon that has not fired yet at the nearest enemy castle. */
+  private aimFor(state: MatchState, cannonId: number): Aim | null {
+    const known = this.aims.get(cannonId);
+    if (known !== undefined) return known;
+    const cannon = state.cannons.find((c) => c.id === cannonId);
+    if (cannon === undefined) return null;
+    const cx = cannon.x + cannon.w / 2;
+    const cy = cannon.y + cannon.h / 2;
+    let best = Number.POSITIVE_INFINITY;
+    let angle = 0;
+    for (const castle of state.castles) {
+      if (castle.islandId === cannon.owner + 1) continue;
+      const dx = castle.x + castle.w / 2 - cx;
+      const dy = castle.y + castle.h / 2 - cy;
+      const d = dx * dx + dy * dy;
+      if (d < best) {
+        best = d;
+        angle = Math.atan2(dx, -dy);
+      }
+    }
+    const aim = { angle, firedAgo: Number.POSITIVE_INFINITY };
+    this.aims.set(cannonId, aim);
+    return aim;
   }
 
   drawEffects(state: MatchState, view: ViewTransform, frame: EffectFrame): void {
@@ -280,7 +350,11 @@ export class PixelTheme implements Theme {
       });
     }
 
+    this.drawBarrels(state, view, frame.deltaMs);
+    this.drawBanners(state, view, frame);
+
     const now = state.tick + frame.tickFraction;
+    const trail = this.art.generators.fx.shotTrailLengthPx / this.art.tileSizePx;
     for (const shot of state.shots) {
       const span = shot.impactTick - shot.launchTick;
       const t = span <= 0 ? 1 : Math.min(1, Math.max(0, (now - shot.launchTick) / span));
@@ -288,6 +362,18 @@ export class PixelTheme implements Theme {
       const y = shot.fromY + (shot.toY - shot.fromY) * t;
       // A parabolic lift sells the lob. The shot still lands exactly on impactTick.
       const lift = shotLift(shot, t);
+
+      // A short fading trail behind the ball, along the same arc.
+      const distance = Math.hypot(shot.toX - shot.fromX, shot.toY - shot.fromY);
+      const back = distance > 0 ? trail / distance : 0;
+      for (let k = 3; k >= 1; k--) {
+        const tk = t - (back * k) / 3;
+        if (tk <= 0) continue;
+        const px = shot.fromX + (shot.toX - shot.fromX) * tk;
+        const py = shot.fromY + (shot.toY - shot.fromY) * tk - shotLift(shot, tk);
+        g.circle(tileX(view, px + 0.5), tileY(view, py + 0.5), view.tile * (0.2 - k * 0.04));
+        g.fill({ color: hex(this.art.palette.rockLight), alpha: 0.45 - k * 0.12 });
+      }
 
       // Shadow on the ground reads the fall; the ball itself rides above it.
       g.circle(tileX(view, x + 0.5), tileY(view, y + 0.5), view.tile * 0.25);
@@ -310,6 +396,91 @@ export class PixelTheme implements Theme {
       this.place(this.effectLayer, KEY.blast(index), view, blast.x - 0.5, blast.y - 0.5, 2);
     }
     this.blasts = this.blasts.filter((b) => b.age < frames * perFrame);
+
+    // Fragments arc up and fall back under a little gravity, fading as they go.
+    const life = this.art.generators.fx.debrisMs;
+    const dt = frame.deltaMs / 1000;
+    for (const f of this.fragments) {
+      f.age += frame.deltaMs;
+      f.x += f.vx * dt;
+      f.y += f.vy * dt;
+      f.vy += 9 * dt;
+      const size = Math.max(1, view.tile * 0.16);
+      g.rect(tileX(view, f.x) - size / 2, tileY(view, f.y) - size / 2, size, size);
+      g.fill({ color: f.colour, alpha: Math.max(0, 1 - f.age / life) });
+    }
+    this.fragments = this.fragments.filter((f) => f.age < life);
+  }
+
+  /** Barrels turn to their last target and kick back when they fire. */
+  private drawBarrels(state: MatchState, view: ViewTransform, deltaMs: number): void {
+    const steps = this.art.generators.cannon.rotationSteps;
+    const recoilFrames = this.art.generators.cannon.recoilFrames;
+    const flashFrames = this.art.generators.fx.muzzleFlashFrames;
+    const length = this.art.generators.cannon.barrelLengthPx / this.art.tileSizePx;
+    const g = this.effectGfx;
+    for (const cannon of state.cannons) {
+      const aim = this.aimFor(state, cannon.id);
+      if (aim === null) continue;
+      aim.firedAgo += deltaMs;
+      const step = ((Math.round((aim.angle / (2 * Math.PI)) * steps) % steps) + steps) % steps;
+      // Back at once, then home a frame at a time.
+      const kick = Math.floor(aim.firedAgo / FX_FRAME_MS);
+      const recoil = kick < recoilFrames ? recoilFrames - 1 - kick : 0;
+      const sprite = this.place(
+        this.effectLayer,
+        KEY.barrel(step, recoil),
+        view,
+        cannon.x,
+        cannon.y,
+        cannon.w,
+      );
+      // The owner's light colour, a step above the base's, so the barrel reads on it.
+      sprite.tint = cannon.active
+        ? washed(playerColour(this.art, cannon.owner, 'light'), 0.45)
+        : hex(this.art.palette.rockMid);
+
+      if (kick < flashFrames) {
+        const cx = cannon.x + cannon.w / 2 + Math.sin(aim.angle) * (length + 0.15);
+        const cy = cannon.y + cannon.h / 2 - Math.cos(aim.angle) * (length + 0.15);
+        const r = view.tile * (0.35 - kick * 0.09);
+        g.circle(tileX(view, cx), tileY(view, cy), r);
+        g.fill({ color: hex(this.art.palette.emberHot), alpha: 0.9 });
+        g.circle(tileX(view, cx), tileY(view, cy), r * 0.55);
+        g.fill({ color: hex(this.art.palette.uiInk), alpha: 0.9 });
+      }
+    }
+    // Forget guns that no longer exist, so a continue's wiped island starts clean.
+    if (this.aims.size > state.cannons.length) {
+      const live = new Set(state.cannons.map((c) => c.id));
+      for (const id of this.aims.keys()) if (!live.has(id)) this.aims.delete(id);
+    }
+  }
+
+  /** A banner in the owner's colour flies over every castle sealed as things stand. */
+  private drawBanners(state: MatchState, view: ViewTransform, frame: EffectFrame): void {
+    const frames = this.art.generators.castle.bannerWaveFrames;
+    this.bannerElapsed += frame.deltaMs;
+    const wave = Math.floor(this.bannerElapsed / 160) % frames;
+    const texture = this.texture(KEY.banner(wave));
+    const g = this.effectGfx;
+    for (const castle of state.castles) {
+      if (!frame.castleSealed[castle.id]) continue;
+      // A pole rising from the middle of the castle, the banner flying from its head
+      // above the roofline, where it reads from across the map.
+      const poleX = tileX(view, castle.x + castle.w / 2);
+      const top = tileY(view, castle.y) - view.tile * 0.9;
+      const pole = Math.max(2, Math.round(view.tile / 10));
+      g.rect(poleX - pole / 2, top, pole, view.tile * 1.4);
+      g.fill({ color: hex(this.art.palette.rockDark) });
+      const sprite = new Sprite(texture);
+      sprite.x = poleX + pole / 2;
+      sprite.y = top;
+      sprite.width = view.tile * 0.8;
+      sprite.height = (view.tile * 0.8 * texture.height) / Math.max(1, texture.width);
+      sprite.tint = playerColour(this.art, castle.islandId - 1, 'base');
+      this.effectLayer.addChild(sprite);
+    }
   }
 
   /** Cycles the sea through its generated frames. */

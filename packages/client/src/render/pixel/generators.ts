@@ -23,7 +23,9 @@ export const KEY = {
   shore: (mask: number) => `shore.${mask}`,
   wall: (mask: number, damage: number) => `wall.${mask}.${damage}`,
   castle: 'castle',
+  banner: (frame: number) => `banner.${frame}`,
   cannon: 'cannon',
+  barrel: (step: number, recoil: number) => `barrel.${step}.${recoil}`,
   shot: 'shot',
   crater: (variant: number) => `crater.${variant}`,
   blast: (frame: number) => `blast.${frame}`,
@@ -198,35 +200,75 @@ function castle(art: ArtConfig, rng: Rng, size: number): Pixels {
     for (let y = 2; y < size - 1; y++) p.set(tx, y, rockLight, 0.35);
   }
 
-  // Gate and banner.
+  // The gate. A sealed castle flies a banner in its owner's colour, drawn over this as
+  // its own sprite so it can wave and come down when the wall is breached.
   const gate = Math.floor(size / 2);
   p.rect(gate - 2, size - 7, 4, 6, shadow);
   p.disc(gate, size - 7, 2, shadow);
-  p.rect(gate - 1, 4, 2, 5, uiAccent);
-  p.set(gate + 1, 5, uiAccent);
-  p.set(gate + 1, 6, uiAccent);
+  p.rect(gate - 1, 5, 2, 2, uiAccent, 0.5);
 
   for (let x = 1; x < size - 1; x++) p.set(x, size - 1, shadow, 0.7);
   return p;
 }
 
-/** A gun emplacement: stone base, banded barrel, muzzle facing out. */
+/** A gun emplacement's stone base. The barrel is a separate sprite so it can turn. */
 function cannon(art: ArtConfig, size: number): Pixels {
   const p = new Pixels(size, size);
-  const { rockDark, rockMid, rockLight, shadow, emberMid } = art.palette;
-
+  const { rockDark, rockMid } = art.palette;
   p.disc(size / 2 - 0.5, size / 2 - 0.5, size / 2 - 1, rockMid);
   p.disc(size / 2 - 0.5, size / 2 - 0.5, size / 2 - 3, rockDark);
+  return p;
+}
 
-  const barrelW = 5;
-  const left = Math.floor((size - barrelW) / 2);
-  p.rect(left, 1, barrelW, size / 2 + 2, rockDark);
-  p.rect(left, 1, 1, size / 2 + 2, rockLight);
-  p.rect(left + barrelW - 1, 1, 1, size / 2 + 2, shadow);
-  p.rect(left - 1, 1, barrelW + 2, 2, rockLight);
-  p.rect(left + 1, 1, barrelW - 2, 1, emberMid, 0.5);
+/**
+ * A barrel alone, pointing `step` of `steps` clockwise from north and drawn back by
+ * `recoil` pixels. Rasterised at each angle rather than rotating one sprite, which at
+ * this size smears the pixels into mush.
+ */
+function barrel(art: ArtConfig, size: number, step: number, steps: number, recoil: number): Pixels {
+  const p = new Pixels(size, size);
+  const { rockMid, rockLight, shadow, emberMid } = art.palette;
+  const length = art.generators.cannon.barrelLengthPx;
+  const half = 2.5;
+  const angle = (2 * Math.PI * step) / steps;
+  const ux = Math.sin(angle);
+  const uy = -Math.cos(angle);
+  const centre = size / 2 - 0.5;
 
-  p.disc(size / 2 - 0.5, size / 2 + 3, 2, rockLight);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const rx = x - centre;
+      const ry = y - centre;
+      const along = rx * ux + ry * uy + recoil;
+      const across = -rx * uy + ry * ux;
+      if (along < 0 || along > length || Math.abs(across) > half) continue;
+      // Lighter than the base it sits on, or it disappears into it.
+      let colour = rockMid;
+      if (across < -half + 1) colour = rockLight;
+      else if (across > half - 1) colour = shadow;
+      if (along > length - 2) colour = rockLight;
+      p.set(x, y, colour);
+      if (along > length - 1 && Math.abs(across) < 1.2) p.set(x, y, emberMid, 0.6);
+    }
+  }
+  p.disc(centre, centre, 2, rockLight);
+  return p;
+}
+
+/**
+ * A banner, in white so it can be tinted to its owner. Each frame shifts the wave a
+ * little further along, so cycling them makes it fly.
+ */
+function banner(width: number, height: number, frame: number, frames: number): Pixels {
+  const p = new Pixels(width, height + 2);
+  for (let x = 0; x < width; x++) {
+    // Fixed at the pole, rippling more toward the free end.
+    const swing = Math.round(Math.sin((x / width + frame / frames) * 2 * Math.PI) * (x / width));
+    for (let y = 0; y < height; y++) {
+      const shade = y === height - 1 || x === width - 1 ? '#c8c8c8' : '#ffffff';
+      p.set(x, y + 1 + swing, shade);
+    }
+  }
   return p;
 }
 
@@ -293,7 +335,19 @@ export function buildAtlas(art: ArtConfig, seed: number): Map<string, Texture> {
   }
 
   atlas.add(KEY.castle, castle(art, rng, tile * 3));
+  for (let f = 0; f < gen.castle.bannerWaveFrames; f++) {
+    const width = gen.castle.bannerWidthPx;
+    atlas.add(
+      KEY.banner(f),
+      banner(width, Math.round(width * 0.6), f, gen.castle.bannerWaveFrames),
+    );
+  }
   atlas.add(KEY.cannon, cannon(art, tile * 2));
+  for (let step = 0; step < gen.cannon.rotationSteps; step++) {
+    for (let r = 0; r < gen.cannon.recoilFrames; r++) {
+      atlas.add(KEY.barrel(step, r), barrel(art, tile * 2, step, gen.cannon.rotationSteps, r));
+    }
+  }
   atlas.add(KEY.shot, shot(art, 8));
   for (let v = 0; v < gen.fx.craterDecalVariants; v++)
     atlas.add(KEY.crater(v), crater(art, rng, tile));

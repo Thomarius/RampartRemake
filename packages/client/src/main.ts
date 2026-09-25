@@ -584,9 +584,22 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     let territoryChanged = false;
     for (const event of events) {
       switch (event.kind) {
-        case 'shot_impact':
-          scene.noteImpact(event.x, event.y);
+        case 'shot_impact': {
+          const { width, islandId } = session.state;
+          const debris = event.destroyed.map((i) => ({
+            x: i % width,
+            y: Math.floor(i / width),
+            owner: (islandId[i] as number) - 1,
+          }));
+          scene.noteImpact(event.x, event.y, debris);
+          // Only for your own wall: shots land all over the map, all the time.
+          const human = session.humanPlayer;
+          if (human >= 0 && debris.some((d) => d.owner === human)) scene.shake();
           if (event.destroyed.length > 0) structuresChanged = true;
+          break;
+        }
+        case 'shot_fired':
+          scene.noteShot(event.shot);
           break;
         case 'castle_selected':
         case 'piece_placed':
@@ -650,7 +663,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     drawIslandBanners();
     hud.update(session.state, session.humanPlayer, session.status(), live.enclosedCastlesByPlayer);
 
-    scene.drawEffects(session.state, session.tickFraction, delta);
+    scene.drawEffects(session.state, session.tickFraction, delta, live.castleEnclosed);
     scene.drawOverlay(session.state, controls.ghost(), session.humanPlayer);
     scene.render();
 

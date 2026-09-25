@@ -31,8 +31,10 @@ export interface Theme {
   /** Reticle, piece ghost and selectable castles; every frame. */
   drawOverlay(state: MatchState, view: ViewTransform, ghost: Ghost, humanPlayer: number): void;
 
-  /** A shot has just landed here. */
-  noteImpact(x: number, y: number): void;
+  /** A shot has just landed here, destroying these wall blocks. */
+  noteImpact(x: number, y: number, debris: readonly Debris[]): void;
+  /** A cannon has just fired this shot. */
+  noteShot(shot: Shot): void;
 
   /** Releases textures and display objects. */
   destroy(): void;
@@ -57,6 +59,18 @@ export interface EffectFrame {
   /** Progress through the current simulation tick, for smooth shot interpolation. */
   tickFraction: number;
   deltaMs: number;
+  /**
+   * Whether each castle is sealed as the board stands, by castle id — not the sim's
+   * `enclosed`, which a breach in combat does not change until the next resolution.
+   */
+  castleSealed: readonly boolean[];
+}
+
+/** A wall block a shot destroyed, and whose it was. */
+export interface Debris {
+  x: number;
+  y: number;
+  owner: number;
 }
 
 export interface Ghost {
