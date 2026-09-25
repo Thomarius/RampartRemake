@@ -30,9 +30,10 @@ const TIER_BLURB: Record<Difficulty, string> = {
   recruit: 'wanders its aim, holds one castle',
   gunner: 'finds the weak point, reaches for two',
   marshal: 'rarely misses, and rethinks constantly',
+  baron: 'grabs castle after castle, never thickens a wall',
 };
 
-const TIERS: Difficulty[] = ['recruit', 'gunner', 'marshal'];
+const TIERS: Difficulty[] = ['recruit', 'gunner', 'marshal', 'baron'];
 
 function label(tier: string): string {
   return tier.charAt(0).toUpperCase() + tier.slice(1);

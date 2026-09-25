@@ -139,6 +139,9 @@ separately. Prefer this to watching; watching is for forming the hypothesis.
   fewer candidate walls and the survivors are tighter.
 - **Widening the starting ring to 10x10** fixed opening cannon clearance and was reverted
   for fidelity to the original; continues absorb the early knockouts it guarded against.
+- **Dropping wall thickening from a bot's priorities** changed nothing on its own (13
+  wins of 20 against two gunners, then 12), and dropping it while expanding eagerly — the
+  `baron` tier — did worse (9). Eager expansion with thickening kept did best (14).
 - **Raising flight time further** to force exactly three salvos drops the rate below the
   original's three and makes close shots slower. The spread of ranges makes "exactly
   three for everyone" unreachable without flattening distance-scaling entirely.

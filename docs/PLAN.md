@@ -607,7 +607,29 @@ Measured together, three gunners, eight matches: pieces laid against time availa
 7 of 12, against 9 of 12 before — gunner gained more from not idling; within the noise
 of twelve matches, but worth re-measuring. Still no eliminations at three players.
 
-**What this does to the game, and it is now the open question for tuning.** Three gunners,
+**Is thickening worth it? A fourth tier, baron, 2026-09-25.** Two profile switches:
+`thickens` (whether thickening is a build priority at all) and `expandsWhenSealed` (once a
+castle is sealed, plan for the next straight away, whether or not the phase can close it).
+Baron is marshal's speed and aim with `maxCastles` 4, no thickening, eager expansion — so
+against marshal the playstyle is the only difference. Each variant against two gunners,
+ten matches from seat 0 and ten from seat 1; equal play would win about 7 of 20.
+
+| Variant (marshal's speed and aim)         | wins of 20 | forfeited | castles | territory |
+| ----------------------------------------- | ---------- | --------- | ------- | --------- |
+| marshal as it is                          | 13         | 10–12%    | 1.13    | 76        |
+| marshal, thickening off                   | 12         | 13%       | 1.17    | 78        |
+| baron: no thickening, eager expansion     | 9          | 14–16%    | 1.16    | 80        |
+| eager expansion, thickening kept, `max` 4 | 14         | 12–17%    | 1.22    | 87        |
+
+- **Dropping thickening alone changes nothing** (13 -> 12).
+- **Eager expansion pays only with thickening kept.** Without it baron forfeits more,
+  and the extra ground does not make up for the lost rounds: the wall an expansion
+  relies on while it is being built is the wall being shot.
+- 12, 13 and 14 are within noise (about +-2 at twenty matches); 9 against 14 is about
+  two deviations — suggestive, not settled. Against two marshals, in twelve matches,
+  baron won 6 where equal play would give 4, so the ordering is not yet clear.
+
+**What this does to the game, and it is the open question for tuning.** Three gunners,
 eight matches, old code against new:
 
 |                            | old  | new  |

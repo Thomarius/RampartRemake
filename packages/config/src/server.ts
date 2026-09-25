@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { DifficultySchema } from './ai.js';
 import { SettingBoundsSchema } from './settings.js';
 
 export const ServerConfigSchema = z.strictObject({
@@ -27,7 +28,7 @@ export const ServerConfigSchema = z.strictObject({
   }),
 
   /** Skill of the bots that fill empty seats and cover dropped players. */
-  botDifficulty: z.enum(['recruit', 'gunner', 'marshal']),
+  botDifficulty: DifficultySchema,
 
   /** What a host may change in the lobby, and within what bounds. */
   lobbySettings: SettingBoundsSchema,

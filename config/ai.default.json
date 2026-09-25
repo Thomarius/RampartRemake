@@ -8,7 +8,9 @@
       "maxCastles": 1,
       "riskMargin": 0.55,
       "replanTicks": 60,
-      "picksTarget": false
+      "picksTarget": false,
+      "thickens": true,
+      "expandsWhenSealed": false
     },
     "gunner": {
       "placementBaseMs": 420,
@@ -18,7 +20,9 @@
       "maxCastles": 2,
       "riskMargin": 0.8,
       "replanTicks": 30,
-      "picksTarget": true
+      "picksTarget": true,
+      "thickens": true,
+      "expandsWhenSealed": false
     },
     "marshal": {
       "placementBaseMs": 360,
@@ -28,7 +32,21 @@
       "maxCastles": 2,
       "riskMargin": 1.0,
       "replanTicks": 20,
-      "picksTarget": true
+      "picksTarget": true,
+      "thickens": true,
+      "expandsWhenSealed": false
+    },
+    "baron": {
+      "placementBaseMs": 360,
+      "placementPerCellMs": 320,
+      "fireIntervalMs": 150,
+      "aimJitter": 0.05,
+      "maxCastles": 4,
+      "riskMargin": 1.0,
+      "replanTicks": 20,
+      "picksTarget": true,
+      "thickens": false,
+      "expandsWhenSealed": true
     }
   }
 }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const DifficultySchema = z.enum(['recruit', 'gunner', 'marshal']);
+export const DifficultySchema = z.enum(['recruit', 'gunner', 'marshal', 'baron']);
 export type DifficultyName = z.infer<typeof DifficultySchema>;
 
 /**
@@ -42,6 +42,19 @@ export const BotProfileSchema = z.strictObject({
 
   /** Whether it fires at the strongest opponent rather than one at random. */
   picksTarget: z.boolean(),
+
+  /**
+   * Whether thickening a wall is a build priority at all. A second layer makes a breach
+   * take two shots, but it scores nothing; without it a bot spends that time on room
+   * and on the next castle instead.
+   */
+  thickens: z.boolean(),
+
+  /**
+   * Whether, once a castle is sealed, it reaches for the next one straight away —
+   * whether or not this phase can close it — rather than only when it is affordable.
+   */
+  expandsWhenSealed: z.boolean(),
 });
 export type BotProfile = z.infer<typeof BotProfileSchema>;
 

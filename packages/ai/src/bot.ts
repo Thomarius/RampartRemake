@@ -73,7 +73,7 @@ const ROOM_RADIUS = 3;
  */
 const CANNON_CLEARANCE = 2;
 
-export const DIFFICULTIES = ['recruit', 'gunner', 'marshal'] as const;
+export const DIFFICULTIES = ['recruit', 'gunner', 'marshal', 'baron'] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
 
 /**
@@ -275,13 +275,14 @@ export class Bot {
     // choice rather than pausing — a bot whose thickening targets no piece could reach
     // used to mark them, pause, replan, get the same targets back, and stand idle for
     // the rest of the phase beside a castle it had not finished walling.
+    const thickens = this.profile.thickens;
     const choices: (() => number[])[] = [
       () => this.plan,
       // Outward only, which `thickenTargets` guarantees — a second layer laid on the
       // inside stands where a cannon could have stood.
-      () => thickenTargets(state, this.playerId),
+      () => (thickens ? thickenTargets(state, this.playerId) : []),
       () => this.spareWork(state),
-      () => outerSkin(state, this.playerId),
+      () => (thickens ? outerSkin(state, this.playerId) : []),
     ];
     let placement: { x: number; y: number; rotation: number } | null = null;
     let tried = false;
@@ -480,6 +481,23 @@ export class Bot {
     }
     const wantsMore = sealed < this.profile.maxCastles;
 
+    // An expander reaches for the next castle the moment one is secured, whether or not
+    // this phase can close it. Less of a gamble than it sounds: the wall it has stays
+    // standing while the new one is built outside it, and a part-built extension that
+    // touches territory survives the sweep and carries into the next phase.
+    if (this.profile.expandsWhenSealed && wantsMore) {
+      const next = cheapestPlanFor(
+        state,
+        this.playerId,
+        sealed + 1,
+        this.profile.maxCastles,
+        this.unreachable,
+        true,
+        ROOM_RADIUS,
+      );
+      if (next !== null) return next.tiles;
+    }
+
     if (needsRoom || wantsMore) {
       const bigger = cheapestPlanFor(
         state,
@@ -496,7 +514,7 @@ export class Bot {
     // Only thicken when there is somewhere to put the guns. Otherwise a bot spends
     // the phase making its wall stouter and its arsenal smaller, which is how a match
     // turns into two impregnable castles with nothing to shoot at each other.
-    if (!needsRoom) {
+    if (!needsRoom && this.profile.thickens) {
       const thicken = thickenTargets(state, this.playerId);
       if (thicken.length > 0) return thicken;
     }
