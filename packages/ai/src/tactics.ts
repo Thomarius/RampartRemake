@@ -1,4 +1,11 @@
-import { NEIGHBOURS_8, Structure, Terrain, type Castle, type MatchState } from '@rampart/sim';
+import {
+  NEIGHBOURS_4,
+  NEIGHBOURS_8,
+  Structure,
+  Terrain,
+  type Castle,
+  type MatchState,
+} from '@rampart/sim';
 
 import { INFINITE_CAPACITY, MaxFlow } from './flow.js';
 
@@ -313,6 +320,34 @@ export function thickenTargets(state: MatchState, playerId: number): number[] {
       if (state.territory[i] === state.players[playerId]?.islandId) continue;
       seen.add(i);
       out.push(i);
+    }
+  }
+  return out;
+}
+
+/**
+ * Every free tile against the outside of this player's wall — the last thing worth
+ * building when nothing more particular is. A second layer anywhere is a breach that
+ * takes two shots instead of one, and it is laid outward, so it never takes ground a
+ * cannon could stand on.
+ */
+export function outerSkin(state: MatchState, playerId: number): number[] {
+  const islandId = state.players[playerId]?.islandId;
+  if (islandId === undefined) return [];
+  const out: number[] = [];
+  for (let i = 0; i < state.structure.length; i++) {
+    if (!buildable(state, playerId, i) || state.territory[i] === islandId) continue;
+    const x = i % state.width;
+    const y = (i - x) / state.width;
+    for (const [ox, oy] of NEIGHBOURS_4) {
+      const nx = x + ox;
+      const ny = y + oy;
+      if (nx < 0 || ny < 0 || nx >= state.width || ny >= state.height) continue;
+      const j = ny * state.width + nx;
+      if (state.structure[j] === Structure.Wall && state.islandId[j] === islandId) {
+        out.push(i);
+        break;
+      }
     }
   }
   return out;

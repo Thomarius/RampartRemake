@@ -18,6 +18,7 @@ import {
 import {
   cannonRoom,
   cheapestPlanFor,
+  outerSkin,
   sealOptions,
   thickenTargets,
   weakestWall,
@@ -267,34 +268,41 @@ export class Bot {
       this.plannedAt = state.tick;
     }
 
-    let wanted = this.plan.filter((i) => state.structure[i] === Structure.Empty);
-    if (wanted.length === 0) {
-      // The plan is already standing, and a bot that stops here watches the rest of
-      // the phase go by. Measured: gunner and recruit laid 65% of the pieces they had
-      // time for where marshal, which keeps finding expansions to afford, laid 106%.
-      // Every piece not laid is wall they will wish they had when the barrage starts,
-      // so spend the remainder thickening the thinnest part of what they hold.
-      // Outward only, which `thickenTargets` already guarantees — a second layer laid
-      // on the inside stands where a cannon could have stood.
-      wanted = thickenTargets(state, this.playerId).filter(
-        (i) => state.structure[i] === Structure.Empty,
+    // What to build, most urgent first, tried in turn until a piece fits one of them.
+    // Stopping is almost never right: a piece not laid is wall the bot will wish it had
+    // when the barrage starts. Measured before this existed: gunner and recruit laid 65%
+    // of the pieces they had time for. And a failed fit falls through to the next
+    // choice rather than pausing — a bot whose thickening targets no piece could reach
+    // used to mark them, pause, replan, get the same targets back, and stand idle for
+    // the rest of the phase beside a castle it had not finished walling.
+    const choices: (() => number[])[] = [
+      () => this.plan,
+      // Outward only, which `thickenTargets` guarantees — a second layer laid on the
+      // inside stands where a cannon could have stood.
+      () => thickenTargets(state, this.playerId),
+      () => this.spareWork(state),
+      () => outerSkin(state, this.playerId),
+    ];
+    let placement: { x: number; y: number; rotation: number } | null = null;
+    let tried = false;
+    for (const choice of choices) {
+      const wanted = choice().filter(
+        (i) => state.structure[i] === Structure.Empty && !this.unreachable.has(i),
       );
-      if (wanted.length === 0) wanted = this.spareWork(state);
-      if (wanted.length === 0) {
-        this.pause(state);
-        return null;
-      }
-    }
-
-    const placement = this.fit(state, pieceId, wanted);
-    if (placement === null) {
+      if (wanted.length === 0) continue;
+      tried = true;
+      placement = this.fit(state, pieceId, wanted);
+      if (placement !== null) break;
       // Nothing legal reaches any of these tiles — a gap with no free neighbours
       // cannot take a piece. Rule them out so the next plan routes around them.
       for (const tile of wanted) this.unreachable.add(tile);
-      this.plannedAt = -1;
+    }
+
+    if (placement === null) {
+      if (tried) this.plannedAt = -1;
       // And wait before trying again. Forcing a replan without also standing down
-      // meant re-planning on every tick, which cost more than the entire rest of
-      // the match put together.
+      // meant re-planning on every tick, which cost more than the entire rest of the
+      // match put together.
       this.pause(state);
       return null;
     }
@@ -323,14 +331,17 @@ export class Bot {
     if (player === undefined) return [];
     const sealed = player.enclosedCastles;
 
-    // Another castle is another cannon a round and a spare life. Start it even if this
-    // phase cannot close it.
-    if (sealed < this.profile.maxCastles) {
+    // Another castle is another cannon a round, a spare life, and under points a larger
+    // multiplier. Start it even if this phase cannot close it — and reach for every
+    // castle on the island, not only the tier's ambition: that bounds what a bot commits
+    // to, and this is time nobody else wants.
+    const onIsland = state.castles.filter((c) => c.islandId === player.islandId).length;
+    if (sealed < onIsland) {
       const next = cheapestPlanFor(
         state,
         this.playerId,
         sealed + 1,
-        this.profile.maxCastles,
+        onIsland,
         this.unreachable,
         true,
         ROOM_RADIUS,
@@ -681,8 +692,9 @@ export class Bot {
     const [cw, ch] = state.ruleset.cannons.footprint;
 
     let best: { x: number; y: number } | null = null;
-    // Room first, then proximity: compared as a pair rather than summed, so there is no
-    // exchange rate to invent between tiles of clearance and tiles of range.
+    // Never pinned if there is any alternative, then room, then proximity: compared in
+    // that order rather than summed, so there is no exchange rate to invent between them.
+    let bestPinned = Number.MAX_SAFE_INTEGER;
     let bestRoom = -1;
     let bestScore = Number.NEGATIVE_INFINITY;
 
@@ -707,7 +719,13 @@ export class Bot {
         }
         const score = -nearest + (this.difficulty === 'recruit' ? rng.nextFloat() * 5000 : 0);
 
-        if (room > bestRoom || (room === bestRoom && score > bestScore)) {
+        const pinned = this.pinnedWalls(state, player.islandId, x, y, cw, ch);
+
+        const better =
+          pinned < bestPinned ||
+          (pinned === bestPinned && (room > bestRoom || (room === bestRoom && score > bestScore)));
+        if (better) {
+          bestPinned = pinned;
           bestRoom = room;
           bestScore = score;
           best = { x, y };
@@ -715,6 +733,53 @@ export class Bot {
       }
     }
     return best ? { kind: 'place_cannon', player: this.playerId, ...best } : null;
+  }
+
+  /**
+   * Wall tiles beside a cannon footprint that a single shot would turn into a permanent
+   * hole.
+   *
+   * A wall block touching the cannon's side, with nothing buildable beyond it — water,
+   * another island, the map's edge. Shot out, its hole is bounded by the cannon on one
+   * side and that on the other, and the wall carries on either side of it, so the only
+   * cell free to build in is the hole itself. One-cell pieces stop being dealt after
+   * the early rounds, so from then on it can never be closed, and the castle behind it
+   * is lost for good. Clearance alone did not separate this from a cannon against an
+   * inland wall, which leaves a piece somewhere to land: every spot in a tight ring
+   * touches some wall, and the tie went to range — toward the enemy, which is where the
+   * coast usually is.
+   */
+  private pinnedWalls(
+    state: MatchState,
+    islandId: number,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+  ): number {
+    const buildable = (tx: number, ty: number): boolean => {
+      if (tx < 0 || ty < 0 || tx >= state.width || ty >= state.height) return false;
+      const i = ty * state.width + tx;
+      if (state.terrain[i] !== Terrain.Land || state.islandId[i] !== islandId) return false;
+      const s = state.structure[i];
+      return s === Structure.Empty || s === Structure.Wall;
+    };
+    let pinned = 0;
+    const check = (tx: number, ty: number, dx: number, dy: number): void => {
+      if (tx < 0 || ty < 0 || tx >= state.width || ty >= state.height) return;
+      const i = ty * state.width + tx;
+      if (state.structure[i] !== Structure.Wall || state.islandId[i] !== islandId) return;
+      if (!buildable(tx + dx, ty + dy)) pinned++;
+    };
+    for (let ox = 0; ox < w; ox++) {
+      check(x + ox, y - 1, 0, -1);
+      check(x + ox, y + h, 0, 1);
+    }
+    for (let oy = 0; oy < h; oy++) {
+      check(x - 1, y + oy, -1, 0);
+      check(x + w, y + oy, 1, 0);
+    }
+    return pinned;
   }
 
   /**

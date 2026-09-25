@@ -135,7 +135,13 @@ export class Hud {
     }
   }
 
-  update(state: MatchState, humanPlayer: number, status = ''): void {
+  /** `sealed` is castles enclosed as the board stands now, which the sim's count is not. */
+  update(
+    state: MatchState,
+    humanPlayer: number,
+    status = '',
+    sealed: readonly number[] = state.players.map((p) => p.enclosedCastles),
+  ): void {
     const waiting = state.phase === 'intermission';
     const shown = waiting ? (state.pendingPhase ?? state.phase) : state.phase;
     const secondsLeft = Math.max(0, (state.phaseEndTick - state.tick) / state.ruleset.tickRateHz);
@@ -156,7 +162,7 @@ export class Hud {
             : ' · last life';
         const status = p.eliminated
           ? `eliminated round ${p.eliminatedRound}`
-          : `${p.score} pts · ${p.enclosedCastles} castle${p.enclosedCastles === 1 ? '' : 's'} · ` +
+          : `${p.score} pts · ${sealed[p.id] ?? 0} castle${sealed[p.id] === 1 ? '' : 's'} · ` +
             `${live}/${cannons.length} guns${lives}`;
         return `<li class="${classes}"><b style="background:${playerCssColour(p.id)}"></b>${escape(p.name)}<span>${status}</span></li>`;
       })

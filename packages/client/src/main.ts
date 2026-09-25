@@ -12,7 +12,14 @@ import {
 } from '@rampart/config';
 import { DIFFICULTIES, type Difficulty } from '@rampart/ai';
 import type { Seat } from '@rampart/protocol';
-import { PHASES, type Action, type MatchEvent, type MatchState, type Phase } from '@rampart/sim';
+import {
+  PHASES,
+  computeEnclosure,
+  type Action,
+  type MatchEvent,
+  type MatchState,
+  type Phase,
+} from '@rampart/sim';
 
 import { Audio } from './audio.js';
 import { Controls } from './controls.js';
@@ -517,7 +524,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
   const fit = (): void => {
     scene.resize(session.state, globalThis.innerWidth, globalThis.innerHeight);
     scene.drawTerrain(session.state);
-    scene.drawTerritory(session.state);
+    scene.drawTerritory(session.state, computeEnclosure(session.state).territory);
     scene.drawStructures(session.state);
   };
   fit();
@@ -565,6 +572,9 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     );
     resolvedSinceAnnounce = false;
   }
+
+  /** The board's enclosure as it stands, for display; see `Scene.drawTerritory`. */
+  let live = computeEnclosure(session.state);
 
   function applyEvents(events: readonly MatchEvent[]): void {
     let structuresChanged = false;
@@ -618,7 +628,10 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
       }
     }
     if (structuresChanged) scene.drawStructures(session.state);
-    if (territoryChanged) scene.drawTerritory(session.state);
+    if (territoryChanged || structuresChanged) {
+      live = computeEnclosure(session.state);
+      scene.drawTerritory(session.state, live.territory);
+    }
   }
 
   let last = performance.now();
@@ -632,7 +645,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     matchAudio.frame(session.state);
     announceWhenDue();
     drawIslandBanners();
-    hud.update(session.state, session.humanPlayer, session.status());
+    hud.update(session.state, session.humanPlayer, session.status(), live.enclosedCastlesByPlayer);
 
     scene.drawEffects(session.state, session.tickFraction, delta);
     scene.drawOverlay(session.state, controls.ghost(), session.humanPlayer);

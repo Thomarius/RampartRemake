@@ -110,8 +110,15 @@ export class Scene {
     this.theme.drawTerrain(state, this.view);
   }
 
-  drawTerritory(state: MatchState): void {
-    this.theme.drawTerritory(state, this.view);
+  /**
+   * Territory as it stands now, not as the sim last recorded it. The sim refreshes
+   * `territory` at placements and resolutions but not when shots land, because a
+   * breach only counts at a resolution — so drawn from state, a castle breached in
+   * combat stayed shaded as sealed until somebody built, which read as the sea being
+   * taken for wall. Display only: what the rules do with a breach is unchanged.
+   */
+  drawTerritory(state: MatchState, territory: Uint8Array = state.territory): void {
+    this.theme.drawTerritory({ ...state, territory }, this.view);
   }
 
   drawStructures(state: MatchState): void {

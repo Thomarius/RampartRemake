@@ -576,6 +576,37 @@ hashes with and without `--stats`).
 - **Tried and dropped:** preferring the roomiest repair within 3 cells of the tightest.
   Territory 41 -> 47, no change in forfeits; not worth the code on eight matches.
 
+**Three issues seen watching a match, 2026-09-25.**
+
+- **"The sea counted as wall."** It does not: an independent check — a search outward
+  from each castle rather than the solver's flood inward — agrees with the sim at every
+  resolution of three full bot matches, and is now a test. What looked like it was the
+  display: the sim refreshes territory at placements and resolutions, not when shots
+  land, so a castle breached in combat stayed shaded as sealed, and the roster still
+  counted it, until somebody built. The client now draws territory and counts castles
+  from a fresh `computeEnclosure` whenever structures change. Display only; a breach
+  still counts at the resolution, and a player who fails there spends a life rather
+  than being eliminated while they have one.
+- **Cannons against a coastal wall.** Clearance did not separate a wall with the sea
+  behind it from an inland one, and in a tight ring every spot touches some wall, so
+  range decided — toward the enemy, which is where the coast usually is. A spot is now
+  _pinned_ if a wall block beside the cannon has nothing buildable beyond it; a shot
+  there leaves a hole only a one-cell piece fits. Pinned spots are taken only when
+  there is nothing else, then clearance, then range.
+- **Idle with a castle unwalled.** Thickening targets no piece could reach were marked
+  unreachable, but `thickenTargets` never consulted that set, so the bot got the same
+  targets back after its replan and paused for the rest of the phase — never reaching
+  `spareWork`. Build choices are now tried in turn (plan, thicken, next castle, room,
+  and finally any tile against the outside of its own wall), skipping known dead ends,
+  and a failed fit falls through instead of pausing. Spare time also reaches for every
+  castle on the island rather than stopping at the tier's `maxCastles`.
+
+Measured together, three gunners, eight matches: pieces laid against time available
+95% -> 105%, territory per sealed round 41 -> 52 (54 -> 63 at two players), castles
+0.92 -> 1.03, forfeits unchanged at 10–11%. Marshal against two gunners, both seats:
+7 of 12, against 9 of 12 before — gunner gained more from not idling; within the noise
+of twelve matches, but worth re-measuring. Still no eliminations at three players.
+
 **What this does to the game, and it is now the open question for tuning.** Three gunners,
 eight matches, old code against new:
 
