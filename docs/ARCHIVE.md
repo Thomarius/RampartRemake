@@ -1324,3 +1324,32 @@ wall an expansion relies on while it is being built is the wall being shot. The 
 not survive a forty-match rerun (seeds 101–120): 28 against marshal's 29. It was kept
 anyway as the **baron** tier, for variety rather than strength — marshal's skill,
 `maxCastles` 4, eager expansion, thickening kept.
+
+## 10t. Polish: looking at the client, combat, feedback, lives
+
+The client had grown a scoring HUD tested only as functions. `tools/screenshots.sh`
+changed that: Playwright's screenshot command renders in real time, where headless
+Chrome's virtual time barely drives the render loop, so `&snapshot=PHASE&round=N` and a
+wait reach any state worth seeing. Its first pass found six things nobody had seen: the
+board under the HUD bar, the pixel sea ending in a hard rectangle, inert cannons nearly
+invisible in pixel style, a 0.0s timer at game over, the round label jumping every
+intermission, and a final table that was one upper-cased line.
+
+**Combat.** The art config had declared banner waves, sixteen barrel rotations, recoil,
+muzzle flash and shot trails, and nothing used them. They are built now, barrels
+rasterised at each angle since rotating one sprite smears pixels. The barrel first drew at
+9 px, too short to read, and in the base's own shade; banners at 5 px vanished. The shake
+fires only for your own wall: shots land somewhere all the time.
+
+**Leak hints**, found wrong on screen twice. Red vanished on the red player's island, so
+they are in the UI's ink. And the first rule — every missing cell touches standing wall —
+refused a real breach, because the corner of a missing run touches only its neighbours
+in the run; it is now per run. The limit went 8 -> 12 when the first screenshot showed a
+typical first-round breach of nine. The suggested repair keeps the guns inside: the
+tightest wall regardless is often a ring that abandons them.
+
+**Lives.** Pips in the roster, a life-lost banner that lands, red on the last, and a
+knockout stamped over a greyed island. The old knockout message sat in the middle of the
+screen for the rest of the match, over the game the player was left to watch; it is a line
+at the bottom now. `&idle=1` leaves your seat undriven in a fast-forward, which is the
+quickest way to put a mid-match knockout on screen.

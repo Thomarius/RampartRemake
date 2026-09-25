@@ -3,6 +3,7 @@ import { Structure, Terrain, type MatchState } from '@rampart/sim';
 import { Graphics } from 'pixi.js';
 
 import {
+  dimEliminated,
   drawBuildHints,
   hex,
   playerColour,
@@ -117,6 +118,7 @@ export class FlatTheme implements Theme {
         });
       }
     }
+    dimEliminated(g, state, view);
   }
 
   drawStructures(state: MatchState, view: ViewTransform): void {

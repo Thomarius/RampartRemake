@@ -714,7 +714,11 @@ if (params.get('autostart') === '1') {
   const phase = params.get('snapshot');
   // &round=N stops at that phase in round N or later, for looking at a match deep in.
   if (phase !== null && PHASES.includes(phase as Phase)) {
-    match.fastForwardTo(phase as Phase, Number(params.get('round') ?? 0));
+    match.fastForwardTo(
+      phase as Phase,
+      Number(params.get('round') ?? 0),
+      params.get('idle') === '1',
+    );
   }
   void runSession(localSession(match), setup).catch((error: unknown) =>
     showError('Failed to start match', error),

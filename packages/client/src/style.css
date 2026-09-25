@@ -478,6 +478,78 @@ table.final tr.you td:nth-child(2) {
   animation: island-banner-in 220ms ease-out;
 }
 
+.island-banner strong {
+  display: block;
+  font-size: 1.05rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.island-banner small {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+/* A life lost lands with a jolt, and the last one is red. */
+.island-banner.life {
+  padding: 0.6rem 1.3rem;
+  animation: island-life 420ms cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.island-banner.life.urgent strong,
+.island-banner.life.urgent small {
+  color: #ff6a70;
+}
+
+@keyframes island-life {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.6);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.94) rotate(-1deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* Knocked out: stamped across the island, and it stays. */
+.island-banner.out {
+  border-width: 3px;
+  background: rgb(8 12 24 / 70%);
+  transform: translate(-50%, -50%) rotate(-8deg);
+  animation: island-out 380ms cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+
+.island-banner.out strong {
+  font-size: 1.5rem;
+  letter-spacing: 0.2em;
+}
+
+@keyframes island-out {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(-8deg) scale(2.2);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(-8deg) scale(1);
+  }
+}
+
+.roster .lives {
+  letter-spacing: 0.12em;
+}
+
+.roster .lives.last {
+  color: #ff6a70;
+}
+
 /* Points banked: news, but good news, so it floats rather than sits. */
 .island-banner.gain {
   border-color: var(--accent) !important;
@@ -518,13 +590,6 @@ table.final tr.you td:nth-child(2) {
 
 .timebar.urgent i {
   background: #e8505a;
-}
-
-/* An elimination stands until the match ends, so it reads as settled, not as news. */
-.island-banner.out {
-  opacity: 0.85;
-  font-weight: 500;
-  background: rgb(8 12 24 / 62%);
 }
 
 @keyframes island-banner-in {

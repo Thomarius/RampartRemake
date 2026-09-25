@@ -19,21 +19,29 @@ describe('island banners', () => {
   it('announces a life lost, and stops once it is no longer news', () => {
     const lost = new Map<number, LifeLost>([[0, { remaining: 1, untilTick: 200 }]]);
     expect(bannersFor(state(150, [alive(0, 'Ada')]), lost)).toEqual([
-      { player: 0, text: 'Ada lost a life — 1 life left', eliminated: false, gain: false },
+      {
+        player: 0,
+        kind: 'life',
+        title: 'Life lost',
+        detail: 'Ada — 1 life left',
+        urgent: false,
+      },
     ]);
     // The window is half-open: at untilTick it has already gone.
     expect(bannersFor(state(200, [alive(0, 'Ada')]), lost)).toEqual([]);
   });
 
-  it('counts remaining lives in words a player can read', () => {
+  it('counts remaining lives in words a player can read, and marks the last', () => {
     const two = new Map<number, LifeLost>([[0, { remaining: 2, untilTick: 200 }]]);
-    expect(bannersFor(state(1, [alive(0, 'Ada')]), two)[0]?.text).toBe(
-      'Ada lost a life — 2 lives left',
-    );
+    expect(bannersFor(state(1, [alive(0, 'Ada')]), two)[0]).toMatchObject({
+      detail: 'Ada — 2 lives left',
+      urgent: false,
+    });
     const none = new Map<number, LifeLost>([[0, { remaining: 0, untilTick: 200 }]]);
-    expect(bannersFor(state(1, [alive(0, 'Ada')]), none)[0]?.text).toBe(
-      'Ada lost a life — last life',
-    );
+    expect(bannersFor(state(1, [alive(0, 'Ada')]), none)[0]).toMatchObject({
+      detail: 'Ada — last life',
+      urgent: true,
+    });
   });
 
   it('shows every player who lost a life in the same round', () => {
@@ -51,8 +59,9 @@ describe('island banners', () => {
     // No expiry: a player who is out stays marked out. And if they were knocked out on
     // the same round they last lost a life, "out" is the news that matters.
     const lost = new Map<number, LifeLost>([[0, { remaining: 0, untilTick: 200 }]]);
-    expect(bannersFor(state(99_999, [knockedOut(0, 'Ada'), alive(1, 'Bo')]), lost)).toEqual([
-      { player: 0, text: 'Ada is out', eliminated: true, gain: false },
+    const ada = { ...knockedOut(0, 'Ada'), eliminatedRound: 4 };
+    expect(bannersFor(state(99_999, [ada, alive(1, 'Bo')]), lost)).toEqual([
+      { player: 0, kind: 'out', title: 'Knocked out', detail: 'Ada, round 4', urgent: false },
     ]);
   });
 
@@ -68,9 +77,9 @@ describe('island banners', () => {
     ]);
     const lost = new Map<number, LifeLost>([[1, { remaining: 1, untilTick: 200 }]]);
     const banners = bannersFor(state(150, [alive(0, 'Ada'), alive(1, 'Bo')]), lost, gained);
-    expect(banners).toEqual([
-      { player: 0, text: '+48', eliminated: false, gain: true },
-      { player: 1, text: 'Bo lost a life — 1 life left', eliminated: false, gain: false },
+    expect(banners.map((b) => [b.kind, b.title])).toEqual([
+      ['gain', '+48'],
+      ['life', 'Life lost'],
     ]);
     // Gone once it is no longer news, and never shown for nothing.
     expect(bannersFor(state(200, [alive(0, 'Ada')]), new Map(), gained)).toEqual([]);

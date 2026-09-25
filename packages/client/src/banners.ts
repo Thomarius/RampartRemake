@@ -21,12 +21,17 @@ export interface PointsGained {
   untilTick: number;
 }
 
+export type BannerKind = 'life' | 'out' | 'gain';
+
 export interface BannerText {
   player: number;
-  text: string;
-  eliminated: boolean;
-  /** Points just banked, rather than news about a life. */
-  gain: boolean;
+  kind: BannerKind;
+  /** The headline, set large. */
+  title: string;
+  /** A line under it, or empty. */
+  detail: string;
+  /** For a lost life: the last one, which deserves to look like it. */
+  urgent: boolean;
 }
 
 function lifeWord(count: number): string {
@@ -48,9 +53,10 @@ export function bannersFor(
     if (player.eliminated) {
       out.push({
         player: player.id,
-        text: `${player.name} is out`,
-        eliminated: true,
-        gain: false,
+        kind: 'out',
+        title: 'Knocked out',
+        detail: `${player.name}, round ${player.eliminatedRound ?? state.round}`,
+        urgent: false,
       });
       continue;
     }
@@ -59,17 +65,25 @@ export function bannersFor(
       // A life lost banks nothing, so the two never compete for the same island.
       const points = gained.get(player.id);
       if (points !== undefined && points.amount > 0 && state.tick < points.untilTick) {
-        out.push({ player: player.id, text: `+${points.amount}`, eliminated: false, gain: true });
+        out.push({
+          player: player.id,
+          kind: 'gain',
+          title: `+${points.amount}`,
+          detail: '',
+          urgent: false,
+        });
       }
       continue;
     }
     out.push({
       player: player.id,
-      text:
-        `${player.name} lost a life — ` +
-        (lost.remaining > 0 ? `${lost.remaining} ${lifeWord(lost.remaining)} left` : 'last life'),
-      eliminated: false,
-      gain: false,
+      kind: 'life',
+      title: 'Life lost',
+      detail:
+        lost.remaining > 0
+          ? `${player.name} — ${lost.remaining} ${lifeWord(lost.remaining)} left`
+          : `${player.name} — last life`,
+      urgent: lost.remaining === 0,
     });
   }
   return out;

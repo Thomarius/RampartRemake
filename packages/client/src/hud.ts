@@ -1,4 +1,5 @@
 import { playerCssColour } from './colours.js';
+import type { BannerKind } from './banners.js';
 import { escape } from './lobby.js';
 import { endOfMatchText, roundLabel, standings, type AnnouncementLine } from './scores.js';
 import {
@@ -33,10 +34,11 @@ const PHASE_HINT: Record<Phase, string> = {
 /** One banner over one island. */
 export interface IslandBanner {
   player: number;
-  text: string;
   colour: string;
-  eliminated: boolean;
-  gain: boolean;
+  kind: BannerKind;
+  title: string;
+  detail: string;
+  urgent: boolean;
   /** Screen pixels, from `Scene.screenAt`. */
   x: number;
   y: number;
@@ -130,12 +132,22 @@ export class Hud {
         this.bannerRoot.append(node);
         this.islandBanners.set(banner.player, node);
       }
-      if (node.dataset.text !== banner.text) {
-        node.dataset.text = banner.text;
-        node.textContent = banner.text;
+      const text = `${banner.kind}|${banner.title}|${banner.detail}`;
+      if (node.dataset.text !== text) {
+        node.dataset.text = text;
+        const title = document.createElement('strong');
+        title.textContent = banner.title;
+        node.replaceChildren(title);
+        if (banner.detail !== '') {
+          const detail = document.createElement('small');
+          detail.textContent = banner.detail;
+          node.append(detail);
+        }
+        // A new kind of news restarts the entrance, so a life lost after points were
+        // shown lands as hard as one on its own.
+        node.className = `island-banner ${banner.kind}`;
       }
-      node.classList.toggle('out', banner.eliminated);
-      node.classList.toggle('gain', banner.gain);
+      node.classList.toggle('urgent', banner.urgent);
       node.style.borderColor = banner.colour;
       node.style.left = `${banner.x}px`;
       node.style.top = `${banner.y}px`;
@@ -177,11 +189,12 @@ export class Hud {
         const classes = ['player', p.eliminated ? 'out' : '', p.id === humanPlayer ? 'you' : '']
           .filter(Boolean)
           .join(' ');
-        // Lives are only worth showing while they can still be spent.
-        const lives =
-          p.continuesRemaining > 0
-            ? ` · ${p.continuesRemaining} ${p.continuesRemaining === 1 ? 'life' : 'lives'}`
-            : ' · last life';
+        // Lives as pips, one per life including the one being played, spent ones hollow:
+        // read at a glance across a roster, where "2 lives" had to be read word by word.
+        const total = state.ruleset.elimination.continues + 1;
+        const left = p.continuesRemaining + 1;
+        const pips = '●'.repeat(left) + '○'.repeat(Math.max(0, total - left));
+        const lives = ` · <span class="lives${p.continuesRemaining === 0 ? ' last' : ''}" title="${left} of ${total} lives">${pips}</span>`;
         const status = p.eliminated
           ? `eliminated round ${p.eliminatedRound}`
           : `${p.score} pts · ${sealed[p.id] ?? 0} castle${sealed[p.id] === 1 ? '' : 's'} · ` +
@@ -226,9 +239,15 @@ export class Hud {
       const table = `<table class="final">${rows}</table>`;
       const again = humanPlayer < 0 ? 'press R for the menu' : 'press R to play again';
       banner = `<div class="banner">${text}${table}<small>${again}</small></div>`;
-    } else if (human?.eliminated) {
-      banner = `<div class="banner">You were eliminated in round ${human.eliminatedRound}<small>watching the rest</small></div>`;
     }
+    // Knocked out: the stamp over your island is the moment, so this is only a quiet
+    // line where the controls hint was — a banner in the middle of the screen covered
+    // the very match you were left to watch, for the rest of it.
+    const hint = human?.eliminated
+      ? `Knocked out in round ${human.eliminatedRound} · watching the rest`
+      : humanPlayer < 0
+        ? ''
+        : PHASE_HINT[state.phase];
 
     this.root.innerHTML = `
       <div class="bar">
@@ -248,7 +267,7 @@ export class Hud {
       ${timebar}
       ${queue}
       ${cannonCount}
-      <div class="hint">${humanPlayer < 0 ? '' : PHASE_HINT[state.phase]}</div>
+      <div class="hint">${hint}</div>
       ${status ? `<div class="net">${status}</div>` : ''}
       ${banner}
     `;

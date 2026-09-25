@@ -4,6 +4,7 @@ import { Container, Graphics, Sprite, Texture } from 'pixi.js';
 
 import { E, KEY, N, S, W, buildAtlas } from './pixel/generators.js';
 import {
+  dimEliminated,
   drawBuildHints,
   hex,
   playerColour,
@@ -215,6 +216,7 @@ export class PixelTheme implements Theme {
         });
       }
     }
+    dimEliminated(g, state, view);
   }
 
   drawStructures(state: MatchState, view: ViewTransform): void {

@@ -100,11 +100,14 @@ export class LocalMatch {
    * scripted driver. Dev only: it exists so a given phase can be put on screen
    * deterministically, without waiting out the clock or playing to get there.
    */
-  fastForwardTo(phase: Phase, fromRound = 0, maxTicks = 40_000): void {
+  fastForwardTo(phase: Phase, fromRound = 0, humanIdle = false, maxTicks = 40_000): void {
     const arrived = (): boolean => this.state.phase === phase && this.state.round >= fromRound;
     while (!arrived() && this.state.tick < maxTicks && !this.finished) {
       for (const player of this.state.players) {
         if (player.eliminated) continue;
+        // Left to itself, the person's seat builds nothing and is soon knocked out,
+        // which is the quickest way to put a mid-match elimination on screen.
+        if (humanIdle && player.id === this.humanPlayer) continue;
         const action = this.botFor(player.id).think(this.state, this.rng);
         if (action !== null) applyAction(this.state, action);
       }

@@ -303,7 +303,25 @@ pattern that works is to pull the decision out into a pure function and test tha
 refreshes `territory` at placements and resolutions but not when shots land, since a
 breach only counts at a resolution; drawn from state, a castle breached in combat stayed
 shaded as sealed. The client recomputes the enclosure for display whenever structures
-change, and the roster counts castles from it.
+change, and the roster counts castles from it — and so does everything below that says
+"sealed".
+
+**Feedback a player builds by.** While nothing of yours is sealed, your castles are
+outlined and, when the missing wall is a gap rather than a wall still to be built (at most
+twelve cells, every run of them reaching wall that stands), the gap is marked — the bots
+know their leak exactly and a person has to find it against the clock (`hints.ts`). Points
+float up from each island as they are banked; a time bar runs under the HUD. Sealed
+castles fly a banner in pixel style; a lost life lands as a banner over the island, red
+on the last; a knockout stamps the island and greys it for the rest of the match.
+
+**Combat, in pixel style.** Barrels turn to their target, recoil and flash; destroyed
+wall throws debris in its owner's colour; shots trail; the board shakes, but only when a
+shot breaks your own wall. The flat style stays plain, as the one to debug against.
+
+**Looking at it.** `tools/screenshots.sh` captures fixed states against the dev server —
+in real time through Playwright, which renders fine where virtual time does not — using
+`&snapshot`, `&round`, `&idle` and a wait. Anything lasting under a second (debris, the
+shake) still has to be seen by a person.
 
 ---
 
@@ -487,7 +505,6 @@ balanced means.
 
 - Audio files: 2 of 18 cues exist. The rest are the user's to produce; the manifest and
   every trigger are wired.
-- The continue and elimination banners work but could be more impressive.
 - Islands look boxy; `coastlineRoughness` and `noiseFrequency` are config.
 - Rings at 5 and 7 players make considerably larger maps than grids would. One JSON edit.
 
