@@ -13,6 +13,7 @@ is the orientation.
 
 ```bash
 npm install
+npm start                           # build, then serve the game at http://localhost:8080
 npm run check                       # format, lint, typecheck, test — must pass before committing
 npm run build                       # client + server bundles, both needed by the image
 npm run dev   -w @rampart/client    # play offline at http://localhost:5173
@@ -97,6 +98,15 @@ Full detail in PLAN.md §1. The parts that surprise people:
   keeps its middle. Stranded wall stays as an obstacle.
 - **The piece set widens by round**, and one-cell pieces stop being dealt after the early
   rounds — so a one-tile gap with no free neighbour can never be filled.
+- **Overtime**: when the build clock runs out, everyone may still place the piece they
+  hold, within three seconds, and no more.
+- **Every match is a team match**; free-for-all is teams of one. Teams share a score (the
+  sum of their members') and a pool of lives, and a member failing with the pool empty
+  takes the whole team out. Teammates may build on each other's islands — people only by
+  default. A placed block belongs to the island, not to whoever placed it.
+- **Seats are shuffled onto islands at the start**, server and local alike. Player p still
+  owns island p + 1; the room tells each connection which player it has become, so never
+  assume the first seat is player 0.
 
 ## Status
 
@@ -105,12 +115,14 @@ verified by a CI job since there is no Docker on this machine), audio wired end 
 2–8 players, and the lobby (tested at eight seats over a real socket; code copying, seat
 colours, tier descriptions).
 
-**Team mode is built** (PLAN.md §11.7): equal teams, shared score and lives, losing
-together, no friendly fire, building on a teammate's island (people only by default), one
-lobby for online and offline, islands shuffled among seats, colour families and team tags.
-Every match is a team match internally; free-for-all is teams of one.
+**M8, team mode, is done** (PLAN.md §1.8, ARCHIVE 10u): equal teams, shared score and
+lives, losing together, no friendly fire, building on a teammate's island (people only by
+default), one lobby for online and offline, islands shuffled among seats, colour families
+and team tags. So is a polish pass driven by the user's own play (ARCHIVE 10t): leak marks
+tried and removed, a big timer mid-map, a cursor that says whether it will fire, overtime.
 
-**M7, the balance pass, is where the work is.** PLAN.md §11 lists it in priority order:
+**M7, the balance pass, is where the work is.** PLAN.md §11 opens with where to start, then
+lists it in priority order:
 
 1. **Round cap and points scoring — done** (§1.7, ARCHIVE 10r). A match ends at
    `maxRounds` or when one player is left; at the cap the best surviving score wins. Most
@@ -120,7 +132,8 @@ Every match is a team match internally; free-for-all is teams of one.
    are one continue instead of two and a new placement delay, measured against careful
    bots and an ambitious points-driven one that stands in for human play.
 3. **Two-player balance** (§11.3), to be re-measured under the cap before anything is tried.
-4. Measurements never taken (§11.4): seat bias beyond three players, the full ladder.
+4. Measurements never taken (§11.4): the full ladder, and seat bias at 6 and 8 players in
+   free-for-all (team seating is measured, and fair).
 5. Bots as personality × skill (§11.6), independent of balance.
 
 **No audio files exist yet** beyond two test files; the user is producing them, and

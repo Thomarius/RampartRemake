@@ -31,10 +31,9 @@ export interface LocalMatchOptions {
 /**
  * A match running entirely in the browser, with no server.
  *
- * Opponents are driven by the simulation's scripted playout driver — legal moves
- * without a plan. They are not opponents worth beating; they exist so the combat
- * and build phases have something happening in them while the loop is evaluated.
- * Real bots arrive in M5, and the authoritative server in M4.
+ * Every seat but the person's is played by a bot from `@rampart/ai`, exactly as the
+ * server would play it, and seats are shuffled onto islands the same way — so an offline
+ * match is an online one with nobody else in it.
  */
 export class LocalMatch {
   readonly state: MatchState;

@@ -26,7 +26,7 @@ import {
  * and a piece is at least three cells. Expect two or three rounds.
  *
  * Playing well means thickening the wall into a blob rather than restoring a thin
- * line — which is planning, and therefore M5's job.
+ * line — which is planning, and the job of the real bots in `bot.ts`.
  */
 
 const FIRE_CHANCE = 0.12;

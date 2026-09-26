@@ -13,6 +13,7 @@
     "tools/*"
   ],
   "scripts": {
+    "start": "npm run build && npm start -w @rampart/server",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build -w @rampart/client && npm run build -w @rampart/server",
     "test": "vitest run",

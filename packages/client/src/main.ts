@@ -169,7 +169,7 @@ function showMenu(): void {
     <div class="menu">
       <h1>Rampart</h1>
       <p>Shoot down their walls. Rebuild yours before the next barrage.
-         Fail to seal a castle and you are out.</p>
+         Fail to seal a castle and you lose a life.</p>
       <label>Name <input id="name" type="text" maxlength="16" value="Player" /></label>
       <label>Seed <input id="seed" type="number" value="1" min="0" step="1" /></label>
       <label>Style

@@ -1394,3 +1394,21 @@ PLAN.md §11.7; how they came out:
   sat under the big timer, and a 4v4 roster wrapped the bar onto two lines.
 - **Measured (T6)**: random seating decides nothing measurable, and eliminations are rarer
   than in free-for-all — 5 in 180 team matches.
+
+## 10v. Bugs found by the user's own play
+
+- **No castle to choose after a continue.** The sim accepted `select_castle` in the cannon
+  phase from a player owing one — bots and the timeout fallback used it, and it was tested
+  — but the client's controls decided what a click meant from the phase alone, so a person
+  was offered a cannon with nowhere to put it. What a click means is now `inputMode`, a
+  pure function of the state and the player, tested by playing a match to a continue.
+- **Announcements wiped everything else drawn over the board.** Each replaced every child
+  of the banner layer, which also held the island banners, the team tags, the big timer
+  and the cursor count; those went on updating nodes no longer on the page. Screenshots
+  jump to a phase and skip announcements, which is why none caught it.
+- **The cursor looked ready over a teammate's island**, where the shot is refused.
+  `mayTarget` now answers for the cursor and the click alike.
+
+The pattern across all three: the rules were right and tested, and the client asked a
+different, simpler question than the sim did. Where the client has to predict a rule, it
+should ask the same function or one tested against it.

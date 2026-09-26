@@ -17,11 +17,9 @@ configurable and why it matters.
 
 ### 1.1 Match structure
 
-2–8 players, free-for-all. Empty seats are filled by AI. Team mode is planned (§11.7) and
-not built. Despite what this section used to claim, **the data model is not team-aware**:
-score, lives and elimination all belong to a player, and every "whose is this" test is
-player against player. Three and four players are the focus; the higher counts exist
-mainly so team modes have somewhere to go.
+2–8 players, free-for-all or in equal teams (§1.8). Empty seats are filled by AI. Three
+and four players are the focus. **Every match is a team match internally**: free-for-all
+is teams of one, so a rule written for teams is the free-for-all rule too.
 
 Every phase is simultaneous and real-time, and each is preceded by an **intermission**,
 during which nothing is playable: shots still in the air land, then a pause, then the
@@ -173,6 +171,29 @@ Failing to seal forfeits the round's points, damage included
 round too. The HUD shows banked scores only, never a running tally that could still be
 forfeited. `maxRounds: null` lifts the cap for tests; no host can choose it.
 
+### 1.8 Teams
+
+- **Equal teams only**: a team size needs at least two teams, so within 2–8 players size
+  2 allows 4, 6 or 8; size 3 only 6; size 4 only 8. Odd counts are free-for-all.
+- **No attacking a teammate in any way**: `fire()` refuses a teammate's island, an impact
+  never clears a teammate's wall, bots never target one.
+- **A shared score**, the sum of each member's own (their tiles × their castles, plus
+  their damage).
+- **Pooled lives**: a team starts with the sum of its members' continues; a member who
+  fails spends one, and their own island is wiped as in §1.5. **A member failing with the
+  pool empty puts the whole team out**, sealed members included. The continue bonus counts
+  the team's lives spent, capped by `elimination.maxExtraCannons` (3).
+- **Helping build**: a player may place pieces on a teammate's island, from their own
+  queue. `teams.crossIslandBuild` says who may — `humans` by default, since a bot laying
+  wall against a person's plan would be infuriating. The wall belongs to the island's
+  owner, not the placer, so every other rule treats it as theirs. Cannons stay on your own
+  territory.
+- **Seating is random**: the host chooses the teams, and which island each seat gets is
+  shuffled at the start (§6). Measured to decide nothing (ARCHIVE 10u).
+- **Shown** by colour families — each team one hue, each member a shade — plus a team letter
+  over every island, a roster grouped by team, and team wording on banners and the end
+  screen.
+
 ---
 
 ## 2. Technology
@@ -281,6 +302,14 @@ sender's seat**, so a client cannot act for someone else.
 - A dropped seat is handed to a bot so the match does not stall; the player gets their seat
   back on reconnect within the grace period.
 - Rooms are found by a short code from an alphabet chosen to avoid ambiguous characters.
+- **One lobby for online and offline.** The lobby is one screen (`lobbyMarkup`) fed by a
+  room when a server answers with a welcome within two seconds, and by a table held in the
+  browser when not. Both change the table through one rule, `reshapeTable` in config. A
+  room nobody else joined is played locally when the host starts it. Solo play never needs
+  a network.
+- **Seats are shuffled onto islands at the start**, seeded from the match seed, server and
+  local alike. The sim's invariant that player p owns island p + 1 is untouched — it is
+  the seats that move, and the server tells each connection which player it has become.
 - **Lobby settings are a mechanism, not a special case**: an explicit list of typed
   settings (`config/src/settings.ts`), bounded by `server.lobbySettings`, accepted only
   from the host before the start, refused whole when out of bounds, and applied over the
@@ -373,6 +402,9 @@ construction, and the soak asserts they never ask for a move the rules refuse.
   Affordability governs whether to commit to a plan over staying alive; it does not govern
   spending time nobody else wants.
 
+**Teammates are never targets**, and cannons face the other teams' castles. Bots build
+only on their own island, so they never help a teammate, whatever the rule allows.
+
 Four tiers: **recruit**, **gunner** and **marshal** differ in aim, target choice, ambition,
 replanning rate and pace; **baron** has marshal's skill with a different playstyle —
 reaching for the next castle the moment it holds one (`expandsWhenSealed`, `maxCastles`
@@ -419,10 +451,17 @@ every resolution against an independent search, not only on unit pictures.
 | M5  | AI opponents                                              | Done                     |
 | M6  | Full scope: 2–8 players, audio, lobby, Docker, deployment | Done but for audio files |
 | M7  | Balance pass                                              | **In progress**          |
+| M8  | Team mode, and one lobby for online and offline           | Done                     |
 
 ---
 
 ## 11. Open work
+
+**Where to start (2026-09-26).** Team mode and the polish pass are done; the user is
+playing test matches. The next milestone is **11.2, elimination tuning**, as soon as that
+play has given a feel for it — its plan is ready and starts with a baseline measurement.
+Beside it, independent of balance: **11.6**, bots as personality × skill. Smaller items
+are in 11.5.
 
 ### 11.1 Round cap and points scoring — done
 
@@ -432,6 +471,11 @@ The rules are §1.7, the lobby setting §6; how they were settled is ARCHIVE 10r
 
 **Agreed 2026-09-25, not started.** The user is playing a few matches first, so the
 tuning is not fitted to the bots and misses the human experience.
+
+**Changed since it was planned**: overtime shipped (§1.6), a little more wall per round
+for everyone; and team matches eliminate even less than free-for-all — 5 in 180 at gunner
+(ARCHIVE 10u), since a pooled life lasts a team longer. Measure 2v2 alongside three and
+four players.
 
 **Target:** at three and four players, about **half of matches end with one player left
 before the cap**, under the default rules — a 10-round cap, combat and build phases as
@@ -509,9 +553,11 @@ balanced means.
 
 ### 11.4 Measurements never taken
 
-- **Seat bias** at 4, 6 and 8 players, where grids give seats structurally different
-  neighbourhoods. At three players the gap seen in 10s was mostly a bot bug; with it fixed
-  marshal wins about equally from seats 0 and 1.
+- **Position bias** at 4, 6 and 8 players, where grids give islands structurally different
+  neighbourhoods. Seats are shuffled onto islands now, so no seat is favoured, but an
+  island position still could be — it would show as the player on it winning more often,
+  whoever that is. At three players the gap seen in 10s was mostly a bot bug; with it fixed
+  marshal wins about equally from either island.
 - **The full difficulty ladder**, every pairing and more than three players. Measured so
   far only at three: marshal and baron over gunner, gunner over recruit.
 - **`resetPieceScheduleOnContinue`**, against the alternative. Only the "on" setting has
@@ -535,126 +581,11 @@ aggressive, defensive, expander), how the lobby offers the pair, and whether
 `server.botDifficulty` becomes two settings. Independent of balance, so it can run beside
 11.2.
 
-### 11.7 Team mode — built, T1–T6 done
+### 11.7 Team mode — done
 
-Chosen by the user to come next, ahead of 11.2–11.6. **T1, the sim core, is built**: teams in
-the state, pooled lives, team elimination and winners, no friendly fire, the capped
-continue bonus. Free-for-all outcomes checked unchanged to the tick against the code
-before it, over four three-player matches. **T2, helping build, is built**:
-`teams.crossIslandBuild` in the ruleset, `mayBuildOn` in placement, walls owned by the
-island. The client's piece ghost asks the same check, so it shows on a teammate's island
-with no client change; the hint text and team visuals come with T5. **T3, bots, is
-built**: rivals are the other teams in every target choice — the bot's, its fallback,
-the stopgap's, the scripted soak player's — and cannons face the other teams' castles.
-Bots build only from their own island's plans, so they never help across islands even
-under `all`; teaching them to help is left for later, if wanted. A 2v2 bot match makes
-no refused move and never aims at a teammate; before the change the same two matches
-made 598 refused shots at teammates. **T4, the lobby, is built**: one lobby screen for
-online and offline (`lobby.ts`, a pure view), fed by a room when a server answers with a
-welcome within two seconds and by a local table when not; team size, player count and
-teams set by the host through one shared rule, `reshapeTable` in config, used by both;
-the seeded seat shuffle at the start, server and local alike, applied to free-for-all
-too; a table nobody else joined is played locally from the room's settings. Checked in a
-browser both ways: a local table with teams of two, and a room joined by a second browser
-by code, started by the host, with the islands shuffled and both clients in the match.
-**T5, presentation, is built**: colour families from `art.teamFamilies` (reds, blues,
-greens, purples, four shades each), resolved per match by `matchPalette` so every
-existing draw call picks them up; a "Team A" tag over each island's top-left, clear of
-the big timer; the roster grouped by team with its score and pooled lives, members by
-name only past four players; team wording on the life and knockout banners; and the end
-screen naming the winning team with a row per team. Seen at 2v2, 3v3 and 4v4, both styles.
-**T6, measured**: headless `--teams N` seats as a room does. Gunner teams, 2026-09-26:
-
-| Format    | wins by team                                 | more compact team won | by elimination |
-| --------- | -------------------------------------------- | --------------------- | -------------- |
-| 2v2, 100  | A 44, B 56 (runs of 40 and 60: 24/16, 20/40) | — (both always alike) | 2              |
-| 2v2v2, 60 | A 16, B 23, C 21                             | 17 of 55, chance 18.3 | 0              |
-| 3v3, 60   | A 32, B 26, 2 shared                         | 8 of 20, chance 10    | 4              |
-
-**Random seating does not decide matches**: where one team sat more tightly than another,
-it won no more often than chance, at either six-player format; at 2v2 the mirrored grid
-seats both teams alike every time. Team labels carry nothing either — seats go into teams
-in order and then shuffle. **Eliminations are rarer still than in free-for-all** (5 in
-180), since a pooled life lasts a team longer: team mode inherits 11.2's problem, and its
-tuning should be measured at 2v2 as well as free-for-all.
-
-#### The rules
-
-- **Teams of equal size only.** A team size needs at least two teams, so within 2–8
-  players: size 2 at 4, 6 or 8 players; size 3 at 6; size 4 at 8. Odd counts are
-  free-for-all only. The host picks the team size first; only valid player counts remain.
-- **No attacking a teammate in any way.** `fire()` refuses a teammate's island, an impact
-  clears no teammate's wall, and bots never target one.
-- **Shared score: the sum of each member's own score**, each computed exactly as today
-  (their tiles × their castles, plus their damage). Not team tiles × team castles, which
-  grows with the square of team size.
-- **Pooled lives.** A team starts with the sum of its members' continues (three players at
-  two each: six). A member who fails to seal spends one from the pool, and their own island
-  is wiped, their castle chosen again and their piece schedule rewound, as today.
-- **Lose together.** A member failing with the pool empty knocks the whole team out, even
-  teammates who sealed — intended: they would very likely lose on score anyway. The win is
-  the last team standing, or at the cap the best team score; a tie is a shared win.
-- **Extra cannons after a continue** count the team's lives spent, not the player's, and
-  are capped: at most +3 (`elimination.maxExtraCannons`, new).
-- **Helping build.** A player may place pieces on a teammate's island, from their own
-  queue, so helping spends their own build time. The wall belongs to the island's owner,
-  not the placer, so the sweep, damage and rubble rules need no change. Who may do it is a
-  rule, `teams.crossIslandBuild: 'none' | 'humans' | 'all'`, **default `humans`**: a bot
-  laying wall on a person's island against their plan would be infuriating. A person
-  building on a bot's island is fine — the bot replans around it as it does around
-  breaches. **Cannons stay on your own territory only.**
-
-#### The design move: every match is a team match
-
-Free-for-all is teams of one. Score, the pool of lives and elimination move from the
-player to the team, and every "opponent" test becomes "not on my team". So FFA behaves
-exactly as now by construction, and today's tests go on guarding it — rather than a
-second copy of every rule beside the first.
-
-#### Presentation
-
-- **Colour families per team, each player still their own colour**, from palettes in the
-  art config chosen by layout: pairs as reds, blues, greens and purples; 3v3 and 4v4 as
-  warm against cool shades. Four shades of one hue are hard to tell apart, so **every team
-  also carries a letter** — on the island banners, in the roster, at the end. FFA keeps
-  today's eight distinct colours. Shades to be chosen by screenshot.
-- The roster grouped by team, one score and one lives display per team; "Team A knocked
-  out"; the end screen names the winning team.
-
-#### Seating and the lobby — decided 2026-09-26
-
-- **The host chooses the teams; which island each player gets is random.** The sim keeps
-  its invariant that player `p` owns island `p + 1` — territory, cannons, bots and the
-  client all lean on it — so islands are not shuffled inside the sim. Instead the room
-  shuffles **which seat becomes which player** at the start, seeded from the match seed
-  so a match is reproducible. The server still owns identity: it tells each connection
-  its player id once the match starts, as it does now at join. Offline, the local lobby
-  does the same shuffle. A random layout can seat teammates side by side one match and
-  diagonally the next — symmetric at 2v2 on the 2x2 grid, not at 2v2v2 on 3x2; T6
-  measures it.
-- **One lobby for online and offline.** One lobby screen, one set of controls — seats and
-  who holds them, bot skills, team size and each seat's team, rounds. If a server is
-  reachable the lobby also opens a room and shows its code; if not, the code is simply
-  not shown. At start, **if no other person has joined, the match runs locally** in the
-  browser exactly as offline play does now; otherwise on the server. Solo play never
-  needs a network, which keeps the dev offline mode and static hosting working. The
-  lobby is a pure view of a lobby model, tested like `lobbyMarkup`, with two backends:
-  local, and the room.
-- **Team assignment in the lobby.** The host picks a team size; only player counts that
-  make at least two equal teams remain (size 2: 4, 6 or 8; size 3: 6; size 4: 8). Seats
-  start in teams in order and the host can move any seat to another team, as long as the
-  teams stay equal; Start is refused otherwise. Guests see the teams, cannot change them.
-
-#### Steps, each shippable, FFA the default throughout
-
-| Step                      | Content                                                                                                                                                                                                                                                                                   |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **T1 Sim core**           | Teams in the state, FFA as teams of one: team score, pooled lives, team elimination, team winners, no friendly fire, capped continue bonus. Tests, including that FFA outcomes are unchanged — identical hashes where the rules do not differ.                                            |
-| **T2 Helping build**      | `crossIslandBuild`, walls owned by the island's owner, the piece ghost on a teammate's island.                                                                                                                                                                                            |
-| **T3 Bots**               | Never target a teammate; never build across islands unless the rule allows.                                                                                                                                                                                                               |
-| **T4 Lobby and protocol** | The single lobby with its local and room backends; team size as a lobby setting with its valid player counts; seat-to-team assignment by the host; the seeded seat-to-player shuffle at start and the message that tells each connection its player id; the snapshot; `PROTOCOL_VERSION`. |
-| **T5 Client**             | Colour families and team letters, the roster by team, team score and lives, team banners and end screen.                                                                                                                                                                                  |
-| **T6 Measure**            | Headless `--teams`; 2v2 fairness and the layout bias of random seating.                                                                                                                                                                                                                   |
+The rules are §1.8, seating and the lobby §6; how it was built and measured is ARCHIVE 10u.
+Left open: **bots do not help a teammate build**, even under `crossIslandBuild: all` —
+teaching one to help without wrecking a person's plan is its own question.
 
 ---
 
