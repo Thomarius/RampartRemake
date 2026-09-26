@@ -1353,3 +1353,10 @@ knockout stamped over a greyed island. The old knockout message sat in the middl
 screen for the rest of the match, over the game the player was left to watch; it is a line
 at the bottom now. `&idle=1` leaves your seat undriven in a fast-forward, which is the
 quickest way to put a mid-match knockout on screen.
+
+**After the first human play.** Leak marks came out: hard to tell from the piece ghost and
+from wall already laid, and read as the one right repair when any closing shape will do.
+The castle outline stayed, as it has neither problem. The fire cursor only changed colour
+slightly when a gun was ready; it now changes shape, and carries the count. And the time
+left, which a player watching their wall never looks up to see, is repeated in large
+figures in the sea near the middle — the one place every island faces.

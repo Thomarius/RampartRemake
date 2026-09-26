@@ -23,7 +23,7 @@ import {
 } from '@rampart/sim';
 
 import { Audio } from './audio.js';
-import { Controls } from './controls.js';
+import { Controls, inputMode, readyCannons } from './controls.js';
 import { bannersFor, type LifeLost, type PointsGained } from './banners.js';
 import { playerCssColour } from './colours.js';
 import { lobbyMarkup, rangeOptions } from './lobby.js';
@@ -32,9 +32,10 @@ import { MatchAudio } from './matchAudio.js';
 import { LocalMatch } from './localMatch.js';
 import { announcementLines } from './scores.js';
 import { buildHints, type BuildHints } from './hints.js';
+import { timerSpot } from './timerSpot.js';
 import { ServerConnection } from './net/connection.js';
 import { NetworkMatch } from './net/networkMatch.js';
-import { Scene, createTheme } from './render/scene.js';
+import { Scene, createTheme, type Ghost } from './render/scene.js';
 
 /**
  * Rampart client.
@@ -499,7 +500,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
   const livesLost = new Map<number, LifeLost>();
   const gained = new Map<number, PointsGained>();
   /** What the board points out to a player building; see `hints.ts`. */
-  let hints: BuildHints = { leak: [], unsealed: [] };
+  let hints: BuildHints = { unsealed: [] };
 
   function drawIslandBanners(): void {
     const banners: IslandBanner[] = [];
@@ -584,6 +585,31 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
       announcementLines(state, resolvedSinceAnnounce),
     );
     resolvedSinceAnnounce = false;
+  }
+
+  /** Open water near the middle, for the big timer. Terrain is fixed, so asked once. */
+  const bigTimerAt = timerSpot(session.state);
+  const TIMED: readonly Phase[] = ['castle_select', 'cannon_place', 'build', 'combat'];
+
+  /** The big timer, and the ready count beside the aiming cursor. */
+  function drawCounters(ghost: Ghost): void {
+    const state = session.state;
+    if (bigTimerAt !== null && TIMED.includes(state.phase)) {
+      const centre = scene.screenAt(bigTimerAt.x - 0.5, bigTimerAt.y - 0.5);
+      const edge = scene.screenAt(bigTimerAt.x - 0.5 + bigTimerAt.size, bigTimerAt.y - 0.5);
+      const seconds = Math.max(
+        0,
+        Math.ceil((state.phaseEndTick - state.tick) / state.ruleset.tickRateHz),
+      );
+      hud.showBigTimer({ ...centre, sizePx: edge.x - centre.x }, seconds);
+    } else {
+      hud.showBigTimer(null, 0);
+    }
+    const aiming = ghost.tile !== null && inputMode(state, session.humanPlayer) === 'fire';
+    hud.showReadyCount(
+      aiming && ghost.tile !== null ? scene.screenAt(ghost.tile.x + 1.4, ghost.tile.y - 1.1) : null,
+      readyCannons(state, session.humanPlayer),
+    );
   }
 
   /** The board's enclosure as it stands, for display; see `Scene.drawTerritory`. */
@@ -687,7 +713,9 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     hud.update(session.state, session.humanPlayer, session.status(), live.enclosedCastlesByPlayer);
 
     scene.drawEffects(session.state, session.tickFraction, delta, live.castleEnclosed);
-    scene.drawOverlay(session.state, { ...controls.ghost(), ...hints }, session.humanPlayer);
+    const ghost = { ...controls.ghost(), ...hints };
+    scene.drawOverlay(session.state, ghost, session.humanPlayer);
+    drawCounters(ghost);
     scene.render();
 
     frame = requestAnimationFrame(loop);

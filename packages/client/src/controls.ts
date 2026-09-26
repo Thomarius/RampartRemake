@@ -39,6 +39,15 @@ export function inputMode(state: MatchState, playerId: number): InputMode {
   }
 }
 
+/** Cannons this player could fire right now: active, and with nothing in the air. */
+export function readyCannons(state: MatchState, playerId: number): number {
+  let ready = 0;
+  for (const cannon of state.cannons) {
+    if (cannon.owner === playerId && cannon.active && cannon.shotId === null) ready++;
+  }
+  return ready;
+}
+
 /** The two cues the simulation never sees, because neither changes the match. */
 type InputCue = 'piece_rotate' | 'piece_invalid';
 
@@ -189,7 +198,6 @@ export class Controls {
         valid: false,
         footprint: null,
         selectable,
-        leak: [],
         unsealed: [],
       };
     }
@@ -198,16 +206,16 @@ export class Controls {
       case 'piece': {
         const cells = pieceCells(currentPieceId(state, player), this.rotation);
         const valid = canPlacePiece(state, player, this.rotation, tile.x, tile.y) === null;
-        return { tile, cells, valid, footprint: null, selectable, leak: [], unsealed: [] };
+        return { tile, cells, valid, footprint: null, selectable, unsealed: [] };
       }
       case 'cannon': {
         const [w, h] = state.ruleset.cannons.footprint;
         const valid = canPlaceCannon(state, player, tile.x, tile.y) === null;
-        return { tile, cells: [], valid, footprint: { w, h }, selectable, leak: [], unsealed: [] };
+        return { tile, cells: [], valid, footprint: { w, h }, selectable, unsealed: [] };
       }
       case 'fire': {
         const valid = findReadyCannon(state, player, tile.x, tile.y) !== null;
-        return { tile, cells: [], valid, footprint: null, selectable, leak: [], unsealed: [] };
+        return { tile, cells: [], valid, footprint: null, selectable, unsealed: [] };
       }
       case 'castle': {
         return {
@@ -216,7 +224,6 @@ export class Controls {
           valid: this.castleAt(tile.x, tile.y) !== undefined,
           footprint: null,
           selectable,
-          leak: [],
           unsealed: [],
         };
       }
@@ -227,7 +234,6 @@ export class Controls {
           valid: false,
           footprint: null,
           selectable,
-          leak: [],
           unsealed: [],
         };
     }

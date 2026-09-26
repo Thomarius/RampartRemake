@@ -13,7 +13,7 @@ import {
 } from '@rampart/sim';
 import { describe, expect, it } from 'vitest';
 
-import { inputMode } from './controls.js';
+import { inputMode, readyCannons } from './controls.js';
 
 /** Plays until somebody spends a life, then on to the cannon phase that follows. */
 function afterContinue(seed: number): { state: MatchState; player: number } {
@@ -75,5 +75,19 @@ describe('what a click means', () => {
     expect(inputMode(state, other)).toBe('fire');
     state.players[other]!.eliminated = true;
     expect(inputMode(state, other)).toBe('none');
+  });
+
+  it('counts the cannons that could fire now', () => {
+    const { state, player } = afterContinue(3);
+    const other = 1 - player;
+    const mine = state.cannons.filter((c) => c.owner === other);
+    const expected = mine.filter((c) => c.active && c.shotId === null).length;
+    expect(readyCannons(state, other)).toBe(expected);
+    // One in the air is one fewer.
+    const loaded = mine.find((c) => c.active && c.shotId === null);
+    if (loaded) {
+      loaded.shotId = 999;
+      expect(readyCannons(state, other)).toBe(expected - 1);
+    }
   });
 });

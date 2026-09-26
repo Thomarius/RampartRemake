@@ -307,10 +307,14 @@ change, and the roster counts castles from it — and so does everything below t
 "sealed".
 
 **Feedback a player builds by.** While nothing of yours is sealed, your castles are
-outlined and, when the missing wall is a gap rather than a wall still to be built (at most
-twelve cells, every run of them reaching wall that stands), the gap is marked — the bots
-know their leak exactly and a person has to find it against the clock (`hints.ts`). Points
-float up from each island as they are banked; a time bar runs under the HUD. Sealed
+outlined (`hints.ts`). The gap itself used to be marked too, and was removed after the
+first human play: the marks were hard to tell from the piece ghost and from laid wall, and
+read as the only way to repair it when any closing shape will do. Points float up from
+each island as they are banked. **The time left** runs as a bar under the HUD and, in
+large faint figures, in open water near the middle of the map (`timerSpot.ts`: the
+largest all-water square close to the centre, 3x3 to 5x5, found once per match). **The
+aiming cursor** says whether a click will fire — a bright crosshair when a gun is ready,
+a small grey ring struck through when none is — with the number ready beside it. Sealed
 castles fly a banner in pixel style; a lost life lands as a banner over the island, red
 on the last; a knockout stamps the island and greys it for the rest of the match.
 

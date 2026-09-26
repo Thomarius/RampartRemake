@@ -6,6 +6,7 @@ import { E, KEY, N, S, W, buildAtlas } from './pixel/generators.js';
 import {
   dimEliminated,
   drawBuildHints,
+  drawFireReticle,
   hex,
   playerColour,
   tileX,
@@ -512,7 +513,7 @@ export class PixelTheme implements Theme {
       g.stroke({ width: 2, color: hex(this.art.palette.uiAccent) });
     }
 
-    drawBuildHints(g, state, view, ghost, this.art, performance.now());
+    drawBuildHints(g, view, ghost, this.art, performance.now());
 
     if (!ghost.tile) return;
     const colour = ghost.valid ? hex(this.art.palette.uiValid) : hex(this.art.palette.uiInvalid);
@@ -542,23 +543,6 @@ export class PixelTheme implements Theme {
       return;
     }
 
-    if (state.phase === 'combat') {
-      const cx = tileX(view, ghost.tile.x + 0.5);
-      const cy = tileY(view, ghost.tile.y + 0.5);
-      const r = view.tile * 1.1;
-      const ink = ghost.valid ? playerColour(this.art, humanPlayer, 'light') : colour;
-      g.circle(cx, cy, r);
-      g.stroke({ width: 2, color: ink });
-      for (const [dx, dy] of [
-        [-1, 0],
-        [1, 0],
-        [0, -1],
-        [0, 1],
-      ] as const) {
-        g.moveTo(cx + dx * r * 0.6, cy + dy * r * 0.6);
-        g.lineTo(cx + dx * r * 1.7, cy + dy * r * 1.7);
-      }
-      g.stroke({ width: 2, color: ink, alpha: 0.85 });
-    }
+    if (state.phase === 'combat') drawFireReticle(g, view, ghost, this.art, humanPlayer);
   }
 }

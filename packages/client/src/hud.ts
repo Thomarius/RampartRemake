@@ -80,6 +80,52 @@ export class Hud {
   private phaseKey = '';
   private phaseStartTick = 0;
 
+  /** Kept across frames, like the island banners, rather than rebuilt from markup. */
+  private bigTimer: HTMLElement | null = null;
+  private readyCount: HTMLElement | null = null;
+
+  /**
+   * The time left in large figures, in open water near the middle of the map — see
+   * `timerSpot`. Null hides it. Red for the last three seconds, like the bar.
+   */
+  showBigTimer(at: { x: number; y: number; sizePx: number } | null, seconds: number): void {
+    if (at === null) {
+      this.bigTimer?.remove();
+      this.bigTimer = null;
+      return;
+    }
+    if (this.bigTimer === null) {
+      this.bigTimer = document.createElement('div');
+      this.bigTimer.className = 'big-timer';
+      this.bannerRoot.append(this.bigTimer);
+    }
+    const text = String(seconds);
+    if (this.bigTimer.textContent !== text) this.bigTimer.textContent = text;
+    this.bigTimer.classList.toggle('urgent', seconds <= 3);
+    this.bigTimer.style.left = `${at.x}px`;
+    this.bigTimer.style.top = `${at.y}px`;
+    this.bigTimer.style.fontSize = `${Math.round(at.sizePx * 0.75)}px`;
+  }
+
+  /** How many cannons are ready, beside the aiming cursor. Null hides it. */
+  showReadyCount(at: { x: number; y: number } | null, count: number): void {
+    if (at === null) {
+      this.readyCount?.remove();
+      this.readyCount = null;
+      return;
+    }
+    if (this.readyCount === null) {
+      this.readyCount = document.createElement('div');
+      this.readyCount.className = 'ready-count';
+      this.bannerRoot.append(this.readyCount);
+    }
+    const text = String(count);
+    if (this.readyCount.textContent !== text) this.readyCount.textContent = text;
+    this.readyCount.classList.toggle('none', count === 0);
+    this.readyCount.style.left = `${at.x}px`;
+    this.readyCount.style.top = `${at.y}px`;
+  }
+
   /** Live banner nodes by player, kept across frames so their animation survives. */
   private readonly islandBanners = new Map<number, HTMLElement>();
 

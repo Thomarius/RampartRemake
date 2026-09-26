@@ -5,6 +5,7 @@ import { Graphics } from 'pixi.js';
 import {
   dimEliminated,
   drawBuildHints,
+  drawFireReticle,
   hex,
   playerColour,
   tileX,
@@ -237,7 +238,7 @@ export class FlatTheme implements Theme {
       g.stroke({ width: this.style.outlineWidthPx, color: hex(this.art.palette.uiAccent) });
     }
 
-    drawBuildHints(g, state, view, ghost, this.art, performance.now());
+    drawBuildHints(g, view, ghost, this.art, performance.now());
 
     if (!ghost.tile) return;
     const colour = ghost.valid ? hex(this.art.palette.uiValid) : hex(this.art.palette.uiInvalid);
@@ -266,20 +267,6 @@ export class FlatTheme implements Theme {
       return;
     }
 
-    if (state.phase === 'combat') {
-      const cx = tileX(view, ghost.tile.x + 0.5);
-      const cy = tileY(view, ghost.tile.y + 0.5);
-      const r = view.tile * 1.1;
-      g.circle(cx, cy, r);
-      g.stroke({
-        width: this.style.outlineWidthPx,
-        color: ghost.valid ? playerColour(this.art, humanPlayer, 'light') : colour,
-      });
-      g.moveTo(cx - r * 1.5, cy);
-      g.lineTo(cx + r * 1.5, cy);
-      g.moveTo(cx, cy - r * 1.5);
-      g.lineTo(cx, cy + r * 1.5);
-      g.stroke({ width: 1, color: hex(this.art.palette.uiInk), alpha: 0.7 });
-    }
+    if (state.phase === 'combat') drawFireReticle(g, view, ghost, this.art, humanPlayer);
   }
 }

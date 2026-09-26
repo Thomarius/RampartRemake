@@ -83,8 +83,6 @@ export interface Ghost {
   footprint: { w: number; h: number } | null;
   /** Castles the player may choose, during castle selection. */
   selectable: readonly { x: number; y: number; w: number; h: number }[];
-  /** Tiles that would seal a castle, when nothing is sealed and the gap is small. */
-  leak: readonly number[];
   /** The player's castles, when none of them is sealed. */
   unsealed: readonly { x: number; y: number; w: number; h: number }[];
 }
@@ -105,19 +103,64 @@ export function dimEliminated(g: Graphics, state: MatchState, view: ViewTransfor
 }
 
 /**
- * Marks a player's unsealed castles and the gap that would seal one. Shared by both
- * styles: it is information, not decoration, and should read the same in either. It
- * pulses, so it is not mistaken for part of the board.
+ * The aiming cursor, shared by both styles because what it says matters more than how
+ * it looks. It has to answer one question at a glance — will a click fire? — and a
+ * slight change of colour did not: ready is a bright ring with a crosshair in the
+ * player's colour, nothing ready is a small grey ring struck through. How many are
+ * ready is a number beside it, drawn by the HUD.
+ */
+export function drawFireReticle(
+  g: Graphics,
+  view: ViewTransform,
+  ghost: Ghost,
+  art: ArtConfig,
+  humanPlayer: number,
+): void {
+  if (ghost.tile === null) return;
+  const cx = tileX(view, ghost.tile.x + 0.5);
+  const cy = tileY(view, ghost.tile.y + 0.5);
+  const width = Math.max(2, Math.round(view.tile / 9));
+  if (ghost.valid) {
+    const r = view.tile * 1.1;
+    const ink = playerColour(art, humanPlayer, 'light');
+    g.circle(cx, cy, r);
+    g.stroke({ width: width + 1, color: ink });
+    for (const [dx, dy] of [
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1],
+    ] as const) {
+      g.moveTo(cx + dx * r * 0.45, cy + dy * r * 0.45);
+      g.lineTo(cx + dx * r * 1.7, cy + dy * r * 1.7);
+    }
+    g.stroke({ width, color: ink });
+    g.circle(cx, cy, Math.max(1.5, view.tile * 0.08));
+    g.fill({ color: ink });
+    return;
+  }
+  const r = view.tile * 0.7;
+  const grey = hex(art.palette.rockLight);
+  g.circle(cx, cy, r);
+  g.stroke({ width, color: grey, alpha: 0.6 });
+  g.moveTo(cx - r * 0.7, cy - r * 0.7);
+  g.lineTo(cx + r * 0.7, cy + r * 0.7);
+  g.stroke({ width, color: grey, alpha: 0.6 });
+}
+
+/**
+ * Outlines a player's castles while none of them is sealed. Shared by both styles: it
+ * is information, not decoration, and should read the same in either. It pulses, so it
+ * is not mistaken for part of the board.
  */
 export function drawBuildHints(
   g: Graphics,
-  state: MatchState,
   view: ViewTransform,
   ghost: Ghost,
   art: ArtConfig,
   nowMs: number,
 ): void {
-  if (ghost.unsealed.length === 0 && ghost.leak.length === 0) return;
+  if (ghost.unsealed.length === 0) return;
   const pulse = 0.75 + 0.25 * Math.sin(nowMs / 180);
   // The UI's ink rather than its red: red vanished on the red player's own island, and
   // any one colour is some player's. Light reads on all of them.
@@ -130,19 +173,6 @@ export function drawBuildHints(
       castle.h * view.tile + 4,
     );
     g.stroke({ width: Math.max(3, Math.round(view.tile / 7)), color: warn, alpha: pulse });
-  }
-  const inset = Math.max(1, Math.floor(view.tile / 8));
-  for (const i of ghost.leak) {
-    const x = i % state.width;
-    const y = (i - x) / state.width;
-    g.rect(
-      tileX(view, x) + inset,
-      tileY(view, y) + inset,
-      view.tile - inset * 2,
-      view.tile - inset * 2,
-    );
-    g.fill({ color: warn, alpha: pulse * 0.45 });
-    g.stroke({ width: 2, color: warn, alpha: pulse });
   }
 }
 
