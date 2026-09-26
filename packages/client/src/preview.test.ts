@@ -25,13 +25,11 @@ describe('the table preview', () => {
       preview.playerOfSeat.forEach((player, seat) => {
         expect(preview.colourOfSeat[seat]).toEqual(palette[player]);
       });
-      // Seats given the same team are teammates in the match. The labels themselves are
-      // renumbered by first appearance among the players, so compare who is with whom.
-      const teamOf = (seat: number): number | undefined =>
-        match.state.players[preview.playerOfSeat[seat] as number]?.team;
-      expect(teamOf(0)).toBe(teamOf(3));
-      expect(teamOf(1)).toBe(teamOf(2));
-      expect(teamOf(0)).not.toBe(teamOf(1));
+      // Each seat's team in the match is the very team the lobby showed it in, so the
+      // letters agree — they did not while ids went by first appearance among players.
+      teams.forEach((label, seat) => {
+        expect(match.state.players[preview.playerOfSeat[seat] as number]?.team).toBe(label);
+      });
     }
   });
 

@@ -4,6 +4,7 @@ import { Graphics } from 'pixi.js';
 
 import {
   FlagHoist,
+  Fireworks,
   Landings,
   dimEliminated,
   drawBuildHints,
@@ -68,6 +69,7 @@ export class FlatTheme implements Theme {
   private impacts: Impact[] = [];
   private crumbles: Crumble[] = [];
   private readonly landings = new Landings();
+  private readonly fireworks = new Fireworks();
   private readonly flags = new FlagHoist();
   /** Milliseconds of drawing, for the flags. */
   private clock = 0;
@@ -224,6 +226,7 @@ export class FlatTheme implements Theme {
 
     drawSealGlow(g, view, frame.sealGlow, this.art);
     this.landings.draw(g, view, this.art, frame.deltaMs);
+    this.fireworks.draw(g, view, this.art, frame.celebrate, frame.deltaMs);
     this.drawFlags(state, view, frame);
 
     for (const shot of state.shots) {

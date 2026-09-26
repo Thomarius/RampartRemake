@@ -21,6 +21,21 @@ export interface LifeLost {
 export interface PointsGained {
   amount: number;
   untilTick: number;
+  /** When the count began, and over how many ticks it runs up to `amount`. */
+  fromTick?: number;
+  countTicks?: number;
+}
+
+/**
+ * How much of a gain to show: counting up from nothing as the territory is tallied,
+ * rather than landing whole. Linear, so the figure keeps pace with the tally sweeping
+ * the ground; the whole amount once the count is over, or when there is none to run.
+ */
+export function countedSoFar(gain: PointsGained, tick: number): number {
+  const { fromTick, countTicks } = gain;
+  if (fromTick === undefined || countTicks === undefined || countTicks <= 0) return gain.amount;
+  const t = Math.min(1, Math.max(0, (tick - fromTick) / countTicks));
+  return Math.round(gain.amount * t);
 }
 
 export type BannerKind = 'life' | 'out' | 'gain';
@@ -69,11 +84,13 @@ export function bannersFor(
       // A life lost banks nothing, so the two never compete for the same island.
       const points = gained.get(player.id);
       if (points !== undefined && points.amount > 0 && state.tick < points.untilTick) {
+        const shown = countedSoFar(points, state.tick);
         out.push({
           player: player.id,
           kind: 'gain',
-          title: `+${points.amount}`,
-          detail: `${player.score} total`,
+          title: `+${shown}`,
+          // The total climbs with it, from what was held before this round.
+          detail: `${player.score - points.amount + shown} total`,
           urgent: false,
         });
       }

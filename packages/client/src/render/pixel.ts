@@ -5,6 +5,7 @@ import { Container, Graphics, Sprite, Texture } from 'pixi.js';
 import { E, KEY, N, S, W, buildAtlas } from './pixel/generators.js';
 import {
   FlagHoist,
+  Fireworks,
   Landings,
   dimEliminated,
   drawBuildHints,
@@ -146,6 +147,7 @@ export class PixelTheme implements Theme {
   private cracks = new Map<number, Crack>();
   private surf: Surf[] = [];
   private readonly landings = new Landings();
+  private readonly fireworks = new Fireworks();
   private splashes: Splash[] = [];
   private smoulders: Smoulder[] = [];
   private puffs: Puff[] = [];
@@ -644,6 +646,7 @@ export class PixelTheme implements Theme {
 
     drawSealGlow(g, view, frame.sealGlow, this.art);
     this.landings.draw(g, view, this.art, frame.deltaMs);
+    this.fireworks.draw(g, view, this.art, frame.celebrate, frame.deltaMs);
     this.drawSplashes(view, frame.deltaMs);
     this.drawSmoulders(view, frame.deltaMs);
     this.drawBarrels(state, view, frame.deltaMs);

@@ -38,3 +38,23 @@ export function seatOrder(seed: number, count: number): number[] {
   }
   return order;
 }
+
+/**
+ * Team labels, one per player, to dense team ids — in ascending order of label, so the
+ * table's Team A (label 0) is team 0 whichever players the shuffle dealt its seats to.
+ *
+ * It was order of first appearance among the players, which after the seat shuffle made
+ * the host's Team A come out as team 1 whenever a Team B seat happened to become player
+ * 0, and the letter on screen changed between the lobby and the match. A player with no
+ * label is a team of their own, numbered after every labelled team in player order —
+ * which, with no labels at all, is simply team = player.
+ */
+export function denseTeams(labels: readonly (number | undefined)[]): number[] {
+  const order = labels.map((label, id) => ({ label, id }));
+  const distinct = [...new Set(labels.filter((l): l is number => l !== undefined))].sort(
+    (a, b) => a - b,
+  );
+  const idOf = new Map(distinct.map((label, i) => [label, i]));
+  let next = distinct.length;
+  return order.map(({ label }) => (label === undefined ? next++ : (idOf.get(label) as number)));
+}

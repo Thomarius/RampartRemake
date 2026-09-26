@@ -48,8 +48,11 @@ import {
 import {
   bannerProgress,
   boardWithStanding,
+  crumbleOutward,
   looksAround,
+  lostWalls,
   stillStanding,
+  type Ruin,
   type SweptWall,
 } from './transition.js';
 import { ServerConnection } from './net/connection.js';
@@ -824,10 +827,35 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
   let drawnOwner = session.state.owner.slice();
 
   /** Walls, castles and cannons, with any swept wall still standing put back. */
+  /**
+   * Walls lost with a life, crumbling outward from the middle of the island; see
+   * `crumbleOutward`. Drawn standing until each one's moment comes.
+   */
+  let ruins: Ruin[] = [];
+  /** The structure layer as last drawn, beside the owners, to find what a wipe took. */
+  let drawnStructure = session.state.structure.slice();
+
+  /** Walls, castles and cannons, with any swept or ruined wall still standing put back. */
   function drawBoard(): void {
-    const board = boardWithStanding(session.state, swept);
+    const board = boardWithStanding(session.state, [...swept, ...ruins]);
     scene.drawStructures({ ...session.state, ...board });
     drawnOwner = board.owner.slice();
+    drawnStructure = board.structure.slice();
+  }
+
+  /** Takes down each ruined block as its moment comes. */
+  function crumbleRuins(): void {
+    if (ruins.length === 0) return;
+    const now = performance.now();
+    const falling = ruins.filter((ruin) => ruin.dueMs <= now);
+    if (falling.length === 0) return;
+    const width = session.state.width;
+    for (const ruin of falling) {
+      const x = ruin.index % width;
+      scene.noteCrumble({ x, y: (ruin.index - x) / width, owner: ruin.owner - 1 });
+    }
+    ruins = ruins.filter((ruin) => ruin.dueMs > now);
+    drawBoard();
   }
 
   const fit = (): void => {
@@ -977,15 +1005,42 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     );
   }
 
-  /** Advances the floods by a frame, and returns the glow at their fronts. */
+  /**
+   * The tally at a resolution: a glow sweeping each scoring island's territory outward
+   * from its castles while its points count up, timed to finish together (`tallyMs`).
+   * Glow only — the ground is already held, so nothing is hidden.
+   */
+  let tallies: { flood: Flood; speed: number }[] = [];
+  /** Players whose points were just banked, tallied once the enclosure is refreshed. */
+  const tallyDue: number[] = [];
+
+  function startTallies(now: number): void {
+    const { width, castles } = session.state;
+    const empty = new Uint8Array(live.territory.length);
+    for (const player of tallyDue.splice(0)) {
+      const theirs = live.territory.map((owner) => (owner === player + 1 ? owner : 0));
+      const flood = floodFrom(empty, theirs, width, castles, now);
+      if (flood === null) continue;
+      const tallyMs = defaultConfigBundle.art.effects.tallyMs;
+      tallies.push({ flood, speed: ((flood.maxDist + sealGlowTiles) * 1000) / tallyMs });
+    }
+  }
+
+  /** Advances the floods and tallies by a frame, and returns the glow at their fronts. */
   function advanceFloods(): SealGlow[] {
-    if (floods.length === 0) return [];
+    if (floods.length === 0 && tallies.length === 0) return [];
     const now = performance.now();
+    const width = session.state.width;
+    tallies = tallies.filter(({ flood, speed }) => !floodOver(flood, now, speed, sealGlowTiles));
+    const tallied = tallies.flatMap(({ flood, speed }) =>
+      sealGlow([flood], now, width, speed, sealGlowTiles),
+    );
+    if (floods.length === 0) return tallied;
     floods = floods.filter(
       (flood) => !floodOver(flood, now, sealFloodTilesPerSecond, sealGlowTiles),
     );
     drawFloodedTerritory(now);
-    return sealGlow(floods, now, session.state.width, sealFloodTilesPerSecond, sealGlowTiles);
+    return [...sealGlow(floods, now, width, sealFloodTilesPerSecond, sealGlowTiles), ...tallied];
   }
 
   function applyEvents(events: readonly MatchEvent[]): void {
@@ -1031,11 +1086,17 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
           const hold = Math.ceil(
             (defaultConfigBundle.art.hud.pointsBannerMs * session.state.ruleset.tickRateHz) / 1000,
           );
+          const { tallyMs } = defaultConfigBundle.art.effects;
+          const count = Math.ceil((tallyMs * session.state.ruleset.tickRateHz) / 1000);
           for (const result of event.results) {
             gained.set(result.player, {
               amount: result.territoryPoints + result.damagePoints,
               untilTick: event.tick + hold,
+              // Counted up as the territory is tallied, rather than landing whole.
+              fromTick: event.tick,
+              countTicks: count,
             });
+            if (result.territoryPoints > 0) tallyDue.push(result.player);
           }
           resolvedSinceAnnounce = true;
           structuresChanged = true;
@@ -1058,6 +1119,21 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
             remaining: event.continuesRemaining,
             untilTick: event.tick + hold,
           });
+          // The wipe took the island's wall in one step; take it down outward instead.
+          const island = session.state.players[event.player]?.islandId ?? event.player + 1;
+          const centre = islandCentre.get(event.player);
+          if (centre !== undefined) {
+            const lost = lostWalls(drawnStructure, drawnOwner, session.state.structure, island);
+            ruins.push(
+              ...crumbleOutward(
+                lost,
+                session.state.width,
+                centre,
+                performance.now(),
+                defaultConfigBundle.art.effects.lifeCrumbleMs,
+              ),
+            );
+          }
           structuresChanged = true;
           territoryChanged = true;
           break;
@@ -1094,6 +1170,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
       );
       if (flood !== null) floods.push(flood);
       drawFloodedTerritory(now);
+      startTallies(now);
       hints = buildHints(session.state, session.humanPlayer, live);
     }
   }
@@ -1111,6 +1188,15 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     drawIslandBanners();
     hud.update(session.state, session.humanPlayer, session.status(), live.enclosedCastlesByPlayer);
 
+    crumbleRuins();
+    // Once the match is over, fireworks over whoever won it.
+    const celebrate =
+      session.state.phase === 'game_over'
+        ? session.state.winners.flatMap((id) => {
+            const centre = islandCentre.get(id);
+            return centre === undefined ? [] : [{ ...centre, owner: id }];
+          })
+        : [];
     scene.drawEffects(
       session.state,
       session.tickFraction,
@@ -1118,6 +1204,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
       live.castleEnclosed,
       advanceFloods(),
       session.humanPlayer,
+      celebrate,
     );
     const ghost = { ...controls.ghost(), ...hints };
     scene.drawOverlay(session.state, ghost, session.humanPlayer);

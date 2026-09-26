@@ -13,8 +13,10 @@ import { describe, expect, it } from 'vitest';
 import {
   bannerProgress,
   boardWithStanding,
+  crumbleOutward,
   looksAround,
   lookOf,
+  lostWalls,
   stillStanding,
   type SweptWall,
 } from './transition.js';
@@ -151,5 +153,31 @@ describe('the sweep, drawn under the banner', () => {
     const first = walls[0] as SweptWall;
     after.structure[first.index] = Structure.Cannon;
     expect(boardWithStanding(after, walls).structure[first.index]).toBe(Structure.Cannon);
+  });
+});
+
+describe('a lost life, taken down outward', () => {
+  it('finds the walls the wipe took from that island, and only those', () => {
+    const drawn = new Uint8Array([Structure.Wall, Structure.Wall, Structure.Wall, Structure.Empty]);
+    const owner = new Uint8Array([1, 2, 1, 0]);
+    const now = new Uint8Array([Structure.Empty, Structure.Wall, Structure.Wall, Structure.Empty]);
+    // Island 1 lost the first block; the third it still holds; the second is island 2's.
+    expect(lostWalls(drawn, owner, now, 1)).toEqual([{ index: 0, owner: 1 }]);
+  });
+
+  it('brings them down from the middle of the island to its edge', () => {
+    const width = 10;
+    const walls = [
+      { index: 5 * width + 5, owner: 1 },
+      { index: 5 * width + 7, owner: 1 },
+      { index: 5 * width + 9, owner: 1 },
+    ];
+    const ruins = crumbleOutward(walls, width, { x: 5, y: 5 }, 1000, 800);
+    expect(ruins.map((r) => r.dueMs)).toEqual([1000, 1400, 1800]);
+  });
+
+  it('brings a lone block down at once', () => {
+    const ruins = crumbleOutward([{ index: 3, owner: 1 }], 10, { x: 3, y: 0 }, 50, 800);
+    expect(ruins[0]?.dueMs).toBe(50);
   });
 });

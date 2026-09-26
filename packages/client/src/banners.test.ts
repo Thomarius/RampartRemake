@@ -1,7 +1,7 @@
 import type { MatchState } from '@rampart/sim';
 import { describe, expect, it } from 'vitest';
 
-import { bannersFor, type LifeLost } from './banners.js';
+import { bannersFor, countedSoFar, type LifeLost } from './banners.js';
 
 /** Only the fields the banners read. */
 function state(tick: number, players: unknown[], phase = 'build'): MatchState {
@@ -88,5 +88,18 @@ describe('island banners', () => {
     expect(bannersFor(state(200, [alive(0, 'Ada')]), new Map(), gained)).toEqual([]);
     const none = new Map([[0, { amount: 0, untilTick: 200 }]]);
     expect(bannersFor(state(1, [alive(0, 'Ada')]), new Map(), none)).toEqual([]);
+  });
+
+  it('counts the points up as the territory is tallied, total and all', () => {
+    const gain = { amount: 80, untilTick: 500, fromTick: 100, countTicks: 40 };
+    const gained = new Map([[0, gain]]);
+    const ada = { ...alive(0, 'Ada'), score: 200 };
+    const at = (tick: number) => bannersFor(state(tick, [ada]), new Map(), gained)[0];
+    expect(at(100)).toMatchObject({ title: '+0', detail: '120 total' });
+    expect(at(120)).toMatchObject({ title: '+40', detail: '160 total' });
+    expect(at(140)).toMatchObject({ title: '+80', detail: '200 total' });
+    // And holds the whole amount once the count is done.
+    expect(at(300)).toMatchObject({ title: '+80', detail: '200 total' });
+    expect(countedSoFar({ amount: 80, untilTick: 500 }, 0)).toBe(80);
   });
 });

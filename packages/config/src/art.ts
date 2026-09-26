@@ -97,6 +97,12 @@ export const ArtConfigSchema = z
       landingDustPerEdge: z.number().int().nonnegative(),
       /** One pulse of the red border round the board in overtime. */
       overtimePulseMs: z.number().int().positive(),
+      /** The points banked at a resolution counting up as the territory is tallied. */
+      tallyMs: z.number().int().positive(),
+      /** A lost life's walls crumbling outward from the middle of the island. */
+      lifeCrumbleMs: z.number().int().positive(),
+      /** Between rockets over the winners, once the match is over. */
+      fireworkEveryMs: z.number().int().positive(),
     }),
     /** How long the HUD holds its news. */
     hud: z.strictObject({

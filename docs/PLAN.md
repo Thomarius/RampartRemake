@@ -192,7 +192,8 @@ forfeited. `maxRounds: null` lifts the cap for tests; no host can choose it.
   shuffled at the start (§6). Measured to decide nothing (ARCHIVE 10u).
 - **Shown** by colour families — each team one hue, each member a shade — plus a team letter
   over every island, a roster grouped by team, and team wording on banners and the end
-  screen.
+  screen. **The letter is the lobby's**: `denseTeams` numbers the host's labels in label
+  order, so Team A in the lobby is Team A in play whichever seats the shuffle dealt where.
 
 ---
 
@@ -365,6 +366,14 @@ for it, the viewer's own ringed — beside seat cards that carry the same number
 colour, a rank badge per bot tier, and columns per team. A newcomer's card flashes as they
 sit down.
 
+**The end of a round and of a match** (V6). Points banked at a resolution count up in the
+island's banner, total and all, while a glow sweeps the island's territory outward from
+its castles, both over `effects.tallyMs`. A lost life takes the island's wall down outward
+from its middle over `effects.lifeCrumbleMs` instead of clearing it in a frame (the
+cannons, removed from the state outright, still go at once). Once the match is over,
+fireworks burst over the winners' islands in their colours for as long as the screen
+stays up.
+
 **Territory is drawn as the board stands, not as the sim last recorded it.** The sim
 refreshes `territory` at placements and resolutions but not when shots land, since a
 breach only counts at a resolution; drawn from state, a castle breached in combat stayed
@@ -508,7 +517,7 @@ every resolution against an independent search, not only on unit pictures.
 | M6  | Full scope: 2–8 players, audio, lobby, Docker, deployment | Done but for audio files |
 | M7  | Balance pass                                              | **In progress**          |
 | M8  | Team mode, and one lobby for online and offline           | Done                     |
-| M9  | Visual pass: phase themes, banner wipe, effects, lobby    | In progress (§11.8)      |
+| M9  | Visual pass: phase themes, banner wipe, effects, lobby    | Done (§11.8)             |
 
 ---
 
@@ -517,10 +526,8 @@ every resolution against an independent search, not only on unit pictures.
 **Where to start (2026-09-26).** Team mode and the polish pass are done; the user is
 playing test matches. The next milestone is **11.2, elimination tuning**, as soon as that
 play has given a feel for it — its plan is ready and starts with a baseline measurement.
-Beside it, independent of balance: **11.6**, bots as personality × skill, and **11.8**,
-the visual pass, which changes no game logic and so can run while the human testing
-does — V1–V5 (the theme-switching banner, the cinematic pixel style, build and combat
-effects, the lobby) are done; V6 is next. Smaller items are in 11.5.
+Beside it, independent of balance: **11.6**, bots as personality × skill. **11.8**, the
+visual pass, is done. Smaller items are in 11.5.
 
 ### 11.1 Round cap and points scoring — done
 
@@ -628,12 +635,6 @@ balanced means.
   every trigger are wired.
 - Islands look boxy; `coastlineRoughness` and `noiseFrequency` are config.
 - Rings at 5 and 7 players make considerably larger maps than grids would. One JSON edit.
-- **Team letters can differ between the lobby and the match.** The lobby names teams by
-  the labels seats were given; `createMatch` renumbers labels densely in order of first
-  appearance among the players, after the shuffle — so the lobby's Team A may be called
-  Team B in play. Membership and colours are right (the preview renumbers the same way);
-  only the letter moves. Found in V5, predates it. Fix by passing labels already dense in
-  player order, or by keeping the host's labels in the sim.
 
 ### 11.6 Bots as personality and skill
 
@@ -652,9 +653,9 @@ The rules are §1.8, seating and the lobby §6; how it was built and measured is
 Left open: **bots do not help a teammate build**, even under `crossIslandBuild: all` —
 teaching one to help without wrecking a person's plan is its own question.
 
-### 11.8 Visual pass — in progress
+### 11.8 Visual pass — done
 
-**Agreed 2026-09-26. V1–V5 done** (ARCHIVE 10w–10z, 11a); V6 open. Everything here
+**Agreed 2026-09-26, finished the same day** (ARCHIVE 10w–10z, 11a, 11b). Everything here
 is client-side and cosmetic: no sim, protocol or ruleset change, so it cannot desync a match or move a balance measurement,
 and it can proceed while 11.2 waits on human play. Cosmetic randomness may use
 `Math.random` (the client is outside the lint rule), but durations, sizes and counts
@@ -826,7 +827,9 @@ bot in their own place, which replaces the "watch the bots" button.
 - A **pixel-art title**, and a little feedback when a person takes a seat or the room code
   is copied.
 
-#### V6 — Resolution and match moments
+#### V6 — Resolution and match moments — done
+
+Kept as planned, for the record; how it turned out is §7 and ARCHIVE 11b.
 
 - **Points count up** across the territory as they are banked, during the intermission.
 - **A lost life** crumbles the island's walls outward rather than clearing them at once.

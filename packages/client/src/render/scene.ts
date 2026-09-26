@@ -9,6 +9,7 @@ import { FlatTheme } from './flat.js';
 import { PixelTheme } from './pixel.js';
 import {
   hex,
+  type Celebration,
   type Cell,
   type Debris,
   type Ghost,
@@ -284,6 +285,7 @@ export class Scene {
     castleSealed: readonly boolean[],
     sealGlow: readonly SealGlow[] = [],
     humanPlayer = -1,
+    celebrate: readonly Celebration[] = [],
   ): void {
     this.applyShake(deltaMs);
     for (const slot of this.visible()) {
@@ -293,6 +295,7 @@ export class Scene {
         castleSealed,
         sealGlow,
         humanPlayer,
+        celebrate,
       });
     }
   }

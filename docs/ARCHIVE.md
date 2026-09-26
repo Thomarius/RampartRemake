@@ -1551,3 +1551,28 @@ which replaces the "watch the bots play" button.
   the host watching, the host's match ran as a spectator, and the guest's island was the
   one the preview had shown. A server already on 8080 belonged to the user and was left
   alone — it runs the old protocol until restarted.
+
+## 11b. The end of a round and a match (V6), and the team letters
+
+The last package of the visual pass, and the fix for the team letters found in V5.
+
+- **Team letters now survive the shuffle.** `createMatch` numbered team labels in order of
+  first appearance among the players, after the seat shuffle, so the host's Team A came
+  out as team 1 whenever a Team B seat became player 0 — and the letter changed between
+  lobby and match. `denseTeams` (in `teams.ts`) numbers them in label order instead, and
+  both `createMatch` and the lobby preview call it, so the two cannot drift again. A match
+  created without labels is unchanged: each player is their own team, numbered in player
+  order. No recorded hashes existed to break — the replay test records within its own run.
+- **Points count up** in the island banner, total and all, while a glow sweeps the
+  territory outward from its castles, both over `tallyMs`. The glow is the seal flood's,
+  run without hiding anything and at a speed that finishes with the count. The HUD had
+  rebuilt a banner's class whenever its text changed, which would have replayed its
+  entrance on every counted frame; the entrance now restarts only for a new kind of news.
+- **A lost life crumbles outward** from the middle of the island over `lifeCrumbleMs`,
+  each block dropping debris as it goes — the deferred-sweep mechanism again, with times
+  instead of a banner line. Cannons still vanish at once: the sim removes them from the
+  state, and the client does not keep them.
+- **Fireworks** over the winners for as long as the game-over screen stays. The first
+  bursts were too small and sparse to read as a celebration and were enlarged.
+- Seen in frame bursts across a resolution in which the player failed and the bots scored,
+  and at a game-over snapshot.

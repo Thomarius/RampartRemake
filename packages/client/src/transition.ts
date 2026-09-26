@@ -105,3 +105,52 @@ export function boardWithStanding(
   }
   return { structure, owner };
 }
+
+/** A wall block lost with a life, and when it crumbles. */
+export interface Ruin extends SweptWall {
+  dueMs: number;
+}
+
+/**
+ * The walls an island lost when its owner spent a life: standing on the board as it was
+ * last drawn, owned by that island, and gone from the state now. The sim wipes the island
+ * in one step; the client takes them down over a moment instead.
+ */
+export function lostWalls(
+  drawnStructure: Uint8Array,
+  drawnOwner: Uint8Array,
+  structureNow: Uint8Array,
+  island: number,
+): SweptWall[] {
+  const lost: SweptWall[] = [];
+  for (let i = 0; i < structureNow.length; i++) {
+    if (drawnStructure[i] !== Structure.Wall || drawnOwner[i] !== island) continue;
+    if (structureNow[i] === Structure.Wall) continue;
+    lost.push({ index: i, owner: island });
+  }
+  return lost;
+}
+
+/**
+ * When each lost block crumbles: outward from the middle of the island over `spanMs`, so
+ * the fall spreads from the heart of the failed defence to its edges rather than the
+ * whole wall blinking out.
+ */
+export function crumbleOutward(
+  walls: readonly SweptWall[],
+  width: number,
+  centre: { x: number; y: number },
+  startMs: number,
+  spanMs: number,
+): Ruin[] {
+  const distance = (index: number): number => {
+    const x = index % width;
+    const y = (index - x) / width;
+    return Math.hypot(x - centre.x, y - centre.y);
+  };
+  const farthest = walls.reduce((most, wall) => Math.max(most, distance(wall.index)), 0);
+  return walls.map((wall) => ({
+    ...wall,
+    dueMs: startMs + (farthest === 0 ? 0 : (distance(wall.index) / farthest) * spanMs),
+  }));
+}

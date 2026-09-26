@@ -1,5 +1,11 @@
 import type { ArtConfig, PlayerPalette, TerrainConfig } from '@rampart/config';
-import { Terrain, generateTerrain, seatOrder, type GeneratedTerrain } from '@rampart/sim';
+import {
+  Terrain,
+  denseTeams,
+  generateTerrain,
+  seatOrder,
+  type GeneratedTerrain,
+} from '@rampart/sim';
 
 import { matchPalette } from './colours.js';
 
@@ -44,18 +50,13 @@ export function tablePreview(
 ): TablePreview {
   const terrain = terrainFor(terrainConfig, playerCount, seed);
   const playerOfSeat = seatOrder(seed, playerCount);
-  // The match's own palette rule, over the players the seats will become. Team labels
-  // become dense ids in order of first appearance among the players, as `createMatch`
-  // makes them — the colour family follows the id, so skipping this picks the wrong one.
-  const labels = new Array<number>(playerCount);
+  // The match's own palette rule, over the players the seats will become, with team
+  // ids made exactly as `createMatch` makes them — the colour family follows the id.
+  const labels = new Array<number | undefined>(playerCount);
   playerOfSeat.forEach((player, seat) => {
-    labels[player] = teamsBySeat[seat] ?? -1 - seat;
+    labels[player] = teamsBySeat[seat];
   });
-  const dense = new Map<number, number>();
-  const players = labels.map((label, id) => {
-    if (!dense.has(label)) dense.set(label, dense.size);
-    return { id, team: dense.get(label) as number };
-  });
+  const players = denseTeams(labels).map((team, id) => ({ id, team }));
   const byPlayer = matchPalette(art, { players });
   const colourOfSeat = playerOfSeat.map((player) => byPlayer[player] as PlayerPalette);
   return { terrain, playerOfSeat, colourOfSeat };

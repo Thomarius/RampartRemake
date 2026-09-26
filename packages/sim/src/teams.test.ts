@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { applyAction, createMatch, step } from './match.js';
 import { canPlacePiece } from './placement.js';
 import { fire, resolveImpacts } from './shots.js';
-import { seatOrder, teamScore } from './teams.js';
+import { seatOrder, teamScore, denseTeams } from './teams.js';
 import { stateFromAscii, withoutContinues } from './testing.js';
 import { Structure, type MatchState } from './types.js';
 
@@ -222,5 +222,23 @@ describe('which seat gets which island', () => {
     expect(seatOrder(7, 8)).toEqual(order);
     const differs = [1, 2, 3, 4, 5].some((seed) => seatOrder(seed, 8).join() !== order.join());
     expect(differs).toBe(true);
+  });
+});
+
+describe('team ids from the table labels', () => {
+  it('numbers teams in label order, whichever player comes first', () => {
+    // Player 0 was dealt a Team B seat: Team A must still be team 0, so the letter the
+    // lobby showed is the letter the match shows.
+    expect(denseTeams([1, 0, 0, 1])).toEqual([1, 0, 0, 1]);
+    expect(denseTeams([2, 0, 1])).toEqual([2, 0, 1]);
+  });
+
+  it('closes gaps between labels', () => {
+    expect(denseTeams([5, 9, 5, 9])).toEqual([0, 1, 0, 1]);
+  });
+
+  it('makes each unlabelled player a team of their own, in player order', () => {
+    expect(denseTeams([undefined, undefined, undefined])).toEqual([0, 1, 2]);
+    expect(denseTeams([undefined, 0, undefined, 0])).toEqual([1, 0, 2, 0]);
   });
 });

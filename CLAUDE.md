@@ -137,16 +137,12 @@ lists it in priority order:
    free-for-all (team seating is measured, and fair).
 5. Bots as personality × skill (§11.6), independent of balance.
 
-**M9, the visual pass (§11.8), is in progress** and touches no game logic, so it can run
-while human testing does. V1 is done (ARCHIVE 10w): a build look and a combat look (flat
-and pixel by default), swapped by the banners either side of combat as they cross the
-board, with the "Place cannons" banner drawing the sweep away. V2 is done (ARCHIVE 10x):
-the pixel style made the cinematic combat look. V3 is done (ARCHIVE 10y): sealed ground
-floods out from its castle, flags are hoisted, pieces settle, overtime rings the board.
-V4 is done (ARCHIVE 10z): impacts by what they hit, smoke, warnings on your own wall,
-flags lowered on a breach. V5 is done (ARCHIVE 11a): the lobby shows the real map, the
-seed is fixed and random when a table is set, the host may seat a bot in their own place.
-V6 is next.
+**M9, the visual pass (§11.8), is done** (ARCHIVE 10w–11b), and touched no game logic:
+a build look and a combat look (flat and pixel by default) swapped by the banners either
+side of combat as they cross the board, the "Place cannons" banner drawing the sweep
+away; the pixel style made cinematic; effects for building, combat, the end of a round
+and of a match; a lobby showing the real map, with a seed fixed and random when a table
+is set and the host free to seat a bot in their own place.
 
 **No audio files exist yet** beyond two test files; the user is producing them, and
 missing files are silent by design. `assets/audio/README.md` lists every cue.

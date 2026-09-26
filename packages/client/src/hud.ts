@@ -240,7 +240,7 @@ export class Hud {
         this.bannerRoot.append(node);
         this.islandBanners.set(banner.player, node);
       }
-      const text = `${banner.kind}|${banner.title}|${banner.detail}`;
+      const text = `${banner.title}|${banner.detail}`;
       if (node.dataset.text !== text) {
         node.dataset.text = text;
         const title = document.createElement('strong');
@@ -251,8 +251,12 @@ export class Hud {
           detail.textContent = banner.detail;
           node.append(detail);
         }
-        // A new kind of news restarts the entrance, so a life lost after points were
-        // shown lands as hard as one on its own.
+      }
+      // A new kind of news restarts the entrance, so a life lost after points were shown
+      // lands as hard as one on its own. Only a new kind: points counting up change the
+      // text every frame, and restarting then would replay the entrance every frame.
+      if (node.dataset.kind !== banner.kind) {
+        node.dataset.kind = banner.kind;
         node.className = `island-banner ${banner.kind}`;
         node.style.animationDuration = banner.kind === 'gain' ? `${banner.holdMs}ms` : '';
       }

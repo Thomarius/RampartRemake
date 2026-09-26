@@ -74,6 +74,15 @@ export interface EffectFrame {
   sealGlow: readonly SealGlow[];
   /** The player at this screen, or -1 when watching: whose wall is under threat. */
   humanPlayer: number;
+  /** Winners' islands, by centre and owner, once the match is over: fireworks there. */
+  celebrate: readonly Celebration[];
+}
+
+export interface Celebration {
+  x: number;
+  y: number;
+  /** Player id, for the colour. */
+  owner: number;
 }
 
 export interface Cell {
@@ -346,6 +355,93 @@ export class Landings {
       g.fill({ color: playerColour(art, landing.owner, 'light'), alpha: 0.55 * (1 - t) });
     }
     this.landings = this.landings.filter((landing) => landing.age < span);
+  }
+}
+
+/**
+ * Fireworks over the winning islands for as long as the match is over: rockets rising
+ * from each island and bursting in its owner's colours. Shared by both styles — the end
+ * of a match deserves the same send-off in either.
+ */
+export class Fireworks {
+  private rockets: { x: number; y: number; peak: number; age: number; owner: number }[] = [];
+  private sparks: {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    age: number;
+    colour: number;
+  }[] = [];
+  private sinceLaunch = 0;
+
+  draw(
+    g: Graphics,
+    view: ViewTransform,
+    art: ArtConfig,
+    celebrate: readonly Celebration[],
+    deltaMs: number,
+  ): void {
+    const dt = deltaMs / 1000;
+    this.sinceLaunch += deltaMs;
+    if (celebrate.length > 0 && this.sinceLaunch >= art.effects.fireworkEveryMs) {
+      this.sinceLaunch = 0;
+      const from = celebrate[Math.floor(Math.random() * celebrate.length)] as Celebration;
+      this.rockets.push({
+        x: from.x + (Math.random() - 0.5) * 6,
+        y: from.y + 2,
+        peak: from.y - 2 - Math.random() * 4,
+        age: 0,
+        owner: from.owner,
+      });
+    }
+
+    // Rockets climb, slowing, and burst at the top of their climb.
+    const rise = 700;
+    for (const rocket of this.rockets) {
+      rocket.age += deltaMs;
+      const t = Math.min(1, rocket.age / rise);
+      const y = rocket.y + (rocket.peak - rocket.y) * (1 - (1 - t) * (1 - t));
+      g.circle(tileX(view, rocket.x), tileY(view, y), Math.max(1.5, view.tile * 0.12));
+      g.fill({ color: hex(art.palette.emberHot) });
+      g.circle(tileX(view, rocket.x), tileY(view, y + 0.35), Math.max(1, view.tile * 0.08));
+      g.fill({ color: hex(art.palette.emberMid), alpha: 0.6 });
+      if (t < 1) continue;
+      const colours = [
+        playerColour(art, rocket.owner, 'light'),
+        playerColour(art, rocket.owner, 'base'),
+        hex(art.palette.uiInk),
+      ];
+      for (let k = 0; k < 40; k++) {
+        const angle = (k / 40) * Math.PI * 2 + Math.random() * 0.2;
+        const speed = 3.5 + Math.random() * 3.5;
+        this.sparks.push({
+          x: rocket.x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          age: 0,
+          colour: colours[k % colours.length] as number,
+        });
+      }
+    }
+    this.rockets = this.rockets.filter((rocket) => rocket.age < rise);
+
+    const life = 1200;
+    for (const spark of this.sparks) {
+      spark.age += deltaMs;
+      const drag = Math.exp(-1.8 * dt);
+      spark.vx *= drag;
+      spark.vy = spark.vy * drag + 2.2 * dt;
+      spark.x += spark.vx * dt;
+      spark.y += spark.vy * dt;
+      const t = spark.age / life;
+      if (t >= 1) continue;
+      const size = Math.max(2, view.tile * 0.24 * (1 - t * 0.5));
+      g.rect(tileX(view, spark.x) - size / 2, tileY(view, spark.y) - size / 2, size, size);
+      g.fill({ color: spark.colour, alpha: 1 - t * t });
+    }
+    this.sparks = this.sparks.filter((spark) => spark.age < life);
   }
 }
 

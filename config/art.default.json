@@ -284,7 +284,10 @@
     "flagLowerMs": 550,
     "landingMs": 240,
     "landingDustPerEdge": 2,
-    "overtimePulseMs": 800
+    "overtimePulseMs": 800,
+    "tallyMs": 1400,
+    "lifeCrumbleMs": 1600,
+    "fireworkEveryMs": 300
   },
   "hud": {
     "pointsBannerMs": 8000
