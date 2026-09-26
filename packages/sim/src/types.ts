@@ -34,8 +34,11 @@ export interface PlayerState {
   cannonsToPlace: number;
   /** Position in this round's queue. */
   pieceIndex: number;
-  /** Lives left: failing to seal spends one instead of ending the match. */
-  continuesRemaining: number;
+  /**
+   * The team this player is on. Every match is a team match: free-for-all is teams of
+   * one, so a rule written for teams is the free-for-all rule too.
+   */
+  team: number;
   /**
    * The round this player's piece schedule is at, which is not always the match's.
    *
@@ -53,6 +56,21 @@ export interface PlayerState {
    * points, because failing to seal forfeits them.
    */
   wallsDestroyed: number;
+}
+
+/**
+ * What a team holds in common: its lives. Score is not here — each member keeps their
+ * own, and the team's is their sum (`teamScore`).
+ */
+export interface TeamState {
+  id: number;
+  /**
+   * Lives left in the pool: the sum of every member's continues at the start. A member
+   * who fails to seal spends one; failing with none left puts the whole team out.
+   */
+  continuesRemaining: number;
+  /** The pool as it started, so a continue can count how many the team has spent. */
+  continuesAtStart: number;
 }
 
 export interface Castle {
@@ -183,6 +201,8 @@ export interface MatchState {
   overtime: boolean;
 
   players: PlayerState[];
+  /** Indexed by team id. */
+  teams: TeamState[];
 
   /** Static after generation. */
   terrain: Uint8Array;

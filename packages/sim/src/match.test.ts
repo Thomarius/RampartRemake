@@ -643,7 +643,8 @@ describe('continues', () => {
     expect(event).not.toBeNull();
     const ruleset = state.ruleset;
     const player = state.players[(event as { player: number }).player] as PlayerState;
-    const spent = ruleset.elimination.continues - player.continuesRemaining;
+    const team = state.teams[player.team]!;
+    const spent = team.continuesAtStart - team.continuesRemaining;
     expect(spent).toBe(1);
     expect(player.cannonsToPlace).toBe(
       ruleset.cannons.startingCount + ruleset.elimination.extraCannonsPerContinue * spent,

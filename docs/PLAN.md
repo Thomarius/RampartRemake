@@ -535,9 +535,12 @@ aggressive, defensive, expander), how the lobby offers the pair, and whether
 `server.botDifficulty` becomes two settings. Independent of balance, so it can run beside
 11.2.
 
-### 11.7 Team mode — planned, agreed 2026-09-26
+### 11.7 Team mode — in progress, T1 done
 
-Chosen by the user to come next, ahead of 11.2–11.6. Nothing is built.
+Chosen by the user to come next, ahead of 11.2–11.6. **T1, the sim core, is built**: teams in
+the state, pooled lives, team elimination and winners, no friendly fire, the capped
+continue bonus. Free-for-all outcomes checked unchanged to the tick against the code
+before it, over four three-player matches.
 
 #### The rules
 

@@ -2,6 +2,7 @@ import type { CraterPattern } from '@rampart/config';
 
 import { distanceFixed, distanceSquared } from './math.js';
 import { playerOf, type Rejection } from './placement.js';
+import { sameTeam } from './teams.js';
 import { Structure, type Cannon, type MatchState, type Shot } from './types.js';
 
 /** Tiles a landed shot clears, relative to the impact tile. */
@@ -97,11 +98,14 @@ export function fire(
   }
   // Refused rather than fired and wasted: a shot here could only ever hit your own
   // wall, which neither damages it nor scores.
-  if (
-    !state.ruleset.shots.damagesOwnWalls &&
-    state.islandId[ty * state.width + tx] === player.islandId
-  ) {
+  const island = state.islandId[ty * state.width + tx] as number;
+  if (!state.ruleset.shots.damagesOwnWalls && island === player.islandId) {
     return { rejection: 'own_island' };
+  }
+  // A teammate's island never, whatever the rules say about your own: a team cannot
+  // attack itself in any way.
+  if (island !== 0 && island !== player.islandId && sameTeam(state, playerId, island - 1)) {
+    return { rejection: 'teammate_island' };
   }
 
   const cannon = findReadyCannon(state, playerId, tx, ty);
@@ -162,7 +166,12 @@ export function resolveImpacts(state: MatchState): void {
         if (tx < 0 || ty < 0 || tx >= state.width || ty >= state.height) continue;
         const i = ty * state.width + tx;
         if (state.structure[i] !== Structure.Wall) continue;
-        const opponents = state.owner[i] !== 0 && state.owner[i] !== shooterIsland;
+        const owner = state.owner[i] as number;
+        const teammate =
+          owner !== 0 && owner !== shooterIsland && sameTeam(state, shot.owner, owner - 1);
+        const opponents = owner !== 0 && !sameTeam(state, shot.owner, owner - 1);
+        // A teammate's wall never falls, even to a crater wider than the aim.
+        if (teammate) continue;
         if (!opponents && !state.ruleset.shots.damagesOwnWalls) continue;
         if (opponents && shooter) shooter.wallsDestroyed++;
         state.structure[i] = Structure.Empty;

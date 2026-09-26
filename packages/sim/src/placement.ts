@@ -22,7 +22,8 @@ export type Rejection =
   | 'castle_taken'
   | 'already_selected'
   | 'own_island'
-  | 'overtime_spent';
+  | 'overtime_spent'
+  | 'teammate_island';
 
 export function playerOf(state: MatchState, id: number): PlayerState | null {
   return state.players[id] ?? null;

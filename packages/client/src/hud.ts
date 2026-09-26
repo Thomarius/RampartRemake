@@ -241,10 +241,12 @@ export class Hud {
           .join(' ');
         // Lives as pips, one per life including the one being played, spent ones hollow:
         // read at a glance across a roster, where "2 lives" had to be read word by word.
-        const total = state.ruleset.elimination.continues + 1;
-        const left = p.continuesRemaining + 1;
+        // The team's pool: in free-for-all, a team of one, so these are the player's own.
+        const pool = state.teams[p.team];
+        const total = (pool?.continuesAtStart ?? 0) + 1;
+        const left = (pool?.continuesRemaining ?? 0) + 1;
         const pips = '●'.repeat(left) + '○'.repeat(Math.max(0, total - left));
-        const lives = ` · <span class="lives${p.continuesRemaining === 0 ? ' last' : ''}" title="${left} of ${total} lives">${pips}</span>`;
+        const lives = ` · <span class="lives${left === 1 ? ' last' : ''}" title="${left} of ${total} lives">${pips}</span>`;
         const status = p.eliminated
           ? `eliminated round ${p.eliminatedRound}`
           : `${p.score} pts · ${sealed[p.id] ?? 0} castle${sealed[p.id] === 1 ? '' : 's'} · ` +

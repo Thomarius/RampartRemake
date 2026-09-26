@@ -12,6 +12,7 @@ import {
 } from './placement.js';
 import { streamFor } from './rng.js';
 import { fire, resolveImpacts } from './shots.js';
+import { teamScore } from './teams.js';
 import { generateTerrain } from './terrain.js';
 import {
   PHASES,
@@ -23,11 +24,14 @@ import {
   type Phase,
   type PlayerState,
   type RoundResult,
+  type TeamState,
 } from './types.js';
 
 export interface MatchPlayerOptions {
   name: string;
   isBot: boolean;
+  /** Any label; players sharing one are a team. Omitted, every player is on their own. */
+  team?: number;
 }
 
 export interface MatchOptions {
@@ -53,6 +57,18 @@ export function createMatch(options: MatchOptions): MatchState {
   const generated = generateTerrain(terrainConfig, playerCount, seed);
   const size = generated.width * generated.height;
 
+  // Team labels to dense ids, in order of first appearance, so seat 0's team is team 0.
+  const teamIds = new Map<number, number>();
+  const teamOfSeat = options.players.map((p, id) => {
+    const label = p.team ?? -1 - id;
+    if (!teamIds.has(label)) teamIds.set(label, teamIds.size);
+    return teamIds.get(label) as number;
+  });
+  const teams: TeamState[] = [...teamIds.values()].map((id) => {
+    const pool = teamOfSeat.filter((t) => t === id).length * ruleset.elimination.continues;
+    return { id, continuesRemaining: pool, continuesAtStart: pool };
+  });
+
   const players: PlayerState[] = options.players.map((p, id) => ({
     id,
     islandId: id + 1,
@@ -64,7 +80,7 @@ export function createMatch(options: MatchOptions): MatchState {
     enclosedCastles: 0,
     cannonsToPlace: 0,
     pieceIndex: 0,
-    continuesRemaining: options.ruleset.elimination.continues,
+    team: teamOfSeat[id] as number,
     pieceRound: 0,
     overtimeSpent: false,
     score: 0,
@@ -97,6 +113,7 @@ export function createMatch(options: MatchOptions): MatchState {
     pendingPhase: 'castle_select',
     overtime: false,
     players,
+    teams,
     terrain: generated.terrain,
     islandId: generated.islandId,
     structure,
@@ -269,24 +286,27 @@ function stripEliminated(state: MatchState, playerId: number): void {
 /**
  * Whether the match ends at this resolution, and if so who won.
  *
- * Outlasting everyone wins however the scores stand. At the cap the highest score
- * among those still in wins, and a tie is shared — a player who is out never wins on
- * points, which is what keeps attacking worth it for somebody behind.
+ * Outlasting every other team wins however the scores stand. At the cap the best team
+ * score among those still in wins, and a tie is shared — a team that is out never wins
+ * on points, which is what keeps attacking worth it for a side behind. The winners are
+ * every member of the winning teams.
  */
 function checkGameOver(state: MatchState): boolean {
-  const alive = alivePlayers(state);
+  const aliveTeams = [...new Set(alivePlayers(state).map((p) => p.team))];
   const { maxRounds } = state.ruleset.scoring;
   const capped = maxRounds !== null && state.round >= maxRounds;
-  if (alive.length > 1 && !capped) return false;
+  if (aliveTeams.length > 1 && !capped) return false;
   state.pendingPhase = null;
-  if (alive.length > 1) {
-    const top = Math.max(...alive.map((p) => p.score));
-    state.winners = alive.filter((p) => p.score === top).map((p) => p.id);
+  const membersOf = (teams: readonly number[]): number[] =>
+    state.players.filter((p) => teams.includes(p.team)).map((p) => p.id);
+  if (aliveTeams.length > 1) {
+    const top = Math.max(...aliveTeams.map((t) => teamScore(state, t)));
+    state.winners = membersOf(aliveTeams.filter((t) => teamScore(state, t) === top));
     state.draw = false;
     state.endedBy = 'round_cap';
   } else {
-    state.winners = alive.map((p) => p.id);
-    state.draw = alive.length === 0 && state.ruleset.elimination.simultaneousIsDraw;
+    state.winners = membersOf(aliveTeams);
+    state.draw = aliveTeams.length === 0 && state.ruleset.elimination.simultaneousIsDraw;
     state.endedBy = 'elimination';
   }
   state.phase = 'game_over';
@@ -313,50 +333,41 @@ function resolveRound(state: MatchState): void {
   const eliminatedNow: number[] = [];
   const continued: number[] = [];
 
+  const { extraCannonsPerContinue, maxExtraCannons, resetPieceScheduleOnContinue } =
+    state.ruleset.elimination;
+  const failing = state.players.filter(
+    (p) =>
+      !p.eliminated && p.enclosedCastles === 0 && state.ruleset.elimination.onZeroEnclosedCastles,
+  );
+
+  // Lives first, in seat order, from each team's pool. A member failing with the pool
+  // empty puts the whole team out — even members who sealed, which is intended: the rest
+  // of a team a life short would very likely lose on score anyway.
+  const doomed = new Set<number>();
+  const continuing = new Set<number>();
+  for (const player of failing) {
+    const team = state.teams[player.team] as TeamState;
+    if (doomed.has(team.id)) continue;
+    if (team.continuesRemaining > 0) {
+      team.continuesRemaining--;
+      continuing.add(player.id);
+    } else {
+      doomed.add(team.id);
+    }
+  }
+
   for (const player of state.players) {
     if (player.eliminated) continue;
-    const enclosed = player.enclosedCastles;
+    const team = state.teams[player.team] as TeamState;
 
-    if (enclosed === 0 && state.ruleset.elimination.onZeroEnclosedCastles) {
-      const { continues, extraCannonsPerContinue, resetPieceScheduleOnContinue } =
-        state.ruleset.elimination;
-
-      // A life, if there is one left. Everything the player built goes, they choose a
-      // castle again in the coming cannon phase, and the ring is raised around it — so
-      // this is a fresh start on the same ground rather than a reprieve on a ruin.
-      if (player.continuesRemaining > 0) {
-        player.continuesRemaining--;
-        const spent = continues - player.continuesRemaining;
-        wipeIsland(state, player.id);
-        player.startingCastleId = null;
-        player.enclosedCastles = 0;
-        // More guns for a player closer to the end, and the opening count rather than
-        // a round reward: they have no territory to be rewarded for.
-        player.cannonsToPlace =
-          state.ruleset.cannons.startingCount + extraCannonsPerContinue * spent;
-        // Rewound so the next round deals round one's pieces. `pieceRound` is
-        // incremented with the match round, so zero here means one there.
-        if (resetPieceScheduleOnContinue) player.pieceRound = 0;
-
-        continued.push(player.id);
-        results.push({
-          player: player.id,
-          enclosedCastles: 0,
-          cannonsAwarded: player.cannonsToPlace,
-          eliminated: false,
-          territoryPoints: 0,
-          damagePoints: 0,
-        });
-        continue;
-      }
-
+    if (doomed.has(team.id)) {
       player.eliminated = true;
       player.eliminatedRound = state.round;
       player.cannonsToPlace = 0;
       eliminatedNow.push(player.id);
       results.push({
         player: player.id,
-        enclosedCastles: 0,
+        enclosedCastles: player.enclosedCastles,
         cannonsAwarded: 0,
         eliminated: true,
         territoryPoints: 0,
@@ -365,6 +376,37 @@ function resolveRound(state: MatchState): void {
       continue;
     }
 
+    if (continuing.has(player.id)) {
+      // A life from the pool. Everything the player built goes, they choose a castle
+      // again in the coming cannon phase, and the ring is raised around it — so this is
+      // a fresh start on the same ground rather than a reprieve on a ruin.
+      const spent = team.continuesAtStart - team.continuesRemaining;
+      wipeIsland(state, player.id);
+      player.startingCastleId = null;
+      player.enclosedCastles = 0;
+      // More guns the more lives the team has spent, and the opening count rather than a
+      // round reward: they have no territory to be rewarded for. Capped, because a team
+      // of four spends lives four times as fast.
+      player.cannonsToPlace =
+        state.ruleset.cannons.startingCount +
+        Math.min(maxExtraCannons, extraCannonsPerContinue * spent);
+      // Rewound so the next round deals round one's pieces. `pieceRound` is
+      // incremented with the match round, so zero here means one there.
+      if (resetPieceScheduleOnContinue) player.pieceRound = 0;
+
+      continued.push(player.id);
+      results.push({
+        player: player.id,
+        enclosedCastles: 0,
+        cannonsAwarded: player.cannonsToPlace,
+        eliminated: false,
+        territoryPoints: 0,
+        damagePoints: 0,
+      });
+      continue;
+    }
+
+    const enclosed = player.enclosedCastles;
     let award = firstCastleReward + (enclosed - 1) * perAdditionalCastleReward;
     if (maxTotal !== null) {
       const owned = state.cannons.filter((c) => c.owner === player.id).length;
@@ -388,7 +430,8 @@ function resolveRound(state: MatchState): void {
       tick: state.tick,
       player: id,
       round: state.round,
-      continuesRemaining: (state.players[id] as PlayerState).continuesRemaining,
+      continuesRemaining: (state.teams[(state.players[id] as PlayerState).team] as TeamState)
+        .continuesRemaining,
     });
   }
   for (const id of eliminatedNow) {
@@ -733,10 +776,13 @@ export function hashMatchState(state: MatchState): string {
     h.i32(p.enclosedCastles);
     h.i32(p.cannonsToPlace);
     h.i32(p.pieceIndex);
+    h.i32(p.team);
     h.bool(p.overtimeSpent);
     h.i32(p.score);
     h.i32(p.wallsDestroyed);
   }
+
+  for (const team of state.teams) h.i32(team.id).i32(team.continuesRemaining);
 
   h.bytes(state.terrain);
   h.bytes(state.islandId);

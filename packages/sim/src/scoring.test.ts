@@ -189,7 +189,10 @@ describe('scoring a round', () => {
   it('forfeits the whole round, damage included, for failing to seal', () => {
     const ruleset = { ...uncapped, elimination: { ...uncapped.elimination, continues: 1 } };
     const state = rings(ruleset);
-    for (const p of state.players) p.continuesRemaining = 1;
+    for (const team of state.teams) {
+      team.continuesRemaining = 1;
+      team.continuesAtStart = 1;
+    }
     state.players[1]!.wallsDestroyed = 5;
     breach(state, 1);
     resolve(state);
@@ -205,7 +208,10 @@ describe('scoring a round', () => {
       scoring: { ...uncapped.scoring, scoreDamageOnFailedRound: true },
     };
     const state = rings(ruleset);
-    for (const p of state.players) p.continuesRemaining = 1;
+    for (const team of state.teams) {
+      team.continuesRemaining = 1;
+      team.continuesAtStart = 1;
+    }
     state.players[1]!.wallsDestroyed = 5;
     breach(state, 1);
     resolve(state);

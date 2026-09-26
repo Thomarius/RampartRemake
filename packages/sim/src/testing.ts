@@ -116,7 +116,7 @@ export function stateFromAscii(
     enclosedCastles: 0,
     cannonsToPlace: 0,
     pieceIndex: 0,
-    continuesRemaining: 0,
+    team: id,
     pieceRound: 0,
     overtimeSpent: false,
     score: 0,
@@ -136,6 +136,8 @@ export function stateFromAscii(
     pendingPhase: null,
     overtime: false,
     players: players.length > 0 ? players : [],
+    // Every player on their own, with no lives: a test wanting either sets it.
+    teams: players.map((_, id) => ({ id, continuesRemaining: 0, continuesAtStart: 0 })),
     terrain,
     islandId,
     structure,

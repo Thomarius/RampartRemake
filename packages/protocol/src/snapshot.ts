@@ -45,7 +45,7 @@ const PlayerSchema = z.strictObject({
   enclosedCastles: z.number().int().nonnegative(),
   cannonsToPlace: z.number().int().nonnegative(),
   pieceIndex: z.number().int().nonnegative(),
-  continuesRemaining: z.number().int().nonnegative(),
+  team: z.number().int().nonnegative(),
   pieceRound: z.number().int().nonnegative(),
   overtimeSpent: z.boolean(),
   score: z.number().int().nonnegative(),
@@ -102,6 +102,13 @@ export const SnapshotSchema = z.strictObject({
   phaseEndTick: z.number().int(),
   overtime: z.boolean(),
   players: z.array(PlayerSchema).min(2),
+  teams: z.array(
+    z.strictObject({
+      id: z.number().int().nonnegative(),
+      continuesRemaining: z.number().int().nonnegative(),
+      continuesAtStart: z.number().int().nonnegative(),
+    }),
+  ),
   structure: z.array(z.number().int().nonnegative()),
   owner: z.array(z.number().int().nonnegative()),
   territory: z.array(z.number().int().nonnegative()),
@@ -129,6 +136,7 @@ export function captureSnapshot(state: MatchState): Snapshot {
     phaseEndTick: state.phaseEndTick,
     overtime: state.overtime,
     players: state.players.map((p) => ({ ...p })),
+    teams: state.teams.map((t) => ({ ...t })),
     structure: encodeRle(state.structure),
     owner: encodeRle(state.owner),
     territory: encodeRle(state.territory),
@@ -159,6 +167,7 @@ export function applySnapshot(state: MatchState, snapshot: Snapshot): void {
   state.phaseEndTick = snapshot.phaseEndTick;
   state.overtime = snapshot.overtime;
   state.players = snapshot.players.map((p) => ({ ...p }));
+  state.teams = snapshot.teams.map((t) => ({ ...t }));
   state.structure = decodeRle(snapshot.structure, size);
   state.owner = decodeRle(snapshot.owner, size);
   state.territory = decodeRle(snapshot.territory, size);

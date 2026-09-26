@@ -161,7 +161,8 @@
     "simultaneousIsDraw": true,
     "continues": 2,
     "extraCannonsPerContinue": 1,
-    "resetPieceScheduleOnContinue": true
+    "resetPieceScheduleOnContinue": true,
+    "maxExtraCannons": 3
   },
   "scoring": {
     "maxRounds": 10,

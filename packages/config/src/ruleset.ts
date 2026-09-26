@@ -147,6 +147,11 @@ export const RulesetSchema = z
        */
       extraCannonsPerContinue: z.number().int().nonnegative(),
       /**
+       * The most extra cannons a continue can bring. The bonus counts lives spent by the
+       * whole team, which in a large team would otherwise grow past any sense.
+       */
+      maxExtraCannons: z.number().int().nonnegative(),
+      /**
        * Whether a continue also rewinds the player's piece schedule to round one.
        *
        * The schedule widens with the round, so this hands somebody starting again the
