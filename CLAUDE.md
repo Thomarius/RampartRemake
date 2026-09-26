@@ -104,6 +104,9 @@ verified by a CI job since there is no Docker on this machine), audio wired end 
 2–8 players, and the lobby (tested at eight seats over a real socket; code copying, seat
 colours, tier descriptions).
 
+**Next: team mode** (PLAN.md §11.7), chosen by the user ahead of the balance items below —
+agreed rules and a six-step plan, nothing built. Free-for-all becomes teams of one.
+
 **M7, the balance pass, is where the work is.** PLAN.md §11 lists it in priority order:
 
 1. **Round cap and points scoring — done** (§1.7, ARCHIVE 10r). A match ends at
