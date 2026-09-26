@@ -69,7 +69,7 @@ export function bannersFor(
           player: player.id,
           kind: 'gain',
           title: `+${points.amount}`,
-          detail: '',
+          detail: `${player.score} total`,
           urgent: false,
         });
       }

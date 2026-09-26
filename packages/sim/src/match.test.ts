@@ -722,3 +722,95 @@ describe('continues', () => {
     expect(state.phaseEndTick - state.tick).toBeGreaterThan(plain);
   });
 });
+
+describe('overtime', () => {
+  /** A match on its first build phase, with every clock short. */
+  function building(overtimeMs: number) {
+    const ruleset = fastRuleset();
+    const state = beginMatch(
+      createMatch(options(2, 42, { ...ruleset, build: { ...ruleset.build, overtimeMs } })),
+    );
+    for (const player of state.players) {
+      const castle = state.castles.find((c) => c.islandId === player.islandId)!;
+      applyAction(state, { kind: 'select_castle', player: player.id, castleId: castle.id });
+    }
+    while (state.phase !== 'build') step(state);
+    return state;
+  }
+
+  /** Somewhere this player's current piece fits. */
+  function anyPlacement(state: MatchState, player: number) {
+    for (let y = 0; y < state.height; y++) {
+      for (let x = 0; x < state.width; x++) {
+        if (canPlacePiece(state, player, 0, x, y) === null) return { x, y, rotation: 0 };
+      }
+    }
+    throw new Error('nowhere to place');
+  }
+
+  function toClockEnd(state: MatchState) {
+    const end = state.phaseEndTick;
+    while (state.tick < end) step(state);
+  }
+
+  it('gives everyone one more piece once the build clock runs out', () => {
+    const state = building(3000);
+    toClockEnd(state);
+    expect(state.phase).toBe('build');
+    expect(state.overtime).toBe(true);
+
+    const spot = anyPlacement(state, 0);
+    expect(applyAction(state, { kind: 'place_piece', player: 0, ...spot })).toBeNull();
+    // One, and no more: there is no next piece to be dealt in overtime. The spot is
+    // found as if overtime were over, since in it every spot is refused.
+    state.overtime = false;
+    const again = anyPlacement(state, 0);
+    state.overtime = true;
+    expect(applyAction(state, { kind: 'place_piece', player: 0, ...again })).toBe('overtime_spent');
+  });
+
+  it('ends as soon as everyone still in has placed', () => {
+    const state = building(3000);
+    toClockEnd(state);
+    for (const player of state.players) {
+      applyAction(state, {
+        kind: 'place_piece',
+        player: player.id,
+        ...anyPlacement(state, player.id),
+      });
+    }
+    // Resolved on the next step rather than at the end of the window.
+    step(state);
+    expect(state.overtime).toBe(false);
+    expect(state.phase).not.toBe('build');
+  });
+
+  it('ends at its own deadline if somebody does not use it', () => {
+    const state = building(3000);
+    toClockEnd(state);
+    const deadline = state.phaseEndTick;
+    expect(deadline - state.tick).toBe(ticksFor(3000, state.ruleset.tickRateHz));
+    while (state.tick < deadline) step(state);
+    expect(state.phase).not.toBe('build');
+  });
+
+  it('can be turned off', () => {
+    const state = building(0);
+    toClockEnd(state);
+    expect(state.overtime).toBe(false);
+    expect(state.phase).not.toBe('build');
+  });
+
+  it('gives a fresh overtime every round', () => {
+    const state = building(3000);
+    toClockEnd(state);
+    applyAction(state, { kind: 'place_piece', player: 0, ...anyPlacement(state, 0) });
+    expect(state.players[0]!.overtimeSpent).toBe(true);
+    // Out of this build phase, then on to the next one. The cast is for the compiler,
+    // which narrows the phase on the first loop and cannot see step() changing it.
+    while (state.phase === 'build') step(state);
+    while ((state.phase as Phase) !== 'build' && state.phase !== 'game_over') step(state);
+    expect(state.phase).toBe('build');
+    expect(state.players.every((p) => !p.overtimeSpent)).toBe(true);
+  });
+});

@@ -66,6 +66,7 @@ export function createMatch(options: MatchOptions): MatchState {
     pieceIndex: 0,
     continuesRemaining: options.ruleset.elimination.continues,
     pieceRound: 0,
+    overtimeSpent: false,
     score: 0,
     wallsDestroyed: 0,
   }));
@@ -94,6 +95,7 @@ export function createMatch(options: MatchOptions): MatchState {
     phase: 'intermission',
     phaseEndTick: intermissionTicks(ruleset),
     pendingPhase: 'castle_select',
+    overtime: false,
     players,
     terrain: generated.terrain,
     islandId: generated.islandId,
@@ -477,7 +479,10 @@ function beginPendingPhase(state: MatchState): void {
   if (next === 'build') {
     // Each build phase deals a fresh queue, so the round's size band applies from
     // its first piece.
-    for (const player of state.players) player.pieceIndex = 0;
+    for (const player of state.players) {
+      player.pieceIndex = 0;
+      player.overtimeSpent = false;
+    }
   }
   const durations: Partial<Record<Phase, number>> = {
     castle_select: state.ruleset.phases.castleSelectMs,
@@ -543,7 +548,19 @@ function advancePhase(state: MatchState): void {
       return;
     }
     case 'build': {
-      if (state.tick >= state.phaseEndTick) resolveRound(state);
+      const overtimeTicks = ticksFor(state.ruleset.build.overtimeMs, state.ruleset.tickRateHz);
+      if (!state.overtime && state.tick >= state.phaseEndTick && overtimeTicks > 0) {
+        // The clock has run out; everyone may still place the piece they are holding.
+        state.overtime = true;
+        state.phaseEndTick = state.tick + overtimeTicks;
+        return;
+      }
+      const allSpent =
+        state.overtime && state.players.every((p) => p.eliminated || p.overtimeSpent);
+      if (state.tick >= state.phaseEndTick || allSpent) {
+        state.overtime = false;
+        resolveRound(state);
+      }
       return;
     }
     case 'cannon_place': {
@@ -634,6 +651,9 @@ export function applyAction(state: MatchState, action: Action): Rejection | null
       // goes down. Combat deliberately does not do this: territory shown during a
       // barrage is the territory you earned, not what is left of it.
       applyEnclosure(state);
+      // Overtime ending early, once everyone has used it, is noticed by the next step
+      // rather than here: a resolution can end the match, and one run from inside an
+      // action would end it before the tick it belongs to had been stepped.
       return null;
     }
     case 'place_cannon': {
@@ -700,6 +720,7 @@ export function hashMatchState(state: MatchState): string {
   h.u32(PHASES.indexOf(state.phase));
   h.u32(state.pendingPhase === null ? 0xffff : PHASES.indexOf(state.pendingPhase));
   h.i32(state.phaseEndTick);
+  h.bool(state.overtime);
   h.i32(state.width);
   h.i32(state.height);
 
@@ -712,6 +733,7 @@ export function hashMatchState(state: MatchState): string {
     h.i32(p.enclosedCastles);
     h.i32(p.cannonsToPlace);
     h.i32(p.pieceIndex);
+    h.bool(p.overtimeSpent);
     h.i32(p.score);
     h.i32(p.wallsDestroyed);
   }

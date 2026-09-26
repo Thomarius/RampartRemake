@@ -509,6 +509,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
       if (centre === undefined) continue;
       banners.push({
         ...banner,
+        holdMs: defaultConfigBundle.art.hud.pointsBannerMs,
         colour: playerCssColour(banner.player),
         ...scene.screenAt(centre.x, centre.y),
       });
@@ -605,10 +606,20 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     } else {
       hud.showBigTimer(null, 0);
     }
-    const aiming = ghost.tile !== null && inputMode(state, session.humanPlayer) === 'fire';
+    // Beside the cursor, the number that decides the next click: guns ready when
+    // aiming, guns still to place when placing them.
+    const mode = inputMode(state, session.humanPlayer);
+    const count =
+      mode === 'fire' || mode === 'aim'
+        ? readyCannons(state, session.humanPlayer)
+        : mode === 'cannon'
+          ? (state.players[session.humanPlayer]?.cannonsToPlace ?? 0)
+          : null;
     hud.showReadyCount(
-      aiming && ghost.tile !== null ? scene.screenAt(ghost.tile.x + 1.4, ghost.tile.y - 1.1) : null,
-      readyCannons(state, session.humanPlayer),
+      ghost.tile !== null && count !== null
+        ? scene.screenAt(ghost.tile.x + 1.4, ghost.tile.y - 1.1)
+        : null,
+      count ?? 0,
     );
   }
 
@@ -646,10 +657,8 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
           structuresChanged = true;
           break;
         case 'round_resolved': {
-          // Shown over each island for as long as a lost life would be.
           const hold = Math.ceil(
-            (session.state.ruleset.phases.continueBannerMs * 2 * session.state.ruleset.tickRateHz) /
-              1000,
+            (defaultConfigBundle.art.hud.pointsBannerMs * session.state.ruleset.tickRateHz) / 1000,
           );
           for (const result of event.results) {
             gained.set(result.player, {

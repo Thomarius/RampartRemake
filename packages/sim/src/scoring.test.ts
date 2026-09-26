@@ -110,6 +110,8 @@ function rings(ruleset: Ruleset): MatchState {
 
 /** Puts the state at the last tick of a build phase and steps into its resolution. */
 function resolve(state: MatchState, round = 1): void {
+  // Without overtime, so running the clock out resolves at once.
+  state.ruleset = { ...state.ruleset, build: { ...state.ruleset.build, overtimeMs: 0 } };
   state.phase = 'build';
   state.round = round;
   state.phaseEndTick = state.tick + 1;

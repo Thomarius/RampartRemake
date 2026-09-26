@@ -47,6 +47,7 @@ const PlayerSchema = z.strictObject({
   pieceIndex: z.number().int().nonnegative(),
   continuesRemaining: z.number().int().nonnegative(),
   pieceRound: z.number().int().nonnegative(),
+  overtimeSpent: z.boolean(),
   score: z.number().int().nonnegative(),
   wallsDestroyed: z.number().int().nonnegative(),
 });
@@ -99,6 +100,7 @@ export const SnapshotSchema = z.strictObject({
   phase: z.enum(PHASES),
   pendingPhase: z.enum(PHASES).nullable(),
   phaseEndTick: z.number().int(),
+  overtime: z.boolean(),
   players: z.array(PlayerSchema).min(2),
   structure: z.array(z.number().int().nonnegative()),
   owner: z.array(z.number().int().nonnegative()),
@@ -125,6 +127,7 @@ export function captureSnapshot(state: MatchState): Snapshot {
     phase: state.phase,
     pendingPhase: state.pendingPhase,
     phaseEndTick: state.phaseEndTick,
+    overtime: state.overtime,
     players: state.players.map((p) => ({ ...p })),
     structure: encodeRle(state.structure),
     owner: encodeRle(state.owner),
@@ -154,6 +157,7 @@ export function applySnapshot(state: MatchState, snapshot: Snapshot): void {
   state.phase = snapshot.phase;
   state.pendingPhase = snapshot.pendingPhase;
   state.phaseEndTick = snapshot.phaseEndTick;
+  state.overtime = snapshot.overtime;
   state.players = snapshot.players.map((p) => ({ ...p }));
   state.structure = decodeRle(snapshot.structure, size);
   state.owner = decodeRle(snapshot.owner, size);

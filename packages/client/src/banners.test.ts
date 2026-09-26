@@ -76,11 +76,14 @@ describe('island banners', () => {
       [1, { amount: 30, untilTick: 200 }],
     ]);
     const lost = new Map<number, LifeLost>([[1, { remaining: 1, untilTick: 200 }]]);
-    const banners = bannersFor(state(150, [alive(0, 'Ada'), alive(1, 'Bo')]), lost, gained);
+    const ada = { ...alive(0, 'Ada'), score: 312 };
+    const banners = bannersFor(state(150, [ada, alive(1, 'Bo')]), lost, gained);
     expect(banners.map((b) => [b.kind, b.title])).toEqual([
       ['gain', '+48'],
       ['life', 'Life lost'],
     ]);
+    // With the total it brings them to, which is the number a player is tracking.
+    expect(banners[0]?.detail).toBe('312 total');
     // Gone once it is no longer news, and never shown for nothing.
     expect(bannersFor(state(200, [alive(0, 'Ada')]), new Map(), gained)).toEqual([]);
     const none = new Map([[0, { amount: 0, untilTick: 200 }]]);

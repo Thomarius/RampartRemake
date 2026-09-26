@@ -267,6 +267,6 @@ export class FlatTheme implements Theme {
       return;
     }
 
-    if (state.phase === 'combat') drawFireReticle(g, view, ghost, this.art, humanPlayer);
+    if (ghost.aiming) drawFireReticle(g, view, ghost, this.art, humanPlayer);
   }
 }

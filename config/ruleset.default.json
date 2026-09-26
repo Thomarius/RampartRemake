@@ -147,7 +147,8 @@
         "fromRound": 5,
         "sizes": [3, 4, 5]
       }
-    ]
+    ],
+    "overtimeMs": 3000
   },
   "enclosure": {
     "shorelineCountsAsWall": false,

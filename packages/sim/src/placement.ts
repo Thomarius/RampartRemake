@@ -21,7 +21,8 @@ export type Rejection =
   | 'unknown_castle'
   | 'castle_taken'
   | 'already_selected'
-  | 'own_island';
+  | 'own_island'
+  | 'overtime_spent';
 
 export function playerOf(state: MatchState, id: number): PlayerState | null {
   return state.players[id] ?? null;
@@ -62,6 +63,8 @@ export function canPlacePiece(
   if (!player) return 'unknown_player';
   if (player.eliminated) return 'eliminated';
 
+  if (state.overtime && player.overtimeSpent) return 'overtime_spent';
+
   const cells = pieceCells(currentPieceId(state, playerId), rotation);
   for (const [ox, oy] of cells) {
     const tx = x + ox;
@@ -99,6 +102,7 @@ export function placePiece(
     cells.push(i);
   }
   player.pieceIndex++;
+  if (state.overtime) player.overtimeSpent = true;
 
   state.events.push({
     kind: 'piece_placed',

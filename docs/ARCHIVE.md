@@ -1360,3 +1360,12 @@ The castle outline stayed, as it has neither problem. The fire cursor only chang
 slightly when a gun was ready; it now changes shape, and carries the count. And the time
 left, which a player watching their wall never looks up to see, is repeated in large
 figures in the sea near the middle — the one place every island faces.
+
+**Second round of human feedback.** The points banner was far too quick at 2.4 s; it now
+holds for the intermission, with the total. The aiming cursor appears during the "Fire!"
+announcement, so a target can be chosen before the phase opens. The cannon badge counts
+guns still to place. And overtime, a rule: a 3 s window after the build clock in which
+each player may place the piece they hold. Its early end, once everyone has used it, is
+noticed by the next step rather than run from inside the action — run from the action, a
+resolution that ended the match did so before its tick was stepped, and the determinism
+test's log replay came out different.

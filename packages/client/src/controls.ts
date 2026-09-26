@@ -12,7 +12,7 @@ import {
 import type { Ghost, Scene } from './render/scene.js';
 
 /** What a click means for this player right now. */
-export type InputMode = 'castle' | 'cannon' | 'piece' | 'fire' | 'none';
+export type InputMode = 'castle' | 'cannon' | 'piece' | 'fire' | 'aim' | 'none';
 
 /**
  * What a click means for a player, from the state alone.
@@ -31,9 +31,14 @@ export function inputMode(state: MatchState, playerId: number): InputMode {
     case 'cannon_place':
       return owesCastleChoice(player) ? 'castle' : 'cannon';
     case 'build':
-      return 'piece';
+      // Overtime is one more piece, and once it is down there is nothing to hold.
+      return state.overtime && player.overtimeSpent ? 'none' : 'piece';
     case 'combat':
       return 'fire';
+    case 'intermission':
+      // While "Fire!" is announced the cursor is already the aiming one, so a player
+      // can pick a target before the phase opens — but a click does nothing yet.
+      return state.pendingPhase === 'combat' ? 'aim' : 'none';
     default:
       return 'none';
   }
@@ -199,6 +204,7 @@ export class Controls {
         footprint: null,
         selectable,
         unsealed: [],
+        aiming: false,
       };
     }
 
@@ -206,16 +212,34 @@ export class Controls {
       case 'piece': {
         const cells = pieceCells(currentPieceId(state, player), this.rotation);
         const valid = canPlacePiece(state, player, this.rotation, tile.x, tile.y) === null;
-        return { tile, cells, valid, footprint: null, selectable, unsealed: [] };
+        return { tile, cells, valid, footprint: null, selectable, unsealed: [], aiming: false };
       }
       case 'cannon': {
         const [w, h] = state.ruleset.cannons.footprint;
         const valid = canPlaceCannon(state, player, tile.x, tile.y) === null;
-        return { tile, cells: [], valid, footprint: { w, h }, selectable, unsealed: [] };
+        return {
+          tile,
+          cells: [],
+          valid,
+          footprint: { w, h },
+          selectable,
+          unsealed: [],
+          aiming: false,
+        };
       }
+      case 'aim':
+        return {
+          tile,
+          cells: [],
+          valid: readyCannons(state, player) > 0,
+          footprint: null,
+          selectable,
+          unsealed: [],
+          aiming: true,
+        };
       case 'fire': {
         const valid = findReadyCannon(state, player, tile.x, tile.y) !== null;
-        return { tile, cells: [], valid, footprint: null, selectable, unsealed: [] };
+        return { tile, cells: [], valid, footprint: null, selectable, unsealed: [], aiming: true };
       }
       case 'castle': {
         return {
@@ -225,6 +249,7 @@ export class Controls {
           footprint: null,
           selectable,
           unsealed: [],
+          aiming: false,
         };
       }
       default:
@@ -235,6 +260,7 @@ export class Controls {
           footprint: null,
           selectable,
           unsealed: [],
+          aiming: false,
         };
     }
   }

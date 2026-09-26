@@ -118,6 +118,7 @@ export function stateFromAscii(
     pieceIndex: 0,
     continuesRemaining: 0,
     pieceRound: 0,
+    overtimeSpent: false,
     score: 0,
     wallsDestroyed: 0,
   }));
@@ -133,6 +134,7 @@ export function stateFromAscii(
     phase: 'combat',
     phaseEndTick: 1000,
     pendingPhase: null,
+    overtime: false,
     players: players.length > 0 ? players : [],
     terrain,
     islandId,

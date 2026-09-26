@@ -67,6 +67,11 @@ export const ArtConfigSchema = z
   .strictObject({
     style: ArtStyleSchema,
     flat: FlatStyleSchema,
+    /** How long the HUD holds its news. */
+    hud: z.strictObject({
+      /** The points an island banked, over it, after each resolution. */
+      pointsBannerMs: z.number().int().positive(),
+    }),
     tileSizePx: z.number().int().positive(),
     atlasSizePx: z.number().int().positive(),
     pixelSnap: z.boolean(),

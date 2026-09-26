@@ -140,5 +140,8 @@
     "outlineWidthPx": 2,
     "castleCoreScale": 0.45,
     "cannonBoreScale": 0.34
+  },
+  "hud": {
+    "pointsBannerMs": 8000
   }
 }

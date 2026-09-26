@@ -85,6 +85,8 @@ export interface Ghost {
   selectable: readonly { x: number; y: number; w: number; h: number }[];
   /** The player's castles, when none of them is sealed. */
   unsealed: readonly { x: number; y: number; w: number; h: number }[];
+  /** Whether to draw the aiming cursor: in combat, and while it is announced. */
+  aiming: boolean;
 }
 
 /**

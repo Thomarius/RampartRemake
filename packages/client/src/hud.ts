@@ -36,6 +36,8 @@ const PHASE_HINT: Record<Phase, string> = {
 export interface IslandBanner {
   player: number;
   colour: string;
+  /** How long a banner of news that expires is held, so its fade can match. */
+  holdMs: number;
   kind: BannerKind;
   title: string;
   detail: string;
@@ -193,6 +195,7 @@ export class Hud {
         // A new kind of news restarts the entrance, so a life lost after points were
         // shown lands as hard as one on its own.
         node.className = `island-banner ${banner.kind}`;
+        node.style.animationDuration = banner.kind === 'gain' ? `${banner.holdMs}ms` : '';
       }
       node.classList.toggle('urgent', banner.urgent);
       node.style.borderColor = banner.colour;
@@ -256,7 +259,13 @@ export class Hud {
       human !== undefined &&
       owesCastleChoice(human) &&
       (shown === 'cannon_place' || shown === 'castle_select');
-    const label = choosing ? PHASE_LABEL.castle_select : PHASE_LABEL[shown];
+    // Overtime: the clock has run out and one more piece may go down.
+    const overtime = state.phase === 'build' && state.overtime;
+    const label = choosing
+      ? PHASE_LABEL.castle_select
+      : overtime
+        ? 'Overtime — last piece'
+        : PHASE_LABEL[shown];
 
     let cannonCount = '';
     if (state.phase === 'cannon_place' && human && !human.eliminated) {
@@ -269,8 +278,17 @@ export class Hud {
     }
 
     let queue = '';
-    if (state.phase === 'build' && human && !human.eliminated) {
-      const next = upcomingPieceIds(state, humanPlayer, state.ruleset.build.previewCount);
+    // In overtime there is no next piece to preview, and once the last is down nothing
+    // to hold either.
+    if (
+      state.phase === 'build' &&
+      human &&
+      !human.eliminated &&
+      !(overtime && human.overtimeSpent)
+    ) {
+      const next = overtime
+        ? []
+        : upcomingPieceIds(state, humanPlayer, state.ruleset.build.previewCount);
       queue =
         `<div class="queue"><span class="label">Holding</span>${pieceSwatch(currentPieceId(state, humanPlayer), colour, 11)}` +
         (next.length > 0
@@ -305,7 +323,11 @@ export class Hud {
         ? ''
         : choosing && !waiting
           ? PHASE_HINT.castle_select
-          : PHASE_HINT[state.phase];
+          : overtime
+            ? human?.overtimeSpent
+              ? 'Last piece placed'
+              : 'Place the piece you are holding · no more after it'
+            : PHASE_HINT[state.phase];
 
     this.root.innerHTML = `
       <div class="bar">

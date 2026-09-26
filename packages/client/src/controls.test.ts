@@ -77,6 +77,24 @@ describe('what a click means', () => {
     expect(inputMode(state, other)).toBe('none');
   });
 
+  it('aims while combat is announced, and holds nothing once overtime is spent', () => {
+    const { state, player } = afterContinue(3);
+    const other = 1 - player;
+    state.phase = 'intermission';
+    state.pendingPhase = 'combat';
+    expect(inputMode(state, other)).toBe('aim');
+    state.pendingPhase = 'build';
+    expect(inputMode(state, other)).toBe('none');
+
+    // As a fresh build phase leaves it: last round's overtime is cleared when it opens.
+    state.phase = 'build';
+    state.overtime = true;
+    state.players[other]!.overtimeSpent = false;
+    expect(inputMode(state, other)).toBe('piece');
+    state.players[other]!.overtimeSpent = true;
+    expect(inputMode(state, other)).toBe('none');
+  });
+
   it('counts the cannons that could fire now', () => {
     const { state, player } = afterContinue(3);
     const other = 1 - player;

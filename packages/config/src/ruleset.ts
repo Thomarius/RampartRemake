@@ -71,6 +71,13 @@ export const RulesetSchema = z
     }),
 
     build: z.strictObject({
+      /**
+       * After the build clock runs out, a short window in which every player may place
+       * the one piece they are holding, and no more — so a piece being lined up as the
+       * clock hit zero is not simply lost. Ends early once everyone still in has used
+       * it. Zero turns it off.
+       */
+      overtimeMs: z.number().int().nonnegative(),
       /** All players draw from one seeded sequence, so luck is never a factor. */
       sharedPieceSequence: z.boolean(),
       previewCount: z.number().int().nonnegative().max(5),

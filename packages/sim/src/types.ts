@@ -44,6 +44,8 @@ export interface PlayerState {
    * `round` exactly.
    */
   pieceRound: number;
+  /** Whether this player has placed their one piece of the build phase's overtime. */
+  overtimeSpent: boolean;
   /** Points banked at resolutions. Only a sealed round adds to it. */
   score: number;
   /**
@@ -174,6 +176,11 @@ export interface MatchState {
   phaseEndTick: number;
   /** During an intermission, the phase that begins once it ends. */
   pendingPhase: Phase | null;
+  /**
+   * The build phase's overtime: its clock has run out, and each player may still place
+   * the piece they hold. `phaseEndTick` is then the end of the overtime.
+   */
+  overtime: boolean;
 
   players: PlayerState[];
 

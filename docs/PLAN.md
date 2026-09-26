@@ -137,7 +137,14 @@ queue rather than receiving it, and the match state stays a fixed size however l
 match runs.
 
 Note the consequence: **one-cell pieces stop being dealt after the early rounds**, so a
-one-tile gap with no free neighbour cannot be filled at all. That is why a cannon jammed
+one-tile gap with no free neighbour cannot be filled at all.
+
+**Overtime.** When the build clock runs out, every player may still place the one piece
+they are holding, within `build.overtimeMs` (3 s); no further piece is dealt, and the
+window closes early once everyone still in has used it. Added after human play: a piece
+being lined up as the clock hit zero was simply lost, which was frustrating out of all
+proportion to what it decided. It gives everyone slightly more wall per round, which the
+elimination baseline of 11.2 will be measured with. That is why a cannon jammed
 against its own wall is a defensive problem and not merely an ugly one.
 
 ### 1.7 Scoring and the round cap
@@ -314,7 +321,10 @@ each island as they are banked. **The time left** runs as a bar under the HUD an
 large faint figures, in open water near the middle of the map (`timerSpot.ts`: the
 largest all-water square close to the centre, 3x3 to 5x5, found once per match). **The
 aiming cursor** says whether a click will fire — a bright crosshair when a gun is ready,
-a small grey ring struck through when none is — with the number ready beside it. Sealed
+a small grey ring struck through when none is — with the number ready beside it; it
+appears as "Fire!" is announced, though a click does nothing until the phase opens. When
+placing cannons the same badge counts the guns still to place. The points an island
+banked hold over it with the new total for the whole intermission (`hud.pointsBannerMs`). Sealed
 castles fly a banner in pixel style; a lost life lands as a banner over the island, red
 on the last; a knockout stamps the island and greys it for the rest of the match.
 
