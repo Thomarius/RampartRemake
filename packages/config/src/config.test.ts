@@ -17,6 +17,9 @@ import {
   defaultServerConfig,
   defaultTerrainConfig,
   applySettings,
+  defaultTeams,
+  teamsBalanced,
+  validPlayerCounts,
   defaultSettings,
   mergeSettings,
   validateConfigBundle,
@@ -173,34 +176,57 @@ describe('cross-file validation', () => {
 });
 
 describe('lobby settings', () => {
-  const bounds = { maxRounds: { min: 5, max: 20 } };
+  const bounds = { maxRounds: { min: 5, max: 20 }, teamSize: { min: 1, max: 4 } };
+  const ffa = (maxRounds: number) => ({ maxRounds, teamSize: 1 });
 
-  it('opens on the ruleset cap, pulled inside the bounds', () => {
+  it('opens on the ruleset cap, pulled inside the bounds, as free-for-all', () => {
     const rules = (maxRounds: number | null) => ({
       ...defaultRuleset,
       scoring: { ...defaultRuleset.scoring, maxRounds },
     });
-    expect(defaultSettings(rules(10), bounds)).toEqual({ maxRounds: 10 });
-    expect(defaultSettings(rules(99), bounds)).toEqual({ maxRounds: 20 });
+    expect(defaultSettings(rules(10), bounds)).toEqual(ffa(10));
+    expect(defaultSettings(rules(99), bounds)).toEqual(ffa(20));
     // Uncapped is a testing setup; a room cannot offer it, so it opens at the longest.
-    expect(defaultSettings(rules(null), bounds)).toEqual({ maxRounds: 20 });
+    expect(defaultSettings(rules(null), bounds)).toEqual(ffa(20));
   });
 
   it('refuses a change outside the bounds rather than clamping it', () => {
-    expect(mergeSettings({ maxRounds: 10 }, { maxRounds: 7 }, bounds)).toEqual({ maxRounds: 7 });
-    expect(mergeSettings({ maxRounds: 10 }, { maxRounds: 21 }, bounds)).toBeNull();
-    expect(mergeSettings({ maxRounds: 10 }, { maxRounds: 4 }, bounds)).toBeNull();
+    expect(mergeSettings(ffa(10), { maxRounds: 7 }, bounds)).toEqual(ffa(7));
+    expect(mergeSettings(ffa(10), { maxRounds: 21 }, bounds)).toBeNull();
+    expect(mergeSettings(ffa(10), { maxRounds: 4 }, bounds)).toBeNull();
+    expect(mergeSettings(ffa(10), { teamSize: 2 }, bounds)).toEqual({ maxRounds: 10, teamSize: 2 });
+    expect(mergeSettings(ffa(10), { teamSize: 5 }, bounds)).toBeNull();
   });
 
   it('applies over the ruleset and re-validates the result', () => {
-    expect(applySettings(defaultRuleset, { maxRounds: 7 }).scoring.maxRounds).toBe(7);
-    expect(() => applySettings(defaultRuleset, { maxRounds: 0 })).toThrow();
+    expect(applySettings(defaultRuleset, ffa(7)).scoring.maxRounds).toBe(7);
+    expect(() => applySettings(defaultRuleset, ffa(0))).toThrow();
+  });
+
+  it('allows only player counts that make at least two equal teams', () => {
+    const players = { min: 2, max: 8 };
+    expect(validPlayerCounts(1, players)).toEqual([2, 3, 4, 5, 6, 7, 8]);
+    expect(validPlayerCounts(2, players)).toEqual([4, 6, 8]);
+    expect(validPlayerCounts(3, players)).toEqual([6]);
+    expect(validPlayerCounts(4, players)).toEqual([8]);
+  });
+
+  it('seats teams in order, and knows a balanced assignment from an unbalanced one', () => {
+    expect(defaultTeams(4, 2)).toEqual([0, 0, 1, 1]);
+    expect(defaultTeams(3, 1)).toEqual([0, 1, 2]);
+    expect(teamsBalanced([0, 1, 1, 0], 2)).toBe(true);
+    expect(teamsBalanced([0, 0, 0, 1], 2)).toBe(false);
+    expect(teamsBalanced([0, 0], 2)).toBe(false); // one team is not a match
+    expect(teamsBalanced([0, 2, 0, 2], 2)).toBe(false); // teams are numbered from 0
   });
 
   it("insists the bounds include the ruleset's own cap", () => {
     const problems = validateConfigBundle({
       ...defaultConfigBundle,
-      server: { ...defaultServerConfig, lobbySettings: { maxRounds: { min: 12, max: 20 } } },
+      server: {
+        ...defaultServerConfig,
+        lobbySettings: { maxRounds: { min: 12, max: 20 }, teamSize: { min: 1, max: 4 } },
+      },
     });
     expect(problems.some((p) => p.includes('lobbySettings.maxRounds'))).toBe(true);
   });

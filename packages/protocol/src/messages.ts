@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { SnapshotSchema } from './snapshot.js';
 
 /** Bumped on any breaking change to the message set; mismatched clients are rejected. */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 /**
  * A player's intent. The server overwrites `player` with the sender's own seat before
@@ -71,6 +71,10 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('configure'),
     bots: z.array(DifficultySchema).optional(),
     settings: MatchSettingsSchema.partial().optional(),
+    /** Seats at the table; refused unless the team size allows it and everyone fits. */
+    playerCount: z.number().int().min(2).max(8).optional(),
+    /** Each seat's team, by seat; taken only if it makes equal teams. */
+    teams: z.array(z.number().int().nonnegative()).max(8).optional(),
   }),
   z.strictObject({ type: z.literal('start') }),
   z.strictObject({ type: z.literal('action'), action: ActionSchema }),
@@ -99,6 +103,10 @@ export const ServerMessageSchema = z.discriminatedUnion('type', [
     /** The match settings as they stand, and what the host may set them to. */
     settings: MatchSettingsSchema,
     settingBounds: SettingBoundsSchema,
+    /** Each seat's team, by seat. */
+    teams: z.array(z.number().int().nonnegative()),
+    /** The player counts the rules allow at all, before the team size narrows them. */
+    playerLimits: z.strictObject({ min: z.number().int(), max: z.number().int() }),
     hostId: z.number().int().nonnegative(),
     started: z.boolean(),
   }),

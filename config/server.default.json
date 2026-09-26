@@ -21,6 +21,10 @@
     "maxRounds": {
       "min": 5,
       "max": 20
+    },
+    "teamSize": {
+      "min": 1,
+      "max": 4
     }
   },
   "snapshot": {

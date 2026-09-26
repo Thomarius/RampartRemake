@@ -15,8 +15,8 @@ function view(over: Partial<LobbyView> = {}): LobbyView {
     humanPlayer: 0,
     seats: [seat(0, 'Ada')],
     bots: ['gunner', 'gunner', 'gunner', 'gunner'],
-    settings: { maxRounds: 10 },
-    settingBounds: { maxRounds: { min: 5, max: 20 } },
+    settings: { maxRounds: 10, teamSize: 1 },
+    settingBounds: { maxRounds: { min: 5, max: 20 }, teamSize: { min: 1, max: 4 } },
     ...over,
   };
 }
@@ -106,14 +106,14 @@ describe('lobby', () => {
   });
 
   it('gives the host a round control bounded by the server, and guests a statement', () => {
-    const host = lobbyMarkup(view({ settings: { maxRounds: 12 } }));
+    const host = lobbyMarkup(view({ settings: { maxRounds: 12, teamSize: 1 } }));
     expect(host).toContain('id="max-rounds"');
     expect(host.match(/<option value="\d+"/g)).toHaveLength(16); // 5 to 20
     expect(host).toContain('<option value="12" selected>');
     expect(host).not.toContain('<option value="4"');
     expect(host).not.toContain('<option value="21"');
 
-    const guest = lobbyMarkup(view({ humanPlayer: 1, settings: { maxRounds: 12 } }));
+    const guest = lobbyMarkup(view({ humanPlayer: 1, settings: { maxRounds: 12, teamSize: 1 } }));
     expect(guest).not.toContain('id="max-rounds"');
     expect(guest).toContain('12 rounds');
   });

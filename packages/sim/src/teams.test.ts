@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { applyAction, createMatch, step } from './match.js';
 import { canPlacePiece } from './placement.js';
 import { fire, resolveImpacts } from './shots.js';
-import { teamScore } from './teams.js';
+import { seatOrder, teamScore } from './teams.js';
 import { stateFromAscii, withoutContinues } from './testing.js';
 import { Structure, type MatchState } from './types.js';
 
@@ -212,5 +212,15 @@ describe('building on a teammate’s island', () => {
 
   it('can be turned off for everyone', () => {
     expect(spotOn(building('none'), 0, 2)).toBeNull();
+  });
+});
+
+describe('which seat gets which island', () => {
+  it('is a shuffle, the same for the same seed and different for another', () => {
+    const order = seatOrder(7, 8);
+    expect([...order].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(seatOrder(7, 8)).toEqual(order);
+    const differs = [1, 2, 3, 4, 5].some((seed) => seatOrder(seed, 8).join() !== order.join());
+    expect(differs).toBe(true);
   });
 });

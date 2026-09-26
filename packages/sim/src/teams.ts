@@ -1,3 +1,4 @@
+import { streamFor } from './rng.js';
 import type { MatchState } from './types.js';
 
 /**
@@ -17,4 +18,23 @@ export function teamScore(state: MatchState, team: number): number {
   let total = 0;
   for (const p of state.players) if (p.team === team) total += p.score;
   return total;
+}
+
+/**
+ * Which player — and so which island — each seat becomes, as `order[seat]`.
+ *
+ * The host chooses who plays with whom, but not where: which island each seat gets is
+ * shuffled at the start, so no seat is always the one with the awkward neighbours.
+ * Seeded from the match seed, so the server and a local match agree, and a match can be
+ * reproduced. Players keep the invariant that player p owns island p + 1; it is the
+ * seats that move.
+ */
+export function seatOrder(seed: number, count: number): number[] {
+  const order = Array.from({ length: count }, (_, i) => i);
+  const rng = streamFor(seed, 'seats');
+  for (let i = count - 1; i > 0; i--) {
+    const j = rng.nextInt(i + 1);
+    [order[i], order[j]] = [order[j] as number, order[i] as number];
+  }
+  return order;
 }

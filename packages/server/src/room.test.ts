@@ -177,11 +177,13 @@ describe('authority', () => {
 
     const state = a.state;
     expect(state).not.toBeNull();
-    const theirCastle = state!.castles.find((c) => c.islandId === 2)!;
-    // Player 0 claims to be player 1, choosing player 1's castle.
+    // Ada claims to be the other player, choosing that player's castle. Which player
+    // each is was shuffled at the start, so both come from what the room told them.
+    const other = 1 - a.playerId;
+    const theirCastle = state!.castles.find((c) => c.islandId === other + 1)!;
     r.handle(a, {
       type: 'action',
-      action: { kind: 'select_castle', player: 1, castleId: theirCastle.id },
+      action: { kind: 'select_castle', player: other, castleId: theirCastle.id },
     });
     run(r, 2);
 
@@ -356,6 +358,86 @@ describe('bot difficulty', () => {
   });
 });
 
+/** The latest room broadcast a client has received. */
+function latestRoom(client: TestClient) {
+  const message = client.received.filter((m) => m.type === 'room').at(-1);
+  if (message?.type !== 'room') throw new Error('no room message');
+  return message;
+}
+
+describe('teams at the table', () => {
+  it('takes a team size, moves to a player count it allows, and seats teams in order', () => {
+    const r = room(3);
+    const host = new TestClient('host');
+    r.join(host, 'Ada');
+    r.handle(host, { type: 'configure', settings: { teamSize: 2 } });
+    const shown = latestRoom(host);
+    // Three cannot make two equal teams of two; four is the smallest that can.
+    expect(shown.settings.teamSize).toBe(2);
+    expect(shown.playerCount).toBe(4);
+    expect(shown.teams).toEqual([0, 0, 1, 1]);
+    expect(shown.bots).toHaveLength(4);
+  });
+
+  it('lets the host move seats between teams, but only into equal teams', () => {
+    const r = room(4);
+    const host = new TestClient('host');
+    r.join(host, 'Ada');
+    r.handle(host, { type: 'configure', settings: { teamSize: 2 } });
+    r.handle(host, { type: 'configure', teams: [0, 1, 0, 1] });
+    expect(latestRoom(host).teams).toEqual([0, 1, 0, 1]);
+    r.handle(host, { type: 'configure', teams: [0, 0, 0, 1] });
+    expect(latestRoom(host).teams).toEqual([0, 1, 0, 1]);
+    // And a player count the team size does not allow is refused.
+    r.handle(host, { type: 'configure', playerCount: 5 });
+    expect(latestRoom(host).playerCount).toBe(4);
+  });
+
+  it('ignores a guest reshaping the table', () => {
+    const r = room(4);
+    const host = new TestClient('host');
+    const guest = new TestClient('guest');
+    r.join(host, 'Ada');
+    r.join(guest, 'Bo');
+    r.handle(guest, { type: 'configure', settings: { teamSize: 2 }, playerCount: 6 });
+    expect(latestRoom(host).settings.teamSize).toBe(1);
+    expect(latestRoom(host).playerCount).toBe(4);
+  });
+
+  it('shuffles seats onto islands at the start, tells everyone who they are, and keeps teams', () => {
+    const r = room(4, 11);
+    const clients = ['a', 'b'].map((id) => new TestClient(id));
+    r.join(clients[0]!, 'Ada');
+    r.join(clients[1]!, 'Bo');
+    r.handle(clients[0]!, { type: 'configure', settings: { teamSize: 2 } });
+    // Ada and Bo together, against two bots.
+    r.handle(clients[0]!, { type: 'configure', teams: [0, 0, 1, 1] });
+    r.start();
+    run(r, 60);
+
+    const state = clients[0]!.state!;
+    const ada = state.players[clients[0]!.playerId]!;
+    const bo = state.players[clients[1]!.playerId]!;
+    expect(ada.name).toBe('Ada');
+    expect(bo.name).toBe('Bo');
+    expect(ada.team).toBe(bo.team);
+    expect(state.players.filter((p) => p.team === ada.team)).toHaveLength(2);
+    for (const client of clients) expect(client.desyncs).toEqual([]);
+  });
+
+  it('puts seats on different islands for different matches', () => {
+    // Over a handful of rooms, the first seat is not always player 0.
+    const firsts = [1, 2, 3, 4, 5, 6].map((seed) => {
+      const r = room(4, seed);
+      const host = new TestClient('host');
+      r.join(host, 'Ada');
+      r.start();
+      return host.playerId;
+    });
+    expect(new Set(firsts).size).toBeGreaterThan(1);
+  });
+});
+
 describe('disconnect and reconnect', () => {
   it('hands a dropped seat to a bot so the match does not stall', () => {
     const r = room(2, 3);
@@ -383,12 +465,14 @@ describe('disconnect and reconnect', () => {
     r.start();
     run(r, 200);
     const token = b.token;
+    // Whichever player the start made them: islands are shuffled among the seats.
+    const player = b.playerId;
 
     r.leave(b);
     run(r, 200);
 
     const returning = new TestClient('b2');
-    expect(r.join(returning, 'Bo', token)).toBe(1);
+    expect(r.join(returning, 'Bo', token)).toBe(player);
     expect(returning.state).not.toBeNull();
     expect(returning.state!.tick).toBeGreaterThan(300);
 

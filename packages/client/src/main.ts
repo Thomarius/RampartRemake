@@ -167,6 +167,7 @@ function readCommon(): Omit<Setup, 'seats'> {
         document.querySelector<HTMLSelectElement>('#max-rounds')?.value ??
           DEFAULT_SETTINGS.maxRounds,
       ),
+      teamSize: 1,
     },
   };
 }

@@ -1,7 +1,10 @@
 import {
   applySettings,
   defaultSettings,
+  defaultTeams,
   mergeSettings,
+  teamsBalanced,
+  validPlayerCounts,
   type AiConfig,
   type MatchSettings,
   type Ruleset,
@@ -23,6 +26,7 @@ import {
   createMatch,
   drainEvents,
   hashMatchState,
+  seatOrder,
   step,
   type Action,
   type MatchState,
@@ -92,6 +96,10 @@ export class Room {
   private readonly botDifficulties: Difficulty[];
   /** Settings the host may change before the match starts, within the server's bounds. */
   private settings: MatchSettings;
+  /** Seats at the table, which the host may change while the table is being set. */
+  private playerCount: number;
+  /** Each seat's team, by seat. Free-for-all is every seat on its own. */
+  private teams: number[];
   private idle = 0;
 
   constructor(options: RoomOptions) {
@@ -102,6 +110,8 @@ export class Room {
       options.server.botDifficulty as Difficulty,
     );
     this.settings = defaultSettings(options.ruleset, options.server.lobbySettings);
+    this.playerCount = options.playerCount;
+    this.teams = defaultTeams(this.playerCount, this.settings.teamSize);
   }
 
   get started(): boolean {
@@ -139,7 +149,7 @@ export class Room {
     }
 
     if (this.state !== null) return null; // no new seats once a match is running
-    if (this.seats.length >= this.options.playerCount) return null;
+    if (this.seats.length >= this.playerCount) return null;
 
     const seat: Seat = {
       playerId: this.seats.length,
@@ -194,14 +204,16 @@ export class Room {
           const wanted = message.bots?.[i];
           if (wanted !== undefined) this.botDifficulties[i] = wanted as Difficulty;
         }
+        let settings = this.settings;
         if (message.settings !== undefined) {
           // Only the fields actually sent: absent ones keep their current value.
           const change = Object.fromEntries(
             Object.entries(message.settings).filter(([, v]) => v !== undefined),
           ) as Partial<MatchSettings>;
-          const next = mergeSettings(this.settings, change, this.options.server.lobbySettings);
-          if (next !== null) this.settings = next;
+          settings =
+            mergeSettings(this.settings, change, this.options.server.lobbySettings) ?? settings;
         }
+        this.configureTable(settings, message.playerCount ?? this.playerCount, message.teams);
         this.broadcastRoom();
         return;
       }
@@ -220,13 +232,52 @@ export class Room {
     }
   }
 
+  /**
+   * The table's shape: team size, seats, and who is on which team — changed together,
+   * since each constrains the others. A team size needs a player count that makes at
+   * least two equal teams; if the current count does not, the smallest that does and
+   * seats everyone who has joined is taken. Changing either resets the teams to seat
+   * order. An assignment the host sends is taken only if it makes equal teams.
+   */
+  private configureTable(
+    settings: MatchSettings,
+    playerCount: number,
+    teams: readonly number[] | undefined,
+  ): void {
+    const limits = this.options.ruleset.players;
+    const humans = this.seats.length;
+    const valid = validPlayerCounts(settings.teamSize, limits).filter((n) => n >= humans);
+    const count = valid.includes(playerCount)
+      ? playerCount
+      : (valid.find((n) => n >= this.playerCount) ?? valid[0]);
+    if (count === undefined) return; // no table that size seats everyone who has joined
+
+    const reshaped = settings.teamSize !== this.settings.teamSize || count !== this.playerCount;
+    this.settings = settings;
+    if (count !== this.playerCount) {
+      // Seats kept keep their bot's skill; new ones take the server's default.
+      this.playerCount = count;
+      this.botDifficulties.length = count;
+      for (let i = 0; i < count; i++) {
+        this.botDifficulties[i] ??= this.options.server.botDifficulty as Difficulty;
+      }
+    }
+    if (reshaped) this.teams = defaultTeams(count, settings.teamSize);
+    if (teams !== undefined && teams.length === count && teamsBalanced(teams, settings.teamSize)) {
+      this.teams = [...teams];
+    }
+  }
+
   // --------------------------------------------------------------------- match
 
   start(): void {
     if (this.state !== null) return;
+    // Unequal teams cannot start. The host's controls never produce them, so this only
+    // turns away a crafted message.
+    if (!teamsBalanced(this.teams, this.settings.teamSize)) return;
     const humans = this.seats.length;
     // Fill the rest of the table with bots so a match can start under-subscribed.
-    for (let i = humans; i < this.options.playerCount; i++) {
+    for (let i = humans; i < this.playerCount; i++) {
       this.seats.push({
         playerId: i,
         name: `Bot ${i}`,
@@ -238,21 +289,38 @@ export class Room {
       });
     }
 
+    // Which player, and so which island, each seat becomes — shuffled, so no seat is
+    // always the one with the awkward neighbours. Seats are in join order here, and
+    // until now each seat's player id was its index.
+    const seed = this.rng.nextU32();
+    const order = seatOrder(seed, this.seats.length);
+    const players = new Array<{ name: string; isBot: boolean; team: number }>(this.seats.length);
+    const difficulties = this.seats.map((_, index) => this.botDifficulties[index] ?? 'gunner');
+    const hostSeat = this.seats.findIndex((seat) => seat.playerId === this.hostId);
+    this.seats.forEach((seat, index) => {
+      const player = order[index] as number;
+      players[player] = { name: seat.name, isBot: seat.bot, team: this.teams[index] ?? index };
+      seat.playerId = player;
+    });
+    this.hostId = this.seats[hostSeat]?.playerId ?? 0;
+
     this.state = createMatch({
-      seed: this.rng.nextU32(),
+      seed,
       // The server's rules with the host's settings over them. It travels in the
       // snapshot like any ruleset, so every client runs exactly these.
       ruleset: applySettings(this.options.ruleset, this.settings),
       terrainConfig: this.options.terrain,
-      players: this.seats.map((seat) => ({ name: seat.name, isBot: seat.bot })),
+      players,
     });
 
-    for (const seat of this.seats) {
+    this.seats.forEach((seat, index) => {
       // A seat a person holds still gets a bot, ready to cover them if they drop.
-      const difficulty = this.botDifficulties[seat.playerId] ?? 'gunner';
+      const difficulty = difficulties[index] as Difficulty;
       this.bots.set(seat.playerId, new Bot(seat.playerId, difficulty, this.options.ai));
-    }
+    });
 
+    // Every connection learns the player it has become before the match reaches it.
+    for (const seat of this.seats) this.sendWelcome(seat);
     this.broadcastRoom();
     for (const seat of this.seats) this.sendSnapshot(seat);
   }
@@ -349,10 +417,12 @@ export class Room {
       type: 'room',
       code: this.code,
       seats: this.wireSeats(),
-      playerCount: this.options.playerCount,
+      playerCount: this.playerCount,
       bots: [...this.botDifficulties],
       settings: { ...this.settings },
       settingBounds: this.options.server.lobbySettings,
+      teams: [...this.teams],
+      playerLimits: { ...this.options.ruleset.players },
       hostId: this.hostId,
       started: this.started,
     });
