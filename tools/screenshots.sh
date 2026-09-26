@@ -17,6 +17,8 @@ OUT=${1:-/tmp/shots}
 shift || true
 BASE=${BASE:-http://localhost:5173}
 GAME="$BASE/?autostart=1&players=3&seed=7"
+# Bots in every seat, so the cannon phase ends early and the banners come on time.
+WATCH="$GAME&watch=1&bots=gunner"
 
 # name|query appended to the base|milliseconds to wait
 SCENES=(
@@ -32,6 +34,11 @@ SCENES=(
   "gains|$GAME&snapshot=build&round=3&style=pixel|21800"
   "life-lost|$GAME&snapshot=build&round=2&style=pixel|21600"
   "knocked-out|$GAME&snapshot=combat&round=5&idle=1&style=pixel|2500"
+  # The banners, mid-crossing, in the default looks (&style= sets both looks to one).
+  # Waits are real time, so a slower machine may need them nudged.
+  "wipe-to-build|$WATCH&snapshot=combat&round=2|20000"
+  "sweep|$WATCH&snapshot=build&round=2|24500"
+  "wipe-to-combat|$WATCH&snapshot=build&round=2|30500"
   "four-players|$BASE/?autostart=1&players=4&seed=3&snapshot=combat&round=3&style=pixel|3000"
 )
 

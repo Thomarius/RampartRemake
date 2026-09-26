@@ -312,9 +312,11 @@ body {
   text-transform: uppercase;
   text-align: center;
   white-space: nowrap;
-  /* Constant speed, no dwell: the banner sweeps past rather than stopping to be
-     read. Duration is set inline from the ruleset. */
-  animation: sweep 4s linear forwards;
+  /* Moved each frame from the simulation clock (Hud.placeAnnouncement), so the board
+     changes exactly beneath it. Starts above the screen until the first frame places
+     it. */
+  top: 0;
+  transform: translateY(-100%);
 }
 
 .phase-call small.news {
@@ -366,15 +368,6 @@ table.final tr.you td:nth-child(2) {
   font-size: 0.85rem;
   letter-spacing: 0.08em;
   text-transform: none;
-}
-
-@keyframes sweep {
-  from {
-    top: -12%;
-  }
-  to {
-    top: 100%;
-  }
 }
 
 .counter {

@@ -299,6 +299,23 @@ export class PixelTheme implements Theme {
     }
   }
 
+  /** The banner takes a swept block: a puff of its stone, lighter than a hit's. */
+  noteCrumble(block: Debris): void {
+    const colour =
+      block.owner < 0 ? hex(this.art.palette.rockMid) : playerColour(this.art, block.owner, 'base');
+    const count = Math.ceil(this.art.generators.fx.debrisPerTile / 2);
+    for (let k = 0; k < count; k++) {
+      this.fragments.push({
+        x: block.x + 0.2 + Math.random() * 0.6,
+        y: block.y + 0.2 + Math.random() * 0.6,
+        vx: (Math.random() - 0.5) * 1.2,
+        vy: -1 - Math.random() * 1.2,
+        age: 0,
+        colour,
+      });
+    }
+  }
+
   noteShot(shot: Shot): void {
     const angle = Math.atan2(shot.toX - shot.fromX, -(shot.toY - shot.fromY));
     this.aims.set(shot.cannonId, { angle, firedAgo: 0 });

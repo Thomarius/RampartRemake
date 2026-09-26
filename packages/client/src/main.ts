@@ -9,6 +9,7 @@ import {
   reshapeTable,
   validateConfigBundle,
   type ArtStyle,
+  type ArtStyles,
   type MatchSettings,
   type Table,
 } from '@rampart/config';
@@ -34,6 +35,13 @@ import { LocalMatch } from './localMatch.js';
 import { announcementLines, isTeamMatch, teamLetter } from './scores.js';
 import { buildHints, type BuildHints } from './hints.js';
 import { timerSpot } from './timerSpot.js';
+import {
+  bannerProgress,
+  boardWithStanding,
+  looksAround,
+  stillStanding,
+  type SweptWall,
+} from './transition.js';
 import { ServerConnection } from './net/connection.js';
 import { NetworkMatch } from './net/networkMatch.js';
 import type { ServerMessage } from '@rampart/protocol';
@@ -90,9 +98,43 @@ globalThis.addEventListener('keydown', (event) => {
 });
 
 const params = new URLSearchParams(globalThis.location.search);
-const preferredStyle: ArtStyle = ArtStyleSchema.catch(defaultArtConfig.style).parse(
-  params.get('style'),
-);
+
+/** Where the menu remembers the two looks, so they survive a reload. */
+const STYLES_KEY = 'rampart.styles';
+
+function storedStyles(): Partial<ArtStyles> {
+  try {
+    const raw: unknown = JSON.parse(globalThis.localStorage?.getItem(STYLES_KEY) ?? '{}');
+    const stored = raw as Record<string, unknown>;
+    return {
+      ...(ArtStyleSchema.safeParse(stored.build).success
+        ? { build: stored.build as ArtStyle }
+        : {}),
+      ...(ArtStyleSchema.safeParse(stored.combat).success
+        ? { combat: stored.combat as ArtStyle }
+        : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The look for building and the look for combat. `?style=` sets both, which is what the
+ * screenshot script and older links mean by it; `?buildStyle=` and `?combatStyle=` set
+ * one each. Then what the menu last saved, then the configured default pair.
+ */
+function preferredStyles(): ArtStyles {
+  const both = ArtStyleSchema.safeParse(params.get('style'));
+  const build = ArtStyleSchema.safeParse(params.get('buildStyle'));
+  const combat = ArtStyleSchema.safeParse(params.get('combatStyle'));
+  const stored = storedStyles();
+  const fallback = defaultArtConfig.styles;
+  return {
+    build: build.data ?? both.data ?? stored.build ?? fallback.build,
+    combat: combat.data ?? both.data ?? stored.combat ?? fallback.combat,
+  };
+}
 const timeScale = Math.max(1, Number(params.get('speed') ?? 1));
 
 /** What the render loop needs, whichever way the match is being played. */
@@ -113,7 +155,7 @@ interface Setup {
   /** One per seat: null for the person, otherwise the bot's skill. */
   seats: (Difficulty | null)[];
   seed: number;
-  style: ArtStyle;
+  styles: ArtStyles;
   name: string;
   /** The host's choices, offline as online, so a round limit can be felt out alone. */
   settings: MatchSettings;
@@ -145,15 +187,41 @@ const DEFAULT_PLAYERS = 3;
 interface Common {
   name: string;
   seed: number;
-  style: ArtStyle;
+  styles: ArtStyles;
+}
+
+/** The menu's two style choices, saved for next time as they are read. */
+function readStyles(): ArtStyles {
+  const fallback = preferredStyles();
+  const styles: ArtStyles = {
+    build: ArtStyleSchema.catch(fallback.build).parse(
+      document.querySelector<HTMLSelectElement>('#build-style')?.value,
+    ),
+    combat: ArtStyleSchema.catch(fallback.combat).parse(
+      document.querySelector<HTMLSelectElement>('#combat-style')?.value,
+    ),
+  };
+  try {
+    globalThis.localStorage?.setItem(STYLES_KEY, JSON.stringify(styles));
+  } catch {
+    // Storage refused, as in some private windows: the choice holds for this match only.
+  }
+  return styles;
+}
+
+/** Names for the styles, as the menu offers them. */
+const STYLE_NAMES: Record<ArtStyle, string> = { flat: 'Minimal', pixel: 'Pixel art' };
+
+function styleOptions(): string {
+  return ArtStyleSchema.options
+    .map((style) => `<option value="${style}">${STYLE_NAMES[style]}</option>`)
+    .join('');
 }
 
 function readCommon(): Common {
   return {
     seed: Number(document.querySelector<HTMLInputElement>('#seed')?.value ?? 1),
-    style: ArtStyleSchema.catch(defaultArtConfig.style).parse(
-      document.querySelector<HTMLSelectElement>('#style')?.value,
-    ),
+    styles: readStyles(),
     name: document.querySelector<HTMLInputElement>('#name')?.value.trim() || 'Player',
   };
 }
@@ -172,12 +240,8 @@ function showMenu(): void {
          Fail to seal a castle and you lose a life.</p>
       <label>Name <input id="name" type="text" maxlength="16" value="Player" /></label>
       <label>Seed <input id="seed" type="number" value="1" min="0" step="1" /></label>
-      <label>Style
-        <select id="style">
-          <option value="pixel">Pixel art</option>
-          <option value="flat">Minimal</option>
-        </select>
-      </label>
+      <label>Building look <select id="build-style">${styleOptions()}</select></label>
+      <label>Combat look <select id="combat-style">${styleOptions()}</select></label>
       <button id="play">Play</button>
       <div class="split">
         <input id="code" type="text" maxlength="8" placeholder="room code" />
@@ -187,8 +251,13 @@ function showMenu(): void {
         the match runs on this computer.</p>
     </div>
   `;
-  const styleField = document.querySelector<HTMLSelectElement>('#style');
-  if (styleField) styleField.value = preferredStyle;
+  // The banners either side of combat swap one look for the other as they cross the
+  // board, as the original did; the same style for both switches nothing.
+  const styles = preferredStyles();
+  const buildField = document.querySelector<HTMLSelectElement>('#build-style');
+  if (buildField) buildField.value = styles.build;
+  const combatField = document.querySelector<HTMLSelectElement>('#combat-style');
+  if (combatField) combatField.value = styles.combat;
 
   document.querySelector('#play')?.addEventListener('click', () => {
     audio.play('select');
@@ -553,10 +622,17 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
   // Colours for this match: families by team in a team match, distinct otherwise.
   const palette = matchPalette(defaultConfigBundle.art, session.state);
   useMatchPalette(palette);
-  await scene.init(canvas, createTheme(setup.style, setup.seed), {
-    ...defaultConfigBundle.art,
-    players: palette,
-  });
+  // One theme when both looks are the same style, so the wipe has nothing to change.
+  const buildTheme = createTheme(setup.styles.build, setup.seed);
+  const combatTheme =
+    setup.styles.combat === setup.styles.build
+      ? buildTheme
+      : createTheme(setup.styles.combat, setup.seed);
+  await scene.init(
+    canvas,
+    { build: buildTheme, combat: combatTheme },
+    { ...defaultConfigBundle.art, players: palette },
+  );
 
   const hud = new Hud(hudRoot, bannerRoot);
   const matchAudio = new MatchAudio(audio, session.humanPlayer);
@@ -651,11 +727,27 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
   // Nobody at the keyboard in a watched match, so there is nothing to listen for.
   if (session.humanPlayer >= 0) controls.attach();
 
+  /**
+   * Walls the sim swept at the last resolution that the banner has not yet reached; see
+   * `transition.ts`. Owners are read from the board as last drawn, because the sweep
+   * has already zeroed them in the state.
+   */
+  let swept: SweptWall[] = [];
+  /** The owner layer as last drawn, for exactly that. */
+  let drawnOwner = session.state.owner.slice();
+
+  /** Walls, castles and cannons, with any swept wall still standing put back. */
+  function drawBoard(): void {
+    const board = boardWithStanding(session.state, swept);
+    scene.drawStructures({ ...session.state, ...board });
+    drawnOwner = board.owner.slice();
+  }
+
   const fit = (): void => {
     scene.resize(session.state, globalThis.innerWidth, globalThis.innerHeight, HUD_BAR_PX);
     scene.drawTerrain(session.state);
     scene.drawTerritory(session.state, computeEnclosure(session.state).territory);
-    scene.drawStructures(session.state);
+    drawBoard();
   };
   fit();
   globalThis.addEventListener('resize', fit);
@@ -678,34 +770,70 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     scene.app.destroy(true);
   };
 
-  const bannerTicks = Math.ceil(
-    (session.state.ruleset.phases.transitionBannerMs * session.state.ruleset.tickRateHz) / 1000,
-  );
+  /** The intermission whose banner is showing, by the tick it ends on. */
   let announcedAt: number | null = null;
   /** Set by a resolution, so the announcement after it carries the standings. */
   let resolvedSinceAnnounce = false;
 
-  /** Fires the announcement once the end-of-phase pause is over, and once only. */
-  function announceWhenDue(): void {
+  /**
+   * The announcement, and what it does to the board as it crosses: the look beneath
+   * changes at its line, and swept walls go as it reaches them. Every frame, from the
+   * simulation clock, so the two can never part company.
+   */
+  function drawTransition(): void {
     const state = session.state;
-    if (state.phase !== 'intermission' || state.pendingPhase === null) {
+    const progress = bannerProgress(state, session.tickFraction);
+    const { before, after } = looksAround(state);
+    let lineY: number | null = null;
+    if (progress === null) {
+      hud.clearAnnouncement();
       announcedAt = null;
-      return;
+    } else {
+      if (announcedAt !== state.phaseEndTick) {
+        announcedAt = state.phaseEndTick;
+        // After a continue the cannon phase opens with a castle to choose, and the
+        // announcement should say so rather than tell them to place guns they cannot.
+        const human = state.players[session.humanPlayer];
+        const choosing =
+          state.pendingPhase === 'cannon_place' && human !== undefined && owesCastleChoice(human);
+        hud.announce(
+          choosing ? 'castle_select' : (state.pendingPhase ?? 'combat'),
+          announcementLines(state, resolvedSinceAnnounce),
+        );
+        resolvedSinceAnnounce = false;
+      }
+      lineY = hud.placeAnnouncement(progress);
     }
-    if (announcedAt === state.phaseEndTick) return;
-    if (state.tick < state.phaseEndTick - bannerTicks) return;
-    announcedAt = state.phaseEndTick;
-    // After a continue the cannon phase opens with a castle to choose, and the
-    // announcement should say so rather than tell them to place guns they cannot.
-    const human = state.players[session.humanPlayer];
-    const choosing =
-      state.pendingPhase === 'cannon_place' && human !== undefined && owesCastleChoice(human);
-    hud.announce(
-      choosing ? 'castle_select' : state.pendingPhase,
-      state.ruleset.phases.transitionBannerMs,
-      announcementLines(state, resolvedSinceAnnounce),
+    scene.showLooks(
+      lineY === null
+        ? { from: before, to: before, lineY: null }
+        : { from: before, to: after, lineY },
     );
-    resolvedSinceAnnounce = false;
+    sweepUnderBanner(lineY);
+  }
+
+  /** Takes away each swept wall as the banner's line passes it. */
+  function sweepUnderBanner(lineY: number | null): void {
+    if (swept.length === 0) return;
+    // Any banner will do — normally "Place cannons", but "Fire!" when nobody had guns
+    // to place — and once the intermission is over, whatever is left goes.
+    const over = session.state.phase !== 'intermission';
+    const lineRow = over
+      ? Number.POSITIVE_INFINITY
+      : lineY === null
+        ? Number.NEGATIVE_INFINITY
+        : scene.rowAt(lineY);
+    const standing = stillStanding(swept, session.state.width, lineRow);
+    if (standing.length === swept.length) return;
+    const width = session.state.width;
+    const kept = new Set(standing.map((wall) => wall.index));
+    for (const wall of swept) {
+      if (kept.has(wall.index)) continue;
+      const x = wall.index % width;
+      scene.noteCrumble({ x, y: (wall.index - x) / width, owner: wall.owner - 1 });
+    }
+    swept = standing;
+    drawBoard();
   }
 
   /** Open water near the middle, for the big timer. Terrain is fixed, so asked once. */
@@ -811,6 +939,15 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
           territoryChanged = true;
           break;
         }
+        case 'walls_swept':
+          // Drawn away by the next banner rather than now; see `sweepUnderBanner`. A
+          // block placed in this same step was never drawn, so its island says whose.
+          swept = event.tiles.map((index) => ({
+            index,
+            owner: (drawnOwner[index] as number) || (session.state.islandId[index] as number),
+          }));
+          structuresChanged = true;
+          break;
         case 'phase_changed':
           controls.resetRotation();
           territoryChanged = true;
@@ -820,7 +957,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
           break;
       }
     }
-    if (structuresChanged) scene.drawStructures(session.state);
+    if (structuresChanged) drawBoard();
     if (territoryChanged || structuresChanged) {
       live = computeEnclosure(session.state);
       scene.drawTerritory(session.state, live.territory);
@@ -837,7 +974,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     applyEvents(events);
     matchAudio.handle(events);
     matchAudio.frame(session.state);
-    announceWhenDue();
+    drawTransition();
     drawIslandBanners();
     hud.update(session.state, session.humanPlayer, session.status(), live.enclosedCastlesByPlayer);
 
@@ -869,7 +1006,7 @@ if (params.get('autostart') === '1') {
   const setup: Setup = {
     seats: Array.from({ length: count }, (_, i) => (i === 0 && !watching ? null : difficulty)),
     seed: Number(params.get('seed') ?? 1),
-    style: preferredStyle,
+    styles: preferredStyles(),
     name: 'Player',
     settings: settingsFromParams(),
     // &teams=N puts the seats in teams of N, in seat order, when N divides the table.
@@ -897,7 +1034,7 @@ if (params.get('autostart') === '1') {
   const joining = params.get('join');
   const common: Common = {
     seed: Number(params.get('seed') ?? 1),
-    style: preferredStyle,
+    styles: preferredStyles(),
     name: params.get('name') ?? 'Player',
   };
   void openLobby(common, joining, Number(params.get('host') ?? DEFAULT_PLAYERS)).catch(

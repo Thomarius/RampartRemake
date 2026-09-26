@@ -1412,3 +1412,34 @@ PLAN.md §11.7; how they came out:
 The pattern across all three: the rules were right and tested, and the client asked a
 different, simpler question than the sim did. Where the client has to predict a rule, it
 should ask the same function or one tested against it.
+
+## 10w. The original's banner: two looks, and the sweep drawn under it (V1)
+
+The first package of the visual pass (PLAN §11.8). In the original, the banners either side
+of combat change the board's look as they cross it — plain for building, cinematic for
+combat — and the banner after the build phase carries the sweep of loose wall. All three
+parts already existed here but were unconnected: one style for the whole match, a CSS
+banner that knew nothing of the board, and a sweep drawn at the resolution before any
+banner showed.
+
+- **Client only.** The sim still sweeps at the resolution; the client draws the swept
+  blocks until the banner's line passes their row. Safe because nothing is playable during
+  an intermission and the next phase opens only once the banner has left. Checked with the
+  user against the original: "Fire!" and "Rebuild" swap the look, "Place cannons" carries
+  the sweep. The rare round with no cannon phase needs no rule — the next banner, "Fire!",
+  takes the sweep as well.
+- **Two settings, not a mode**: `art.styles.build` and `.combat`, flat and pixel by default,
+  chosen per player in the menu. The same style for both simply switches nothing.
+- **The banner follows the sim clock** (`bannerProgress`), not a stylesheet, so the wipe is
+  always exactly beneath it. It now travels from wholly above the screen to wholly below,
+  rather than from -12% to the bottom edge, so the wipe covers the whole board.
+- **Each look has its own layer stack.** The pixel style empties its layers with
+  `removeChildren()`, which took the other style's graphics with it when they shared. The
+  hidden look is only marked stale and redrawn as a wipe reveals it, so between banners two
+  looks cost what one did. A look that never ages its effects must not be handed impacts
+  while hidden, or they all go off at once when it is next shown.
+- **Owners of swept blocks come from the board last drawn**: the sweep has already zeroed
+  them in the state, and `islandId` would be wrong for an eliminated player's rubble.
+- Seen in real-time screenshots, frames diffed before and after the banner: blocks above
+  the line gone mid-crossing, those below still standing, and the pixel look coming into
+  view with the cannons placed while it was hidden.

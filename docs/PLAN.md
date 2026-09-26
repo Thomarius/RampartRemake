@@ -321,7 +321,7 @@ sender's seat**, so a client cannot act for someone else.
 ## 7. `packages/client`
 
 Two visual styles behind one `Theme` interface: the scene owns the camera, the layer
-stack, dirty tracking and input mapping; a theme owns only what things look like. All
+stacks, dirty tracking and input mapping; a theme owns only what things look like. All
 sprites are generated at boot from `art.default.json` plus the match seed — nothing binary
 is committed except audio.
 
@@ -330,6 +330,18 @@ did. Missing files are silent by design, which is what lets the game ship before
 does. **A missing file cannot be told from its HTTP status** — the static handler answers
 an unknown path with `index.html` and a 200 — so absence is detected by failure to decode,
 and a corrupt file is silent rather than noisy.
+
+**Two looks, swapped by the banners, as in the original** (`transition.ts`). Each player
+chooses a style for building and one for combat (`art.styles`: flat and pixel by
+default). Combat is drawn in the combat look, everything else in the build look, and the
+banners either side of combat change one for the other as they cross the board — above
+the banner's middle already the new look, below it still the old. The banner after the
+build phase carries the sweep instead: the sim sweeps at the resolution, and the client
+keeps drawing the swept blocks until the banner's line passes their row, when each
+crumbles. The banner's position is a pure function of the sim clock, so the wipe is
+always exactly beneath it. Both themes live for the whole match in separate layer stacks
+under masked roots; the hidden one is only marked stale, and redrawn as a wipe reveals
+it. The same style for both looks is one theme, and a banner then changes nothing.
 
 **Anything in the client that depends on the clock cannot be verified headlessly.** A
 watched match is still on round 0 after two minutes of virtual time, because the render
@@ -452,6 +464,7 @@ every resolution against an independent search, not only on unit pictures.
 | M6  | Full scope: 2–8 players, audio, lobby, Docker, deployment | Done but for audio files |
 | M7  | Balance pass                                              | **In progress**          |
 | M8  | Team mode, and one lobby for online and offline           | Done                     |
+| M9  | Visual pass: phase themes, banner wipe, effects, lobby    | In progress (§11.8)      |
 
 ---
 
@@ -460,8 +473,10 @@ every resolution against an independent search, not only on unit pictures.
 **Where to start (2026-09-26).** Team mode and the polish pass are done; the user is
 playing test matches. The next milestone is **11.2, elimination tuning**, as soon as that
 play has given a feel for it — its plan is ready and starts with a baseline measurement.
-Beside it, independent of balance: **11.6**, bots as personality × skill. Smaller items
-are in 11.5.
+Beside it, independent of balance: **11.6**, bots as personality × skill, and **11.8**,
+the visual pass, which changes no game logic and so can run while the human testing
+does — V1, the original's theme-switching banner, is done; V2–V6 are next. Smaller items are in
+11.5.
 
 ### 11.1 Round cap and points scoring — done
 
@@ -586,6 +601,175 @@ aggressive, defensive, expander), how the lobby offers the pair, and whether
 The rules are §1.8, seating and the lobby §6; how it was built and measured is ARCHIVE 10u.
 Left open: **bots do not help a teammate build**, even under `crossIslandBuild: all` —
 teaching one to help without wrecking a person's plan is its own question.
+
+### 11.8 Visual pass — in progress
+
+**Agreed 2026-09-26. V1 done** (ARCHIVE 10w); V2–V6 open. Everything here is client-side and cosmetic: no sim,
+protocol or ruleset change, so it cannot desync a match or move a balance measurement,
+and it can proceed while 11.2 waits on human play. Cosmetic randomness may use
+`Math.random` (the client is outside the lint rule), but durations, sizes and counts
+belong in `art.default.json` like every other visual tunable, not in code.
+
+**Verification, for every package.** Headless Chrome cannot check anything timed (§7), so
+each package pulls its decisions into pure functions with unit tests — which look is on
+screen, where the wipe line is, which walls are still drawn — adds a scene to
+`tools/screenshots.sh` where a still frame shows it, and leaves anything under a second
+to be looked at by a person.
+
+Work packages in order. V1 is the feature; V2–V6 are independent of each other and can
+be taken in any order after it, though V2 comes first because V1 makes the pixel style
+the combat look specifically.
+
+#### V1 — Phase themes and the banner wipe — done
+
+Kept as it was planned, for the record; how it turned out is §7 and ARCHIVE 10w.
+
+**The original.** The banners either side of the combat phase cross the screen from top
+to bottom, and the board beneath changes as the banner passes: from the simple, flat look
+of building to the more realistic, cinematic look of combat before it, and back after.
+The banner between the build and cannon phases does not change the look; instead it
+carries the sweep of loose wall, which vanishes row by row as the banner passes over.
+
+**Today** all three parts exist but are not joined: one style is chosen for the whole
+match (`Scene.useTheme` is called once), the announcement is a CSS animation across the
+window that knows nothing of the board (`@keyframes sweep`), and the sweep is drawn the
+moment the sim applies it at the resolution — before the banner shows — although the sim
+already reports exactly which tiles went (`walls_swept`, ignored by the client).
+
+**Decided with the user:**
+
+- Two style settings, **build look** and **combat look**, default **flat** and **pixel**.
+  The combat look is on screen during combat; the build look everywhere else — castle
+  choice, cannon placement, building. Both are chosen from the same list of styles, so a
+  new style is offered for either, and **choosing the same style for both switches
+  nothing** (the banner still sweeps; nothing changes under it). No separate "classic"
+  mode: it is simply the default pair.
+- **"Fire!" wipes build → combat, "Rebuild" wipes combat → build**, and "Place cannons"
+  carries the sweep. The sim is untouched: it still sweeps at the resolution, and the
+  client only delays _drawing_ it. That is safe because nothing is playable during an
+  intermission, and the next phase does not begin until the banner has left.
+- **No special rule** for the rare round in which nobody has cannons to place and the
+  sim goes straight to combat: the pending sweep is drawn away by whichever banner comes
+  next, so that "Fire!" carries both the sweep and the wipe.
+- The styles stay a per-player choice in the menu, not a table setting: they are how you
+  see the game, not its rules, so they never travel to the server or the snapshot.
+
+**Steps:**
+
+1. **Settings.** `art.style` becomes `art.styles: { build, combat }`, both `ArtStyleSchema`,
+   defaulting to `flat` and `pixel`. The menu's single Style select becomes two, "Building"
+   and "Combat", remembered in `localStorage`. `?style=X` still sets both, for the
+   screenshot script and old links; `?buildStyle=` and `?combatStyle=` set one each.
+2. **Which look, as a pure function** of state alone, so a client joining mid-intermission
+   gets it right without history. Before an intermission the look is combat exactly when
+   `pendingPhase === 'build'` (only combat leads there); after it, combat exactly when
+   `pendingPhase === 'combat'`. Outside intermissions it follows the phase.
+3. **The banner follows the sim clock.** Its progress becomes a pure function of
+   `(tick + tickFraction, phaseEndTick, bannerTicks)` and is applied as a transform each
+   frame, replacing the CSS keyframes and the `animationend` removal. Then the wipe line
+   _is_ the banner, and both stay right through dropped frames and at `&speed=`. The
+   announcement's text and standings lines are unchanged.
+4. **Two themes alive at once.** The Scene gets one layer stack per look, each under its
+   own root container. Separate stacks are necessary as well as clean: the pixel style
+   calls `removeChildren()` on its layers and would wipe the flat style's graphics if
+   they shared. During a wipe each root is masked by a screen-space rectangle split at
+   the banner's centre line — new look above, old below — covering the whole canvas, so
+   the pixel sea beyond the board switches with it. Outside a wipe only the current look
+   is visible and drawn.
+5. **Cost.** The hidden look is not kept up to date; it is marked dirty on any change and
+   redrawn in full (terrain, territory, structures) when a wipe begins and on resize, so
+   steady-state cost is what it is today. Its own state — cannon aims, flags, the water's
+   frame — simply survives being hidden. Check the frame rate mid-wipe at eight players,
+   where both terrains are live; the pixel terrain is the large one.
+6. **Effects and overlay.** Only visible looks draw effects. There are no shots in the air
+   during a banner — the intermission waits for the last to land — so a wipe never cuts
+   a shot in half; debris from the last impact may still be falling and is simply
+   clipped. The overlay comes from the look of the coming phase from the moment its
+   banner starts, so the aiming cursor that appears with "Fire!" is already the combat
+   one. The HTML layer (team tags, island banners, big timer) is above the canvas and
+   takes no part. The shake moves the stage and so moves both.
+7. **The sweep, drawn late.** On `walls_swept` the client keeps the tile list and draws
+   structures from a display copy in which those tiles are still wall until the banner
+   line passes their row, as `drawTerritory` already draws from the live enclosure rather
+   than the state. **The owner must come from the board the client last drew**: the sim
+   has already zeroed `owner` for swept tiles, and `islandId` is wrong for an eliminated
+   player's rubble. Territory needs no such treatment — a loop enclosing anything cannot
+   be swept (§1.3). Each tile crumbles as it goes: a new `Theme.noteCrumble(x, y, owner)`,
+   a puff of debris in the pixel style and a short fade in the flat one. A client that
+   joins mid-intermission never saw the event and shows the walls already gone, which is
+   correct.
+8. **Tests.** Pure: the look before and after every kind of intermission; banner
+   progress at its start, middle and end; which swept tiles are still drawn for a given
+   line. Screenshots: a new scene caught mid-wipe into combat, and one mid-sweep on "Place
+   cannons" (real-time Playwright, with `&snapshot=` and a wait into the banner). Then a
+   person watches a whole round at normal speed.
+9. **Docs.** §7 describes the two looks and the wipe; the style parameters in CLAUDE.md
+   change.
+
+#### V2 — The pixel style as the combat look
+
+Now that it is the cinematic half of a pair, push it further from the flat style.
+
+- **Use what is generated but never drawn.** The atlas already holds crater decals and
+  damaged-wall variants (`wall.<mask>.<damage>`), but `drawStructures` only ever asks for
+  damage 0 and the `craters` container stays empty. Scorch marks where shots land on open
+  ground; cracked wall beside a breach, tracked by the client from impacts. Both kept by
+  the pixel theme, which is hidden while building — whether they fade over rounds or are
+  cleared by the "Rebuild" wipe is decided by looking.
+- **Pseudo-3D.** Walls with a south-facing front and a drop shadow; castles with a front
+  face and corner towers. The original's combat view was in perspective; this is the
+  cheap version of it.
+- **Sealed ground** as a courtyard or cobble pattern instead of an alpha tint, so "sealed"
+  reads at a glance.
+- **Water**: animated foam along the shore, deeper colour away from land.
+- **Rubble**: an eliminated player's wall gets its own broken texture rather than
+  grey-tinted wall.
+- **Inert cannons**: a drooping barrel and a wisp of dark smoke rather than a red strike
+  through. The flat style keeps the strike-through, where plain information is the point.
+
+#### V3 — Build-phase effects
+
+In both styles where they are information, shared through `theme.ts` as the build hints
+and fire reticle already are; per style where they are decoration.
+
+- **Sealing a castle**: the territory floods outward from the castle in BFS order and its
+  flag goes up. The single most satisfying moment in the game, and today it just appears.
+- **A piece lands** with a slight settle and a dust puff, rather than appearing.
+- **The ghost joins up**: in the pixel style the held piece previews with the wall shapes
+  it would form with its neighbours.
+- **Overtime** shows as a pulsing red border round the board.
+
+#### V4 — Combat effects
+
+- **The lob**: the ball grows toward the top of its arc while its ground shadow shrinks.
+- **Impacts by what they hit**: a splash ring in water, dust on grass, embers and smoke
+  lingering a few seconds on a destroyed wall.
+- **Incoming**: the target marker pulses faster as impact nears, more strongly on your
+  own wall.
+- **Breach**: a castle's flag comes down when it is breached mid-combat, rather than
+  vanishing.
+- **Muzzle smoke** drifting from each gun after it fires.
+
+#### V5 — Lobby and menu
+
+- **A mini-map** of the table as it stands: the pattern for the chosen player count,
+  generated from the seed exactly as a match would be, with team letters. Islands are
+  shuffled among seats at the start, so it shows teams, not who gets which island.
+  **Open:** offline the menu's seed is known; online the room draws its seed only at the
+  start, so either the room draws it when the table is created (a server change, but not
+  a game-logic one) or the preview shows a representative map.
+- **Seat cards** in team columns, each with its colour swatch and a small rank insignia
+  per tier, instead of plain rows.
+- **An animated background**: the pixel sea behind the panel, or a blurred bot match being
+  watched.
+- A **pixel-art title**, and a little feedback when a person takes a seat or the room code
+  is copied.
+
+#### V6 — Resolution and match moments
+
+- **Points count up** across the territory as they are banked, during the intermission.
+- **A lost life** crumbles the island's walls outward rather than clearing them at once.
+- **Game over**: fireworks over the winning island(s).
 
 ---
 

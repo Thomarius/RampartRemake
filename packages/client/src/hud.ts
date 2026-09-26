@@ -170,9 +170,11 @@ export class Hud {
    * that combat has ended spends the first seconds of the build phase shooting.
    *
    * `lines` ride along underneath — the standings after a resolution, and the call
-   * for the final round — so neither needs a pause of its own.
+   * for the final round — so neither needs a pause of its own. It enters above the top
+   * of the screen; `placeAnnouncement` moves it from there.
    */
-  announce(phase: Phase, durationMs: number, lines: readonly AnnouncementLine[] = []): void {
+  announce(phase: Phase, lines: readonly AnnouncementLine[] = []): void {
+    this.clearAnnouncement();
     const text = PHASE_CALL[phase];
     if (text === '') return;
     const banner = document.createElement('div');
@@ -184,17 +186,35 @@ export class Hud {
       if (line.emphasis) small.className = 'news';
       banner.append(small);
     }
-    // The simulation holds the next phase until this has left the screen, so the
-    // travel time comes from the ruleset rather than the stylesheet.
-    banner.style.animationDuration = `${durationMs}ms`;
-    banner.addEventListener('animationend', () => banner.remove());
     // Replace only the last announcement. This layer also holds everything else drawn
     // over the board — the island banners, the team tags, the big timer, the cannon
     // count at the cursor — and clearing it all left those updating nodes no longer on
     // the page, so the count vanished for good at the first announcement.
-    this.phaseCall?.remove();
     this.phaseCall = banner;
     this.bannerRoot.append(banner);
+  }
+
+  /**
+   * Puts the announcement `progress` of the way down the screen — 0 wholly above it,
+   * 1 wholly below — and returns the height of its middle in pixels, which is where the
+   * board changes beneath it. Null when there is no announcement.
+   *
+   * At constant speed, with no dwell: the banner sweeps past rather than stopping to be
+   * read. The simulation holds the next phase until it has left.
+   */
+  placeAnnouncement(progress: number): number | null {
+    const banner = this.phaseCall;
+    if (banner === null) return null;
+    const screen = this.bannerRoot.clientHeight;
+    const height = banner.offsetHeight;
+    const top = -height + progress * (screen + height);
+    banner.style.transform = `translateY(${top.toFixed(1)}px)`;
+    return top + height / 2;
+  }
+
+  clearAnnouncement(): void {
+    this.phaseCall?.remove();
+    this.phaseCall = null;
   }
 
   /**

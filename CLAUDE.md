@@ -28,9 +28,10 @@ wait rather than assuming it hung.
 
 Client dev query parameters: `?autostart=1&players=3&seed=7`, `&snapshot=build` to jump
 to a phase (`&round=N` for one deep in a match, `&idle=1` to leave your seat undriven on
-the way, so you are soon knocked out), `&speed=10`, `&style=flat|pixel`, `&watch=1&bots=marshal` to observe a bot
-match, `&rounds=12` for the round cap, `&teams=2` for teams of two in seat order. `?host=8`
-opens the lobby at eight seats — a room if a server answers, a local table if not —
+the way, so you are soon knocked out), `&speed=10`, `&style=flat|pixel` for both looks
+(`&buildStyle=`, `&combatStyle=` for one), `&watch=1&bots=marshal` to observe a bot match,
+`&rounds=12` for the round cap, `&teams=2` for teams of two in seat order. `?host=8` opens
+the lobby at eight seats — a room if a server answers, a local table if not —
 `?join=CODE` joins one, `&name=Bo` sets the name. The menu's Play and Join reach the same
 lobby, which sets players, teams, bots and rounds.
 
@@ -135,6 +136,11 @@ lists it in priority order:
 4. Measurements never taken (§11.4): the full ladder, and seat bias at 6 and 8 players in
    free-for-all (team seating is measured, and fair).
 5. Bots as personality × skill (§11.6), independent of balance.
+
+**M9, the visual pass (§11.8), is in progress** and touches no game logic, so it can run
+while human testing does. V1 is done (ARCHIVE 10w): a build look and a combat look (flat
+and pixel by default), swapped by the banners either side of combat as they cross the
+board, with the "Place cannons" banner drawing the sweep away. V2–V6 are next.
 
 **No audio files exist yet** beyond two test files; the user is producing them, and
 missing files are silent by design. `assets/audio/README.md` lists every cue.

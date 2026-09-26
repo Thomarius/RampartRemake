@@ -1,5 +1,5 @@
 {
-  "style": "pixel",
+  "styles": { "build": "flat", "combat": "pixel" },
   "tileSizePx": 16,
   "atlasSizePx": 2048,
   "pixelSnap": true,
@@ -261,7 +261,8 @@
     "structureInsetPx": 1,
     "outlineWidthPx": 2,
     "castleCoreScale": 0.45,
-    "cannonBoreScale": 0.34
+    "cannonBoreScale": 0.34,
+    "crumbleMs": 450
   },
   "hud": {
     "pointsBannerMs": 8000

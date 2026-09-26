@@ -35,6 +35,8 @@ export interface Theme {
   noteImpact(x: number, y: number, debris: readonly Debris[]): void;
   /** A cannon has just fired this shot. */
   noteShot(shot: Shot): void;
+  /** A swept wall block has just been taken away by the banner passing over it. */
+  noteCrumble(block: Debris): void;
 
   /** Releases textures and display objects. */
   destroy(): void;

@@ -16,6 +16,7 @@ import {
   type ThemeLayers,
   type ViewTransform,
   shotLift,
+  type Debris,
 } from './theme.js';
 
 interface Impact {
@@ -25,6 +26,14 @@ interface Impact {
 }
 
 const IMPACT_MS = 320;
+
+/** A swept block fading out where it stood. */
+interface Crumble {
+  x: number;
+  y: number;
+  colour: number;
+  age: number;
+}
 
 /**
  * The minimal style: flat colour, hard edges, no textures and no atlas.
@@ -51,6 +60,7 @@ export class FlatTheme implements Theme {
   private readonly overlayGfx = new Graphics();
 
   private impacts: Impact[] = [];
+  private crumbles: Crumble[] = [];
 
   init(layers: ThemeLayers, art: ArtConfig): Promise<void> {
     this.art = art;
@@ -80,6 +90,14 @@ export class FlatTheme implements Theme {
 
   noteImpact(x: number, y: number): void {
     this.impacts.push({ x, y, age: 0 });
+  }
+
+  noteCrumble(block: Debris): void {
+    const colour =
+      block.owner < 0
+        ? hex(this.art.palette.rockDark)
+        : playerColour(this.art, block.owner, 'light');
+    this.crumbles.push({ x: block.x, y: block.y, colour, age: 0 });
   }
 
   drawTerrain(state: MatchState, view: ViewTransform): void {
@@ -222,6 +240,20 @@ export class FlatTheme implements Theme {
       });
     }
     this.impacts = this.impacts.filter((impact) => impact.age < IMPACT_MS);
+
+    // A swept block shrinks into its tile and fades: plain, like the rest of the style,
+    // but enough to see what the banner took.
+    const crumbleMs = this.style.crumbleMs;
+    for (const crumble of this.crumbles) {
+      crumble.age += frame.deltaMs;
+      const t = crumble.age / crumbleMs;
+      if (t >= 1) continue;
+      const size = view.tile * (1 - t * 0.6);
+      const offset = (view.tile - size) / 2;
+      g.rect(tileX(view, crumble.x) + offset, tileY(view, crumble.y) + offset, size, size);
+      g.fill({ color: crumble.colour, alpha: 1 - t });
+    }
+    this.crumbles = this.crumbles.filter((crumble) => crumble.age < crumbleMs);
   }
 
   drawOverlay(state: MatchState, view: ViewTransform, ghost: Ghost, humanPlayer: number): void {

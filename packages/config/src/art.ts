@@ -60,12 +60,26 @@ export const FlatStyleSchema = z.strictObject({
   castleCoreScale: z.number().min(0).max(1),
   /** Bore of a cannon, as a fraction of its footprint. */
   cannonBoreScale: z.number().min(0).max(1),
+  /** How long a swept wall block takes to fade as the banner passes over it. */
+  crumbleMs: z.number().int().positive(),
 });
 export type FlatStyleConfig = z.infer<typeof FlatStyleSchema>;
 
+/**
+ * Which style draws which part of the match. The combat look is on screen during combat
+ * and the build look everywhere else; the banners either side of combat swap one for the
+ * other as they cross the board, as the original did. The same style for both switches
+ * nothing.
+ */
+export const ArtStylesSchema = z.strictObject({
+  build: ArtStyleSchema,
+  combat: ArtStyleSchema,
+});
+export type ArtStyles = z.infer<typeof ArtStylesSchema>;
+
 export const ArtConfigSchema = z
   .strictObject({
-    style: ArtStyleSchema,
+    styles: ArtStylesSchema,
     flat: FlatStyleSchema,
     /** How long the HUD holds its news. */
     hud: z.strictObject({
