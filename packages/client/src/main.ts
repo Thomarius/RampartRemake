@@ -26,12 +26,12 @@ import {
 import { Audio } from './audio.js';
 import { Controls, inputMode, readyCannons } from './controls.js';
 import { bannersFor, type LifeLost, type PointsGained } from './banners.js';
-import { playerCssColour } from './colours.js';
+import { matchPalette, playerCssColour, useMatchPalette } from './colours.js';
 import { lobbyMarkup, type LobbyView } from './lobby.js';
 import { Hud, type IslandBanner } from './hud.js';
 import { MatchAudio } from './matchAudio.js';
 import { LocalMatch } from './localMatch.js';
-import { announcementLines } from './scores.js';
+import { announcementLines, isTeamMatch, teamLetter } from './scores.js';
 import { buildHints, type BuildHints } from './hints.js';
 import { timerSpot } from './timerSpot.js';
 import { ServerConnection } from './net/connection.js';
@@ -550,7 +550,13 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
   if (!canvas || !hudRoot || !bannerRoot) throw new Error('missing stage');
 
   const scene = new Scene();
-  await scene.init(canvas, createTheme(setup.style, setup.seed));
+  // Colours for this match: families by team in a team match, distinct otherwise.
+  const palette = matchPalette(defaultConfigBundle.art, session.state);
+  useMatchPalette(palette);
+  await scene.init(canvas, createTheme(setup.style, setup.seed), {
+    ...defaultConfigBundle.art,
+    players: palette,
+  });
 
   const hud = new Hud(hudRoot, bannerRoot);
   const matchAudio = new MatchAudio(audio, session.humanPlayer);
@@ -588,7 +594,35 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
   /** What the board points out to a player building; see `hints.ts`. */
   let hints: BuildHints = { unsealed: [] };
 
+  // The top left of each island, for its team's letter; terrain never changes. Not the
+  // top middle, which is where the big timer sits on the islands in the middle column.
+  const islandTops = new Map<number, { x: number; y: number }>();
+  if (isTeamMatch(session.state)) {
+    const { width, islandId } = session.state;
+    for (const player of session.state.players) {
+      let top = Number.POSITIVE_INFINITY;
+      let left = Number.POSITIVE_INFINITY;
+      let right = -1;
+      for (let i = 0; i < islandId.length; i++) {
+        if (islandId[i] !== player.islandId) continue;
+        const x = i % width;
+        top = Math.min(top, (i - x) / width);
+        left = Math.min(left, x);
+        right = Math.max(right, x);
+      }
+      if (right >= 0) islandTops.set(player.id, { x: left + 3, y: top });
+    }
+  }
+
   function drawIslandBanners(): void {
+    hud.showTeamTags(
+      [...islandTops].map(([player, at]) => ({
+        player,
+        text: `Team ${teamLetter(session.state.players[player]?.team ?? 0)}`,
+        colour: playerCssColour(player),
+        ...scene.screenAt(at.x, at.y - 0.3),
+      })),
+    );
     const banners: IslandBanner[] = [];
     for (const banner of bannersFor(session.state, livesLost, gained)) {
       const centre = islandCentre.get(banner.player);

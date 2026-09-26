@@ -79,6 +79,13 @@ export const ArtConfigSchema = z
 
     palette: PaletteSchema,
     players: z.array(PlayerPaletteSchema).min(2),
+    /**
+     * Colours for team matches: one family per team, one shade per member, so a team
+     * reads as one hue while each player keeps a colour of their own. Free-for-all uses
+     * `players`. Four shades of one hue are hard to tell apart, which is why every team
+     * also carries a letter.
+     */
+    teamFamilies: z.array(z.array(PlayerPaletteSchema).min(1)).min(2),
 
     dither: z.strictObject({
       enabled: z.boolean(),

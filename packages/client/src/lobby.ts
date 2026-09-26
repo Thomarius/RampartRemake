@@ -7,6 +7,8 @@ import {
 } from '@rampart/config';
 import type { Seat } from '@rampart/protocol';
 
+import { teamLetter } from './scores.js';
+
 /**
  * The lobby, as markup — one lobby for online and offline.
  *
@@ -46,11 +48,6 @@ const TIER_BLURB: Record<Difficulty, string> = {
 };
 
 const TIERS: Difficulty[] = ['recruit', 'gunner', 'marshal', 'baron'];
-
-/** A team's name as players see it: A, B, C, D. */
-export function teamLetter(team: number): string {
-  return String.fromCharCode(65 + team);
-}
 
 function label(tier: string): string {
   return tier.charAt(0).toUpperCase() + tier.slice(1);

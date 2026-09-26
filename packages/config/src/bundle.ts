@@ -83,6 +83,22 @@ export function validateConfigBundle(bundle: ConfigBundle): string[] {
     problems.push(`server: botDifficulty "${bundle.server.botDifficulty}" has no profile.`);
   }
 
+  // Enough families for the most teams a table can hold, each with a shade for every
+  // member of the largest team a host may choose.
+  const { teamSize } = bundle.server.lobbySettings;
+  const maxPlayers = ruleset.players.max;
+  const mostTeams = Math.floor(maxPlayers / Math.max(2, teamSize.min === 1 ? 2 : teamSize.min));
+  if (bundle.art.teamFamilies.length < mostTeams) {
+    problems.push(
+      `art: ${mostTeams} teams are possible but only ${bundle.art.teamFamilies.length} teamFamilies exist.`,
+    );
+  }
+  if (bundle.art.teamFamilies.some((family) => family.length < teamSize.max)) {
+    problems.push(
+      `art: every teamFamilies entry needs ${teamSize.max} shades, for teams of ${teamSize.max}.`,
+    );
+  }
+
   // A ruleset whose own cap a host could not pick would open every room on a value the
   // lobby then clamps away from, so the default is not the default anyone plays.
   const rounds = ruleset.scoring.maxRounds;

@@ -1,5 +1,7 @@
 import type { MatchState, PlayerState } from '@rampart/sim';
 
+import { isTeamMatch, teamLetter } from './scores.js';
+
 /**
  * What the banners over the islands should say.
  *
@@ -47,6 +49,8 @@ export function bannersFor(
   if (state.phase === 'game_over') return [];
 
   const out: BannerText[] = [];
+  // In a team match the lives are the team's, and a knockout takes the whole team.
+  const teamed = isTeamMatch(state);
   for (const player of state.players as readonly PlayerState[]) {
     // Out for good, and it stays up for the rest of the match so nobody has to
     // remember who is still in it.
@@ -55,7 +59,7 @@ export function bannersFor(
         player: player.id,
         kind: 'out',
         title: 'Knocked out',
-        detail: `${player.name}, round ${player.eliminatedRound ?? state.round}`,
+        detail: `${teamed ? `Team ${teamLetter(player.team)}` : player.name}, round ${player.eliminatedRound ?? state.round}`,
         urgent: false,
       });
       continue;
@@ -81,8 +85,8 @@ export function bannersFor(
       title: 'Life lost',
       detail:
         lost.remaining > 0
-          ? `${player.name} — ${lost.remaining} ${lifeWord(lost.remaining)} left`
-          : `${player.name} — last life`,
+          ? `${player.name} — ${lost.remaining} ${teamed ? 'team ' : ''}${lifeWord(lost.remaining)} left`
+          : `${player.name} — last ${teamed ? 'team ' : ''}life`,
       urgent: lost.remaining === 0,
     });
   }

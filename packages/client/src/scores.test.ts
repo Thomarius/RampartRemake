@@ -7,6 +7,7 @@ import {
   finalRoundNext,
   roundLabel,
   standings,
+  standingsLine,
 } from './scores.js';
 
 interface Fields {
@@ -34,11 +35,12 @@ function state(fields: Fields): MatchState {
   } as unknown as MatchState;
 }
 
-const player = (id: number, name: string, score: number, eliminated = false) => ({
+const player = (id: number, name: string, score: number, eliminated = false, team = id) => ({
   id,
   name,
   score,
   eliminated,
+  team,
 });
 
 describe('standings', () => {
@@ -101,5 +103,26 @@ describe('the end of a match', () => {
     expect(endOfMatchText(shared, 1)).toBe('You share the win on points');
     expect(endOfMatchText(shared, 2)).toBe('Ada and Bo share the win on points');
     expect(endOfMatchText(shared, -1)).toBe('Ada and Bo share the win on points');
+  });
+});
+
+describe('in a team match', () => {
+  // Ada and Bo against Cy and Di.
+  const players = [
+    player(0, 'Ada', 40, false, 0),
+    player(1, 'Bo', 30, false, 1),
+    player(2, 'Cy', 50, false, 0),
+    player(3, 'Di', 10, false, 1),
+  ];
+
+  it('ranks teams by the sum of their members', () => {
+    const s = state({ players });
+    expect(standingsLine(s)).toBe('Team A 90 · Team B 40');
+  });
+
+  it('names the winning team, and says so when it is yours', () => {
+    const over = state({ players, winners: [0, 2], endedBy: 'round_cap' });
+    expect(endOfMatchText(over, 2)).toBe('Your team wins on points');
+    expect(endOfMatchText(over, 1)).toBe('Team A wins on points');
   });
 });

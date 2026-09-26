@@ -535,7 +535,7 @@ aggressive, defensive, expander), how the lobby offers the pair, and whether
 `server.botDifficulty` becomes two settings. Independent of balance, so it can run beside
 11.2.
 
-### 11.7 Team mode — in progress, T1–T4 done
+### 11.7 Team mode — in progress, T1–T5 done; T6 to measure
 
 Chosen by the user to come next, ahead of 11.2–11.6. **T1, the sim core, is built**: teams in
 the state, pooled lives, team elimination and winners, no friendly fire, the capped
@@ -557,6 +557,12 @@ the seeded seat shuffle at the start, server and local alike, applied to free-fo
 too; a table nobody else joined is played locally from the room's settings. Checked in a
 browser both ways: a local table with teams of two, and a room joined by a second browser
 by code, started by the host, with the islands shuffled and both clients in the match.
+**T5, presentation, is built**: colour families from `art.teamFamilies` (reds, blues,
+greens, purples, four shades each), resolved per match by `matchPalette` so every
+existing draw call picks them up; a "Team A" tag over each island's top-left, clear of
+the big timer; the roster grouped by team with its score and pooled lives, members by
+name only past four players; team wording on the life and knockout banners; and the end
+screen naming the winning team with a row per team. Seen at 2v2, 3v3 and 4v4, both styles.
 
 #### The rules
 

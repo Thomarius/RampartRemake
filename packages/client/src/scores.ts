@@ -1,4 +1,4 @@
-import type { MatchState, PlayerState } from '@rampart/sim';
+import { teamScore, type MatchState, type PlayerState } from '@rampart/sim';
 
 /**
  * What the HUD says about points: the round against the cap, the standings, and who
@@ -30,6 +30,47 @@ export function standings(state: MatchState): Standing[] {
     );
 }
 
+/** A team's name as players see it: A, B, C, D. */
+export function teamLetter(team: number): string {
+  return String.fromCharCode(65 + team);
+}
+
+/** Whether this is a team match rather than free-for-all's teams of one. */
+export function isTeamMatch(state: MatchState): boolean {
+  const sizes = new Map<number, number>();
+  for (const p of state.players) sizes.set(p.team, (sizes.get(p.team) ?? 0) + 1);
+  return [...sizes.values()].some((size) => size > 1);
+}
+
+export interface TeamStanding {
+  team: number;
+  /** Member player ids, in player order. */
+  members: number[];
+  score: number;
+  eliminated: boolean;
+}
+
+/**
+ * Every team, best placed first, by the sum of its members' scores — the score a team
+ * match is decided on. As with players, a team still in comes before one that is out.
+ */
+export function teamStandings(state: MatchState): TeamStanding[] {
+  const teams = [...new Set(state.players.map((p) => p.team))];
+  return teams
+    .map((team) => {
+      const members = state.players.filter((p) => p.team === team);
+      return {
+        team,
+        members: members.map((p) => p.id),
+        score: teamScore(state, team),
+        eliminated: members.every((p) => p.eliminated),
+      };
+    })
+    .sort(
+      (a, b) => Number(a.eliminated) - Number(b.eliminated) || b.score - a.score || a.team - b.team,
+    );
+}
+
 export function roundLabel(state: MatchState): string {
   const cap = state.ruleset.scoring.maxRounds;
   return cap === null ? `round ${state.round}` : `round ${state.round} / ${cap}`;
@@ -50,6 +91,11 @@ export function finalRoundNext(state: MatchState): boolean {
 }
 
 export function standingsLine(state: MatchState): string {
+  if (isTeamMatch(state)) {
+    return teamStandings(state)
+      .map((s) => `Team ${teamLetter(s.team)} ${s.score}${s.eliminated ? ' (out)' : ''}`)
+      .join(' · ');
+  }
   return standings(state)
     .map((s) => `${s.name} ${s.score}${s.eliminated ? ' (out)' : ''}`)
     .join(' · ');
@@ -84,6 +130,20 @@ export function endOfMatchText(state: MatchState, humanPlayer: number): string {
   if (winners.length === 0) return 'Nobody wins';
 
   const onPoints = state.endedBy === 'round_cap' ? ' on points' : '';
+  if (isTeamMatch(state)) {
+    // A team wins or loses whole, so the headline names teams, not their members.
+    const teams = [...new Set(winners.map((id) => state.players[id]?.team ?? 0))];
+    const yours = state.players[humanPlayer]?.team;
+    if (teams.length === 1) {
+      return teams[0] === yours
+        ? `Your team wins${onPoints}`
+        : `Team ${teamLetter(teams[0] as number)} wins${onPoints}`;
+    }
+    const letters = names(teams.map(teamLetter));
+    return yours !== undefined && teams.includes(yours)
+      ? `Your team shares the win${onPoints}`
+      : `Teams ${letters} share the win${onPoints}`;
+  }
   if (winners.length === 1) {
     const winner = winners[0] as number;
     return winner === humanPlayer

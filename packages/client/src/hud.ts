@@ -1,12 +1,21 @@
 import { playerCssColour } from './colours.js';
 import type { BannerKind } from './banners.js';
 import { escape } from './lobby.js';
-import { endOfMatchText, roundLabel, standings, type AnnouncementLine } from './scores.js';
+import {
+  endOfMatchText,
+  isTeamMatch,
+  roundLabel,
+  standings,
+  teamLetter,
+  teamStandings,
+  type AnnouncementLine,
+} from './scores.js';
 import {
   PIECE_CATALOGUE,
   currentPieceId,
   owesCastleChoice,
   pieceCells,
+  teamScore,
   upcomingPieceIds,
   type MatchState,
   type Phase,
@@ -81,6 +90,27 @@ export class Hud {
   /** When the phase on screen began, so the time bar knows its whole length. */
   private phaseKey = '';
   private phaseStartTick = 0;
+
+  /** A team's letter over each of its islands, for the whole of a team match. */
+  private teamTags = new Map<number, HTMLElement>();
+
+  showTeamTags(
+    tags: readonly { player: number; text: string; colour: string; x: number; y: number }[],
+  ): void {
+    for (const tag of tags) {
+      let node = this.teamTags.get(tag.player);
+      if (node === undefined) {
+        node = document.createElement('div');
+        node.className = 'team-tag';
+        node.textContent = tag.text;
+        this.bannerRoot.append(node);
+        this.teamTags.set(tag.player, node);
+      }
+      node.style.borderColor = tag.colour;
+      node.style.left = `${tag.x}px`;
+      node.style.top = `${tag.y}px`;
+    }
+  }
 
   /** Kept across frames, like the island banners, rather than rebuilt from markup. */
   private bigTimer: HTMLElement | null = null;
@@ -232,28 +262,54 @@ export class Hud {
     const human = state.players[humanPlayer];
     const colour = playerCssColour(humanPlayer);
 
-    const roster = state.players
-      .map((p) => {
-        const cannons = state.cannons.filter((c) => c.owner === p.id);
-        const live = cannons.filter((c) => c.active).length;
-        const classes = ['player', p.eliminated ? 'out' : '', p.id === humanPlayer ? 'you' : '']
-          .filter(Boolean)
-          .join(' ');
-        // Lives as pips, one per life including the one being played, spent ones hollow:
-        // read at a glance across a roster, where "2 lives" had to be read word by word.
-        // The team's pool: in free-for-all, a team of one, so these are the player's own.
-        const pool = state.teams[p.team];
-        const total = (pool?.continuesAtStart ?? 0) + 1;
-        const left = (pool?.continuesRemaining ?? 0) + 1;
-        const pips = '●'.repeat(left) + '○'.repeat(Math.max(0, total - left));
-        const lives = ` · <span class="lives${left === 1 ? ' last' : ''}" title="${left} of ${total} lives">${pips}</span>`;
-        const status = p.eliminated
-          ? `eliminated round ${p.eliminatedRound}`
-          : `${p.score} pts · ${sealed[p.id] ?? 0} castle${sealed[p.id] === 1 ? '' : 's'} · ` +
-            `${live}/${cannons.length} guns${lives}`;
-        return `<li class="${classes}"><b style="background:${playerCssColour(p.id)}"></b>${escape(p.name)}<span>${status}</span></li>`;
-      })
-      .join('');
+    // Lives as pips, one per life including the one being played, spent ones hollow:
+    // read at a glance across a roster, where "2 lives" had to be read word by word.
+    // They are the team's pool — in free-for-all a team of one, so the player's own.
+    const livesOf = (team: number): string => {
+      const pool = state.teams[team];
+      const total = (pool?.continuesAtStart ?? 0) + 1;
+      const left = (pool?.continuesRemaining ?? 0) + 1;
+      const pips = '●'.repeat(left) + '○'.repeat(Math.max(0, total - left));
+      return `<span class="lives${left === 1 ? ' last' : ''}" title="${left} of ${total} lives">${pips}</span>`;
+    };
+    const teamed = isTeamMatch(state);
+    const playerItem = (p: (typeof state.players)[number]): string => {
+      const cannons = state.cannons.filter((c) => c.owner === p.id);
+      const live = cannons.filter((c) => c.active).length;
+      const classes = ['player', p.eliminated ? 'out' : '', p.id === humanPlayer ? 'you' : '']
+        .filter(Boolean)
+        .join(' ');
+      const castles = `${sealed[p.id] ?? 0} castle${sealed[p.id] === 1 ? '' : 's'}`;
+      // In a team match the score and lives belong to the team, so they head its group.
+      // Past four players a team's members get only their names: their team's score and
+      // lives head the group, their castles fly banners on the board, and the details
+      // wrapped a crowded bar onto two lines.
+      const status = p.eliminated
+        ? `eliminated round ${p.eliminatedRound}`
+        : teamed && state.players.length > 4
+          ? ''
+          : teamed
+            ? `${castles} · ${live}/${cannons.length} guns`
+            : `${p.score} pts · ${castles} · ${live}/${cannons.length} guns · ${livesOf(p.team)}`;
+      return `<li class="${classes}"><b style="background:${playerCssColour(p.id)}"></b>${escape(p.name)}<span>${status}</span></li>`;
+    };
+    // A team match groups the roster by team, in team order so it never reshuffles as
+    // scores change, each headed by its letter, score and pooled lives.
+    const roster = teamed
+      ? [...new Set(state.players.map((p) => p.team))]
+          .sort((a, b) => a - b)
+          .map((team) => {
+            const members = state.players.filter((p) => p.team === team);
+            const out = members.every((p) => p.eliminated);
+            const mine = members.some((p) => p.id === humanPlayer);
+            return (
+              `<li class="team${out ? ' out' : ''}${mine ? ' mine' : ''}">` +
+              `<div class="team-head"><b class="letter">${teamLetter(team)}</b>${teamScore(state, team)} pts · ${out ? 'out' : livesOf(team)}</div>` +
+              `<ul>${members.map(playerItem).join('')}</ul></li>`
+            );
+          })
+          .join('')
+      : state.players.map(playerItem).join('');
 
     // A player who has just spent a continue chooses a castle in the cannon phase
     // before any guns, so for them this phase is a castle choice first.
@@ -304,14 +360,31 @@ export class Hud {
       const text = escape(endOfMatchText(state, humanPlayer));
       // A table rather than a line: with more than three players a single line of
       // names and numbers could not be read at a glance.
-      const rows = standings(state)
-        .map(
-          (s, rank) =>
-            `<tr class="${s.eliminated ? 'out' : ''}${s.player === humanPlayer ? ' you' : ''}">` +
-            `<td>${rank + 1}</td><td><b style="background:${playerCssColour(s.player)}"></b>${escape(s.name)}</td>` +
-            `<td>${s.score}</td><td>${s.eliminated ? 'out' : ''}</td></tr>`,
-        )
-        .join('');
+      const rows = teamed
+        ? teamStandings(state)
+            .map((s, rank) => {
+              const mine = s.members.includes(humanPlayer);
+              const members = s.members
+                .map(
+                  (id) =>
+                    `<b style="background:${playerCssColour(id)}"></b>${escape(state.players[id]?.name ?? '')}`,
+                )
+                .join(' ');
+              return (
+                `<tr class="${s.eliminated ? 'out' : ''}${mine ? ' you' : ''}">` +
+                `<td>${rank + 1}</td><td>Team ${teamLetter(s.team)} · ${members}</td>` +
+                `<td>${s.score}</td><td>${s.eliminated ? 'out' : ''}</td></tr>`
+              );
+            })
+            .join('')
+        : standings(state)
+            .map(
+              (s, rank) =>
+                `<tr class="${s.eliminated ? 'out' : ''}${s.player === humanPlayer ? ' you' : ''}">` +
+                `<td>${rank + 1}</td><td><b style="background:${playerCssColour(s.player)}"></b>${escape(s.name)}</td>` +
+                `<td>${s.score}</td><td>${s.eliminated ? 'out' : ''}</td></tr>`,
+            )
+            .join('');
       const table = `<table class="final">${rows}</table>`;
       const again = humanPlayer < 0 ? 'press R for the menu' : 'press R to play again';
       banner = `<div class="banner">${text}${table}<small>${again}</small></div>`;

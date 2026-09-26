@@ -86,6 +86,128 @@
       "hueRotate": 317
     }
   ],
+  "teamFamilies": [
+    [
+      {
+        "name": "crimson",
+        "base": "#c8283c",
+        "light": "#db7380",
+        "dark": "#781824",
+        "hueRotate": 352
+      },
+      {
+        "name": "orange",
+        "base": "#e8702a",
+        "light": "#f0a275",
+        "dark": "#8b4319",
+        "hueRotate": 22
+      },
+      {
+        "name": "magenta",
+        "base": "#c82890",
+        "light": "#db73b7",
+        "dark": "#781856",
+        "hueRotate": 321
+      },
+      {
+        "name": "maroon",
+        "base": "#8c2424",
+        "light": "#b47171",
+        "dark": "#541616",
+        "hueRotate": 0
+      }
+    ],
+    [
+      {
+        "name": "azure",
+        "base": "#2860c8",
+        "light": "#7398db",
+        "dark": "#183a78",
+        "hueRotate": 219
+      },
+      {
+        "name": "sky",
+        "base": "#50b0f0",
+        "light": "#8dccf5",
+        "dark": "#306a90",
+        "hueRotate": 204
+      },
+      {
+        "name": "navy",
+        "base": "#28348c",
+        "light": "#737bb4",
+        "dark": "#181f54",
+        "hueRotate": 233
+      },
+      {
+        "name": "steel",
+        "base": "#2890a8",
+        "light": "#73b7c6",
+        "dark": "#185665",
+        "hueRotate": 191
+      }
+    ],
+    [
+      {
+        "name": "viridian",
+        "base": "#28a868",
+        "light": "#73c69d",
+        "dark": "#18653e",
+        "hueRotate": 150
+      },
+      {
+        "name": "lime",
+        "base": "#8cc828",
+        "light": "#b4db73",
+        "dark": "#547818",
+        "hueRotate": 82
+      },
+      {
+        "name": "forest",
+        "base": "#1e7034",
+        "light": "#6da27b",
+        "dark": "#12431f",
+        "hueRotate": 136
+      },
+      {
+        "name": "mint",
+        "base": "#60d8b0",
+        "light": "#98e6cc",
+        "dark": "#3a826a",
+        "hueRotate": 160
+      }
+    ],
+    [
+      {
+        "name": "violet",
+        "base": "#6c28c8",
+        "light": "#9f73db",
+        "dark": "#411878",
+        "hueRotate": 266
+      },
+      {
+        "name": "lavender",
+        "base": "#a878f0",
+        "light": "#c6a7f5",
+        "dark": "#654890",
+        "hueRotate": 264
+      },
+      {
+        "name": "plum",
+        "base": "#8c2878",
+        "light": "#b473a7",
+        "dark": "#541848",
+        "hueRotate": 312
+      },
+      {
+        "name": "indigo",
+        "base": "#3c2c9c",
+        "light": "#8076bf",
+        "dark": "#241a5e",
+        "hueRotate": 249
+      }
+    ]
+  ],
   "dither": {
     "enabled": true,
     "matrix": "bayer4",

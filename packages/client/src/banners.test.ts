@@ -8,8 +8,8 @@ function state(tick: number, players: unknown[], phase = 'build'): MatchState {
   return { tick, phase, players } as unknown as MatchState;
 }
 
-const alive = (id: number, name: string) => ({ id, name, eliminated: false });
-const knockedOut = (id: number, name: string) => ({ id, name, eliminated: true });
+const alive = (id: number, name: string) => ({ id, name, eliminated: false, team: id });
+const knockedOut = (id: number, name: string) => ({ id, name, eliminated: true, team: id });
 
 describe('island banners', () => {
   it('says nothing when nothing has happened', () => {
