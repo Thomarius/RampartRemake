@@ -74,7 +74,10 @@ export function canPlacePiece(
     const i = ty * state.width + tx;
     if (state.terrain[i] !== Terrain.Land) return 'not_land';
     if (state.structure[i] !== Structure.Empty) return 'occupied';
-    if (state.ruleset.build.restrictToOwnIsland && state.islandId[i] !== player.islandId) {
+    if (
+      state.ruleset.build.restrictToOwnIsland &&
+      !mayBuildOn(state, player, state.islandId[i] as number)
+    ) {
       return 'wrong_island';
     }
   }
@@ -99,7 +102,9 @@ export function placePiece(
   for (const [ox, oy] of pieceCells(pieceId, rotation)) {
     const i = (y + oy) * state.width + x + ox;
     state.structure[i] = Structure.Wall;
-    state.owner[i] = player.islandId;
+    // The island's, not the placer's: a teammate's help is part of the wall they own,
+    // so the sweep, damage and rubble rules treat it exactly like their own blocks.
+    state.owner[i] = state.islandId[i] as number;
     cells.push(i);
   }
   player.pieceIndex++;
@@ -114,6 +119,19 @@ export function placePiece(
     cells,
   });
   return { pieceId, cells };
+}
+
+/**
+ * Whether a player may build on this island: their own, or a teammate's when the rules
+ * let this kind of player help. Separate islands never share a piece — the channel
+ * between them is water — so asking cell by cell is enough.
+ */
+export function mayBuildOn(state: MatchState, player: PlayerState, island: number): boolean {
+  if (island === player.islandId) return true;
+  const rule = state.ruleset.teams.crossIslandBuild;
+  if (rule === 'none' || (rule === 'humans' && player.isBot)) return false;
+  const owner = state.players[island - 1];
+  return owner !== undefined && owner.team === player.team && !owner.eliminated;
 }
 
 /** Cannons go inside your own sealed territory, never on open ground. */

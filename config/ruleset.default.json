@@ -169,5 +169,8 @@
     "wallPoints": 2,
     "tilePoints": 1,
     "scoreDamageOnFailedRound": false
+  },
+  "teams": {
+    "crossIslandBuild": "humans"
   }
 }

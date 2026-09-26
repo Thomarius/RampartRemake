@@ -1,7 +1,8 @@
 import { defaultRuleset, defaultTerrainConfig, type Ruleset } from '@rampart/config';
 import { describe, expect, it } from 'vitest';
 
-import { createMatch, step } from './match.js';
+import { applyAction, createMatch, step } from './match.js';
+import { canPlacePiece } from './placement.js';
 import { fire, resolveImpacts } from './shots.js';
 import { teamScore } from './teams.js';
 import { stateFromAscii, withoutContinues } from './testing.js';
@@ -157,5 +158,59 @@ describe('winning as a team', () => {
     expect(teamScore(state, 0)).toBeGreaterThan(teamScore(state, 1));
     expect(state.winners).toEqual([0, 1]);
     expect(state.endedBy).toBe('round_cap');
+  });
+});
+
+describe('building on a teammate’s island', () => {
+  /** Somewhere on `island` this player's current piece is allowed to go, or null. */
+  function spotOn(state: MatchState, player: number, island: number) {
+    for (let y = 0; y < state.height; y++) {
+      for (let x = 0; x < state.width; x++) {
+        if (state.islandId[y * state.width + x] !== island) continue;
+        for (let rotation = 0; rotation < 4; rotation++) {
+          if (canPlacePiece(state, player, rotation, x, y) === null) return { x, y, rotation };
+        }
+      }
+    }
+    return null;
+  }
+
+  function building(crossIslandBuild: 'none' | 'humans' | 'all'): MatchState {
+    const state = teamed({ ...uncapped, teams: { crossIslandBuild } });
+    // Open ground on every island, so a piece has somewhere to go.
+    for (let i = 0; i < state.structure.length; i++) {
+      if (state.structure[i] === Structure.Wall) {
+        state.structure[i] = Structure.Empty;
+        state.owner[i] = 0;
+      }
+    }
+    state.phase = 'build';
+    state.players[0]!.isBot = false;
+    return state;
+  }
+
+  it('lets a person build for a teammate, and the wall is the teammate’s', () => {
+    const state = building('humans');
+    const spot = spotOn(state, 0, 2);
+    expect(spot).not.toBeNull();
+    expect(applyAction(state, { kind: 'place_piece', player: 0, ...spot! })).toBeNull();
+    const placed = [...state.structure.keys()].filter((i) => state.structure[i] === Structure.Wall);
+    expect(placed.length).toBeGreaterThan(0);
+    // Owned by island 2, player 1, so it behaves as their own wall in every rule.
+    for (const i of placed) expect(state.owner[i]).toBe(2);
+  });
+
+  it('never lets anybody build on an opponent’s island', () => {
+    const state = building('all');
+    expect(spotOn(state, 0, 3)).toBeNull();
+  });
+
+  it('keeps bots off a teammate’s island unless the rules say all may help', () => {
+    expect(spotOn(building('humans'), 1, 1)).toBeNull();
+    expect(spotOn(building('all'), 1, 1)).not.toBeNull();
+  });
+
+  it('can be turned off for everyone', () => {
+    expect(spotOn(building('none'), 0, 2)).toBeNull();
   });
 });

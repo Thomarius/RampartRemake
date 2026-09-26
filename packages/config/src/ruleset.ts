@@ -162,6 +162,16 @@ export const RulesetSchema = z
       resetPieceScheduleOnContinue: z.boolean(),
     }),
 
+    teams: z.strictObject({
+      /**
+       * Who may place pieces on a teammate's island. People by default: a bot laying
+       * wall on a person's island against their plan would be infuriating, while a
+       * bot replans around a person's help as it does around a breach. The piece comes
+       * from the placer's own queue, so helping spends their own build time.
+       */
+      crossIslandBuild: z.enum(['none', 'humans', 'all']),
+    }),
+
     /**
      * Points, banked at each build-phase resolution by every player holding a sealed
      * castle. With a cap they decide most matches, so these weights are the balance.
