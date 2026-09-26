@@ -535,7 +535,7 @@ aggressive, defensive, expander), how the lobby offers the pair, and whether
 `server.botDifficulty` becomes two settings. Independent of balance, so it can run beside
 11.2.
 
-### 11.7 Team mode — in progress, T1–T5 done; T6 to measure
+### 11.7 Team mode — built, T1–T6 done
 
 Chosen by the user to come next, ahead of 11.2–11.6. **T1, the sim core, is built**: teams in
 the state, pooled lives, team elimination and winners, no friendly fire, the capped
@@ -563,6 +563,20 @@ existing draw call picks them up; a "Team A" tag over each island's top-left, cl
 the big timer; the roster grouped by team with its score and pooled lives, members by
 name only past four players; team wording on the life and knockout banners; and the end
 screen naming the winning team with a row per team. Seen at 2v2, 3v3 and 4v4, both styles.
+**T6, measured**: headless `--teams N` seats as a room does. Gunner teams, 2026-09-26:
+
+| Format    | wins by team                                 | more compact team won | by elimination |
+| --------- | -------------------------------------------- | --------------------- | -------------- |
+| 2v2, 100  | A 44, B 56 (runs of 40 and 60: 24/16, 20/40) | — (both always alike) | 2              |
+| 2v2v2, 60 | A 16, B 23, C 21                             | 17 of 55, chance 18.3 | 0              |
+| 3v3, 60   | A 32, B 26, 2 shared                         | 8 of 20, chance 10    | 4              |
+
+**Random seating does not decide matches**: where one team sat more tightly than another,
+it won no more often than chance, at either six-player format; at 2v2 the mirrored grid
+seats both teams alike every time. Team labels carry nothing either — seats go into teams
+in order and then shuffle. **Eliminations are rarer still than in free-for-all** (5 in
+180), since a pooled life lasts a team longer: team mode inherits 11.2's problem, and its
+tuning should be measured at 2v2 as well as free-for-all.
 
 #### The rules
 

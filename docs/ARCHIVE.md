@@ -1369,3 +1369,28 @@ each player may place the piece they hold. Its early end, once everyone has used
 noticed by the next step rather than run from inside the action — run from the action, a
 resolution that ended the match did so before its tick was stepped, and the determinism
 test's log replay came out different.
+
+## 10u. Team mode
+
+Chosen by the user ahead of the balance work, and built in six steps. The rules are in
+PLAN.md §11.7; how they came out:
+
+- **Every match became a team match**, free-for-all as teams of one, rather than a second
+  copy of every rule. Checked, not assumed: free-for-all bot matches played out identically
+  to the tick before and after, at each step that touched the sim or the bots.
+- **PLAN.md had claimed the data model was team-aware already.** It was not; score, lives
+  and elimination all belonged to a player.
+- **A placed block belongs to the island, not the placer**, which made a teammate's help
+  fall under the sweep, damage and rubble rules with no change to any of them.
+- **The old bots made 598 refused shots at teammates** in two 2v2 matches before T3.
+- **Islands are shuffled among seats, not inside the sim**, which keeps player p on island
+  p + 1 everywhere; the server tells each connection who it has become. The shuffle applies
+  to free-for-all too. Two room tests had assumed the first seat stays player 0, one passing
+  only by luck of the shuffle.
+- **One lobby for online and offline.** "A server is there" had to mean a welcome within
+  two seconds, not an open socket: under the dev server the socket's address is the dev
+  server's own, which can accept and say nothing.
+- **Presentation found two layout faults on screen**: the team tag at an island's top middle
+  sat under the big timer, and a 4v4 roster wrapped the bar onto two lines.
+- **Measured (T6)**: random seating decides nothing measurable, and eliminations are rarer
+  than in free-for-all — 5 in 180 team matches.

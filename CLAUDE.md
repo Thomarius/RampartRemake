@@ -105,8 +105,10 @@ verified by a CI job since there is no Docker on this machine), audio wired end 
 2–8 players, and the lobby (tested at eight seats over a real socket; code copying, seat
 colours, tier descriptions).
 
-**Next: team mode** (PLAN.md §11.7), chosen by the user ahead of the balance items below —
-agreed rules and a six-step plan, nothing built. Free-for-all becomes teams of one.
+**Team mode is built** (PLAN.md §11.7): equal teams, shared score and lives, losing
+together, no friendly fire, building on a teammate's island (people only by default), one
+lobby for online and offline, islands shuffled among seats, colour families and team tags.
+Every match is a team match internally; free-for-all is teams of one.
 
 **M7, the balance pass, is where the work is.** PLAN.md §11 lists it in priority order:
 

@@ -17,6 +17,7 @@ import {
   pieceCells,
   poolForRound,
   renderAscii,
+  seatOrder,
   step,
   type MatchState,
 } from '@rampart/sim';
@@ -38,6 +39,8 @@ interface Args {
   map: boolean;
   difficulties: Difficulty[];
   stats: string | null;
+  /** Players per team; 1 is free-for-all. Seats go into teams in order, then shuffle. */
+  teams: number;
   /** Overrides `scoring.maxRounds`; undefined keeps the ruleset's, null lifts the cap. */
   maxRounds: number | null | undefined;
 }
@@ -70,6 +73,7 @@ function parseArgs(argv: string[]): Args {
     difficulties: ['gunner'],
     stats: null,
     maxRounds: undefined,
+    teams: 1,
   };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
@@ -77,6 +81,10 @@ function parseArgs(argv: string[]): Args {
     switch (flag) {
       case '--matches':
         args.matches = Number(value);
+        i++;
+        break;
+      case '--teams':
+        args.teams = Number(value);
         i++;
         break;
       case '--players':
@@ -115,7 +123,7 @@ function parseArgs(argv: string[]): Args {
       case '--help':
         console.log(
           'usage: npm start -w @rampart/headless -- [--matches N] [--players N] [--seed N] ' +
-            `[--max-ticks N] [--max-rounds N|none] [--difficulty ${DIFFICULTIES.join('|')}[,...]] [--stats FILE] [--map]`,
+            `[--max-ticks N] [--max-rounds N|none] [--teams N] [--difficulty ${DIFFICULTIES.join('|')}[,...]] [--stats FILE] [--map]`,
         );
         process.exit(0);
     }
@@ -312,6 +320,98 @@ function summariseStats(rows: StatRow[]): void {
   }
 }
 
+// ------------------------------------------------------------------------- teams
+
+/**
+ * Each player's team, by player id, seated the way a room seats them: seats go into
+ * teams in order, then which island each seat gets is shuffled from the seed.
+ */
+function teamSeating(seed: number, players: number, size: number): number[] {
+  const order = seatOrder(seed, players);
+  const byPlayer = new Array<number>(players).fill(0);
+  order.forEach((player, seat) => {
+    byPlayer[player] = size > 1 ? Math.floor(seat / size) : seat;
+  });
+  return byPlayer;
+}
+
+/** How a match's teams sat, and how it ended. */
+interface TeamLayout {
+  /** Mean distance between a team's islands, by team, in tiles. */
+  spread: number[];
+  winners: number[];
+  byElimination: boolean;
+  rounds: number;
+}
+
+/**
+ * How far apart each team's islands are. Random seating can put teammates side by side
+ * one match and across the map the next; on a map with every position symmetric that
+ * should not decide anything, and this is how to see whether it does.
+ */
+function teamLayout(state: MatchState): TeamLayout {
+  const centre = state.players.map((p) => {
+    let sx = 0;
+    let sy = 0;
+    let n = 0;
+    for (let i = 0; i < state.islandId.length; i++) {
+      if (state.islandId[i] !== p.islandId) continue;
+      sx += i % state.width;
+      sy += Math.floor(i / state.width);
+      n++;
+    }
+    return { x: sx / Math.max(1, n), y: sy / Math.max(1, n) };
+  });
+  const teams = [...new Set(state.players.map((p) => p.team))].sort((a, b) => a - b);
+  const spread = teams.map((team) => {
+    const members = state.players.filter((p) => p.team === team).map((p) => centre[p.id]!);
+    let total = 0;
+    let pairs = 0;
+    for (let a = 0; a < members.length; a++) {
+      for (let b = a + 1; b < members.length; b++) {
+        total += Math.hypot(members[a]!.x - members[b]!.x, members[a]!.y - members[b]!.y);
+        pairs++;
+      }
+    }
+    return pairs === 0 ? 0 : total / pairs;
+  });
+  const winners = [...new Set(state.winners.map((id) => state.players[id]!.team))];
+  return { spread, winners, byElimination: state.endedBy === 'elimination', rounds: state.round };
+}
+
+function summariseTeams(layouts: TeamLayout[]): void {
+  console.log('\nteams:');
+  const teamCount = layouts[0]?.spread.length ?? 0;
+  for (let team = 0; team < teamCount; team++) {
+    const won = layouts.filter((l) => l.winners.length === 1 && l.winners[0] === team).length;
+    console.log(`  team ${String.fromCharCode(65 + team)} won ${won} of ${layouts.length}`);
+  }
+  const shared = layouts.filter((l) => l.winners.length !== 1).length;
+  if (shared > 0) console.log(`  shared or drawn ${shared}`);
+
+  const eliminated = layouts.filter((l) => l.byElimination).length;
+  const rounds = layouts.reduce((sum, l) => sum + l.rounds, 0) / layouts.length;
+  console.log(`  ${eliminated} ended by elimination; ${rounds.toFixed(1)} rounds on average`);
+
+  // Where one team sat more tightly than another, did that help? Relative to the match's
+  // own geometry — island size, and so every distance, changes from seed to seed — a team
+  // is more compact if its spread is under 90% of the widest team's.
+  const uneven = layouts.filter((l) => Math.min(...l.spread) < 0.9 * Math.max(...l.spread));
+  const compactWon = uneven.filter(
+    (l) => l.winners.length === 1 && l.spread[l.winners[0]!]! === Math.min(...l.spread),
+  ).length;
+  if (uneven.length > 0) {
+    const fair = (1 / teamCount) * uneven.length;
+    console.log(
+      `  where teams sat unevenly (${uneven.length} matches), the most compact won ${compactWon}` +
+        ` — ${fair.toFixed(1)} if it made no difference`,
+    );
+  }
+  if (uneven.length < layouts.length) {
+    console.log(`  ${layouts.length - uneven.length} matches seated every team alike`);
+  }
+}
+
 // -------------------------------------------------------------------------- run
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -358,6 +458,7 @@ const ruleset =
     ? bundle.ruleset
     : { ...bundle.ruleset, scoring: { ...bundle.ruleset.scoring, maxRounds: args.maxRounds } };
 
+const layouts: TeamLayout[] = [];
 const started = Date.now();
 const outcomes = new Map<string, number>();
 const wins = new Map<Difficulty, number>();
@@ -373,9 +474,10 @@ for (let i = 0; i < args.matches; i++) {
     seed,
     ruleset,
     terrainConfig: bundle.terrain,
-    players: Array.from({ length: args.players }, (_, p) => ({
+    players: teamSeating(seed, args.players, args.teams).map((team, p) => ({
       name: `${seatTier(p)}${p}`,
       isBot: true,
+      team,
     })),
   });
   const rng = new Rng(seed);
@@ -471,6 +573,7 @@ for (let i = 0; i < args.matches; i++) {
   }
   if (refused > 0) refusedTotal += refused;
 
+  if (args.teams > 1) layouts.push(teamLayout(state));
   const outcome = describeOutcome(state);
   outcomes.set(outcome, (outcomes.get(outcome) ?? 0) + 1);
   // A shared win counts for each player who shares it.
@@ -498,6 +601,8 @@ console.log(
 for (const [outcome, count] of [...outcomes].sort((a, b) => b[1] - a[1])) {
   console.log(`  ${String(count).padStart(4)}  ${outcome}`);
 }
+
+if (layouts.length > 0) summariseTeams(layouts);
 
 // Only meaningful with a mixed table; with one tier it is a seat count, which is
 // worth seeing anyway because a symmetric map is supposed to make it a flat one.
