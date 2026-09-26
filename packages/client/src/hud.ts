@@ -5,6 +5,7 @@ import { endOfMatchText, roundLabel, standings, type AnnouncementLine } from './
 import {
   PIECE_CATALOGUE,
   currentPieceId,
+  owesCastleChoice,
   pieceCells,
   upcomingPieceIds,
   type MatchState,
@@ -203,11 +204,20 @@ export class Hud {
       })
       .join('');
 
+    // A player who has just spent a continue chooses a castle in the cannon phase
+    // before any guns, so for them this phase is a castle choice first.
+    const choosing =
+      human !== undefined &&
+      owesCastleChoice(human) &&
+      (shown === 'cannon_place' || shown === 'castle_select');
+    const label = choosing ? PHASE_LABEL.castle_select : PHASE_LABEL[shown];
+
     let cannonCount = '';
     if (state.phase === 'cannon_place' && human && !human.eliminated) {
       const left = human.cannonsToPlace;
-      cannonCount =
-        left > 0
+      cannonCount = choosing
+        ? `<div class="counter">Choose a castle — then ${left} cannon${left === 1 ? '' : 's'} to place</div>`
+        : left > 0
           ? `<div class="counter">${left} cannon${left === 1 ? '' : 's'} left to place</div>`
           : `<div class="counter done">All cannons placed</div>`;
     }
@@ -247,12 +257,14 @@ export class Hud {
       ? `Knocked out in round ${human.eliminatedRound} · watching the rest`
       : humanPlayer < 0
         ? ''
-        : PHASE_HINT[state.phase];
+        : choosing && !waiting
+          ? PHASE_HINT.castle_select
+          : PHASE_HINT[state.phase];
 
     this.root.innerHTML = `
       <div class="bar">
         <div class="phase">
-          <strong>${waiting ? `Next: ${PHASE_LABEL[shown]}` : PHASE_LABEL[shown]}</strong>
+          <strong>${waiting ? `Next: ${label}` : label}</strong>
           ${
             // Hidden rather than removed, so the round label does not jump sideways
             // every intermission; and there is no clock to show once the match is over.

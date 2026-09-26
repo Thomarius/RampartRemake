@@ -3,12 +3,41 @@ import {
   canPlacePiece,
   currentPieceId,
   findReadyCannon,
+  owesCastleChoice,
   pieceCells,
   type Action,
   type MatchState,
 } from '@rampart/sim';
 
 import type { Ghost, Scene } from './render/scene.js';
+
+/** What a click means for this player right now. */
+export type InputMode = 'castle' | 'cannon' | 'piece' | 'fire' | 'none';
+
+/**
+ * What a click means for a player, from the state alone.
+ *
+ * Mostly the phase — but a player who has just spent a continue has no castle, and
+ * chooses one in the cannon phase before placing any guns, exactly as at the start of
+ * the match. Keyed on the phase alone, the controls offered that player a cannon they
+ * had nowhere to put, and no way to choose the castle the sim was waiting for.
+ */
+export function inputMode(state: MatchState, playerId: number): InputMode {
+  const player = state.players[playerId];
+  if (player === undefined || player.eliminated) return 'none';
+  switch (state.phase) {
+    case 'castle_select':
+      return owesCastleChoice(player) ? 'castle' : 'none';
+    case 'cannon_place':
+      return owesCastleChoice(player) ? 'castle' : 'cannon';
+    case 'build':
+      return 'piece';
+    case 'combat':
+      return 'fire';
+    default:
+      return 'none';
+  }
+}
 
 /** The two cues the simulation never sees, because neither changes the match. */
 type InputCue = 'piece_rotate' | 'piece_invalid';
@@ -105,14 +134,14 @@ export class Controls {
     if (tile === null) return;
     const player = this.humanPlayer;
 
-    switch (this.state.phase) {
-      case 'castle_select': {
+    switch (inputMode(this.state, player)) {
+      case 'castle': {
         const castle = this.castleAt(tile.x, tile.y);
         if (castle) this.submit({ kind: 'select_castle', player, castleId: castle.id });
         else this.cue('piece_invalid');
         return;
       }
-      case 'combat': {
+      case 'fire': {
         // Your own island is refused by the sim, so say so here rather than send it.
         const own = this.state.islandId[tile.y * this.state.width + tile.x];
         const mine = own === this.state.players[player]?.islandId;
@@ -120,13 +149,13 @@ export class Controls {
         else this.submit({ kind: 'fire', player, x: tile.x, y: tile.y });
         return;
       }
-      case 'build':
+      case 'piece':
         if (canPlacePiece(this.state, player, this.rotation, tile.x, tile.y) !== null) {
           this.cue('piece_invalid');
         }
         this.submit({ kind: 'place_piece', player, x: tile.x, y: tile.y, rotation: this.rotation });
         return;
-      case 'cannon_place':
+      case 'cannon':
         if (canPlaceCannon(this.state, player, tile.x, tile.y) !== null) this.cue('piece_invalid');
         this.submit({ kind: 'place_cannon', player, x: tile.x, y: tile.y });
         return;
@@ -149,10 +178,9 @@ export class Controls {
     const tile = this.hover;
     const islandId = state.players[player]?.islandId;
 
+    const mode = inputMode(state, player);
     const selectable =
-      state.phase === 'castle_select' && state.players[player]?.startingCastleId === null
-        ? state.castles.filter((c) => c.islandId === islandId)
-        : [];
+      mode === 'castle' ? state.castles.filter((c) => c.islandId === islandId) : [];
 
     if (tile === null) {
       return {
@@ -166,22 +194,22 @@ export class Controls {
       };
     }
 
-    switch (state.phase) {
-      case 'build': {
+    switch (mode) {
+      case 'piece': {
         const cells = pieceCells(currentPieceId(state, player), this.rotation);
         const valid = canPlacePiece(state, player, this.rotation, tile.x, tile.y) === null;
         return { tile, cells, valid, footprint: null, selectable, leak: [], unsealed: [] };
       }
-      case 'cannon_place': {
+      case 'cannon': {
         const [w, h] = state.ruleset.cannons.footprint;
         const valid = canPlaceCannon(state, player, tile.x, tile.y) === null;
         return { tile, cells: [], valid, footprint: { w, h }, selectable, leak: [], unsealed: [] };
       }
-      case 'combat': {
+      case 'fire': {
         const valid = findReadyCannon(state, player, tile.x, tile.y) !== null;
         return { tile, cells: [], valid, footprint: null, selectable, leak: [], unsealed: [] };
       }
-      case 'castle_select': {
+      case 'castle': {
         return {
           tile,
           cells: [],

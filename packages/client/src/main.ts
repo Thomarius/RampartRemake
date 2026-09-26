@@ -15,6 +15,7 @@ import type { Seat } from '@rampart/protocol';
 import {
   PHASES,
   computeEnclosure,
+  owesCastleChoice,
   type Action,
   type MatchEvent,
   type MatchState,
@@ -572,8 +573,13 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     if (announcedAt === state.phaseEndTick) return;
     if (state.tick < state.phaseEndTick - bannerTicks) return;
     announcedAt = state.phaseEndTick;
+    // After a continue the cannon phase opens with a castle to choose, and the
+    // announcement should say so rather than tell them to place guns they cannot.
+    const human = state.players[session.humanPlayer];
+    const choosing =
+      state.pendingPhase === 'cannon_place' && human !== undefined && owesCastleChoice(human);
     hud.announce(
-      state.pendingPhase,
+      choosing ? 'castle_select' : state.pendingPhase,
       state.ruleset.phases.transitionBannerMs,
       announcementLines(state, resolvedSinceAnnounce),
     );
