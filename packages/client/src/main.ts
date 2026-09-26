@@ -4,14 +4,15 @@ import {
   defaultArtConfig,
   defaultConfigBundle,
   defaultSettings,
+  defaultTeams,
   mergeSettings,
+  reshapeTable,
   validateConfigBundle,
   type ArtStyle,
   type MatchSettings,
-  type SettingBounds,
+  type Table,
 } from '@rampart/config';
 import { DIFFICULTIES, type Difficulty } from '@rampart/ai';
-import type { Seat } from '@rampart/protocol';
 import {
   PHASES,
   computeEnclosure,
@@ -26,7 +27,7 @@ import { Audio } from './audio.js';
 import { Controls, inputMode, readyCannons } from './controls.js';
 import { bannersFor, type LifeLost, type PointsGained } from './banners.js';
 import { playerCssColour } from './colours.js';
-import { lobbyMarkup, rangeOptions } from './lobby.js';
+import { lobbyMarkup, type LobbyView } from './lobby.js';
 import { Hud, type IslandBanner } from './hud.js';
 import { MatchAudio } from './matchAudio.js';
 import { LocalMatch } from './localMatch.js';
@@ -35,6 +36,7 @@ import { buildHints, type BuildHints } from './hints.js';
 import { timerSpot } from './timerSpot.js';
 import { ServerConnection } from './net/connection.js';
 import { NetworkMatch } from './net/networkMatch.js';
+import type { ServerMessage } from '@rampart/protocol';
 import { Scene, createTheme, type Ghost } from './render/scene.js';
 
 /**
@@ -115,6 +117,8 @@ interface Setup {
   name: string;
   /** The host's choices, offline as online, so a round limit can be felt out alone. */
   settings: MatchSettings;
+  /** Each seat's team, by seat. Omitted, free-for-all. */
+  teams?: readonly number[];
 }
 
 const SETTING_BOUNDS = defaultConfigBundle.server.lobbySettings;
@@ -125,6 +129,7 @@ function localMatchFor(setup: Setup): LocalMatch {
   return new LocalMatch({
     seed: setup.seed,
     seats: setup.seats,
+    ...(setup.teams === undefined ? {} : { teams: setup.teams }),
     ruleset: applySettings(defaultConfigBundle.ruleset, setup.settings),
   });
 }
@@ -134,51 +139,30 @@ const DEFAULT_BOT: Difficulty = 'gunner';
 /** Height of the HUD's top bar — the phase, timer and roster — kept clear of the board. */
 const HUD_BAR_PX = 64;
 
-/** Every seat count the rules allow, offered in the menu. */
-const PLAYER_COUNTS = Array.from(
-  { length: defaultConfigBundle.ruleset.players.max - defaultConfigBundle.ruleset.players.min + 1 },
-  (_, i) => defaultConfigBundle.ruleset.players.min + i,
-);
 const DEFAULT_PLAYERS = 3;
 
-function difficultyOptions(selected: string, includeHuman: boolean): string {
-  const options = DIFFICULTIES.map(
-    (d) => `<option value="${d}"${selected === d ? ' selected' : ''}>${label(d)}</option>`,
-  );
-  if (includeHuman) {
-    options.unshift(`<option value="human"${selected === 'human' ? ' selected' : ''}>You</option>`);
-  }
-  return options.join('');
+/** What the menu gathers before a table is set: who you are and how it looks. */
+interface Common {
+  name: string;
+  seed: number;
+  style: ArtStyle;
 }
 
-function label(difficulty: string): string {
-  return difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
-}
-
-function readCommon(): Omit<Setup, 'seats'> {
+function readCommon(): Common {
   return {
     seed: Number(document.querySelector<HTMLInputElement>('#seed')?.value ?? 1),
     style: ArtStyleSchema.catch(defaultArtConfig.style).parse(
       document.querySelector<HTMLSelectElement>('#style')?.value,
     ),
     name: document.querySelector<HTMLInputElement>('#name')?.value.trim() || 'Player',
-    settings: {
-      maxRounds: Number(
-        document.querySelector<HTMLSelectElement>('#max-rounds')?.value ??
-          DEFAULT_SETTINGS.maxRounds,
-      ),
-      teamSize: 1,
-    },
   };
 }
 
-/** The seat list as the menu currently shows it. */
-function readSeats(): (Difficulty | null)[] {
-  return [...document.querySelectorAll<HTMLSelectElement>('.seat-select')].map((field) =>
-    field.value === 'human' ? null : (field.value as Difficulty),
-  );
-}
-
+/**
+ * The menu: only who you are and how the game looks. Everything about the table —
+ * players, teams, bots, rounds — is set in the lobby, which is one screen whether or
+ * not a server is there.
+ */
 function showMenu(): void {
   audio.music('music_menu');
   app!.innerHTML = `
@@ -194,95 +178,29 @@ function showMenu(): void {
           <option value="flat">Minimal</option>
         </select>
       </label>
-      <label>Players
-        <select id="players">
-          ${PLAYER_COUNTS.map(
-            (n) => `<option value="${n}"${n === DEFAULT_PLAYERS ? ' selected' : ''}>${n}</option>`,
-          ).join('')}
-        </select>
-      </label>
-      <label>Rounds
-        <select id="max-rounds">${rangeOptions(
-          SETTING_BOUNDS.maxRounds.min,
-          SETTING_BOUNDS.maxRounds.max,
-          DEFAULT_SETTINGS.maxRounds,
-        )}</select>
-      </label>
-      <div id="seats" class="seats-config"></div>
-      <button id="solo">Play offline</button>
+      <button id="play">Play</button>
       <div class="split">
-        <button id="host">Host online</button>
-        <span>or</span>
         <input id="code" type="text" maxlength="8" placeholder="room code" />
         <button id="join">Join</button>
       </div>
-      <p class="note">Set every seat to a bot to watch a match instead of playing one.</p>
+      <p class="note">Play sets a table others can join with its code. If nobody does,
+        the match runs on this computer.</p>
     </div>
   `;
   const styleField = document.querySelector<HTMLSelectElement>('#style');
   if (styleField) styleField.value = preferredStyle;
 
-  const seatsRoot = document.querySelector<HTMLElement>('#seats');
-  const playersField = document.querySelector<HTMLSelectElement>('#players');
-
-  /** Redraws the seat rows, keeping choices where the count allows. */
-  const drawSeats = (seats: (Difficulty | null)[]): void => {
-    if (!seatsRoot) return;
-    seatsRoot.innerHTML = seats
-      .map((seat, i) => {
-        const value = seat === null ? 'human' : seat;
-        return `<label>Seat ${i + 1}
-          <select class="seat-select" data-seat="${i}">${difficultyOptions(value, true)}</select>
-        </label>`;
-      })
-      .join('');
-
-    for (const field of seatsRoot.querySelectorAll<HTMLSelectElement>('.seat-select')) {
-      field.addEventListener('change', () => {
-        // Only one seat can be yours; taking a new one hands the old one to a bot.
-        if (field.value === 'human') {
-          for (const other of seatsRoot.querySelectorAll<HTMLSelectElement>('.seat-select')) {
-            if (other !== field && other.value === 'human') other.value = DEFAULT_BOT;
-          }
-        }
-      });
-    }
-  };
-
-  const resize = (): void => {
-    const count = Number(playersField?.value ?? 3);
-    const existing = readSeats();
-    const seats: (Difficulty | null)[] = Array.from(
-      { length: count },
-      (_, i) => existing[i] ?? DEFAULT_BOT,
-    );
-    if (!seats.includes(null)) seats[0] = null;
-    drawSeats(seats);
-  };
-  playersField?.addEventListener('change', resize);
-  drawSeats([null, DEFAULT_BOT, DEFAULT_BOT]);
-
-  document.querySelector('#solo')?.addEventListener('click', () => {
+  document.querySelector('#play')?.addEventListener('click', () => {
     audio.play('select');
-    const setup: Setup = { ...readCommon(), seats: readSeats() };
-    void runSession(localSession(localMatchFor(setup)), setup).catch((error: unknown) =>
-      showError('Failed to start match', error),
-    );
-  });
-
-  document.querySelector('#host')?.addEventListener('click', () => {
-    audio.play('select');
-    void startOnline({ ...readCommon(), seats: readSeats() }, null).catch((e: unknown) =>
-      showError('Could not host', e),
+    void openLobby(readCommon(), null).catch((e: unknown) =>
+      showError('Could not open a table', e),
     );
   });
   document.querySelector('#join')?.addEventListener('click', () => {
     audio.play('select');
     const code = document.querySelector<HTMLInputElement>('#code')?.value.trim() ?? '';
     if (code.length === 0) return;
-    void startOnline({ ...readCommon(), seats: readSeats() }, code).catch((e: unknown) =>
-      showError('Could not join', e),
-    );
+    void openLobby(readCommon(), code).catch((e: unknown) => showError('Could not join', e));
   });
 }
 
@@ -308,18 +226,242 @@ function localSession(match: LocalMatch): Session {
 
 const TOKEN_KEY = 'rampart.seat';
 
-async function startOnline(setup: Setup, code: string | null): Promise<void> {
-  const connection = new ServerConnection(ServerConnection.defaultUrl());
-  const match = new NetworkMatch(connection);
+/** How long to wait for a server before setting the table locally instead. */
+const SERVER_WAIT_MS = 2000;
 
-  let seats: Seat[] = [];
-  let bots: Difficulty[] = [];
-  let settings: MatchSettings = setup.settings;
-  let settingBounds: SettingBounds = SETTING_BOUNDS;
-  let playerCount = setup.seats.length;
-  let hostId = -1;
+/** What the lobby's controls do, whichever backend is behind them. */
+interface LobbyHandlers {
+  table(change: { settings?: MatchSettings; playerCount?: number; teams?: number[] }): void;
+  bot(seat: number, tier: Difficulty): void;
+  start(): void;
+  watch(): void;
+}
+
+/** Draws the lobby and wires its controls to whichever backend holds the table. */
+function drawLobby(view: LobbyView, on: LobbyHandlers): void {
+  app!.innerHTML = lobbyMarkup(view);
+  const number = (id: string, apply: (n: number) => void): void => {
+    const field = document.querySelector<HTMLSelectElement>(id);
+    field?.addEventListener('change', () => {
+      audio.play('select');
+      apply(Number(field.value));
+    });
+  };
+  number('#team-size', (teamSize) => on.table({ settings: { ...view.settings, teamSize } }));
+  number('#player-count', (playerCount) => on.table({ playerCount }));
+  number('#max-rounds', (maxRounds) => on.table({ settings: { ...view.settings, maxRounds } }));
+  for (const field of document.querySelectorAll<HTMLSelectElement>('.bot-select')) {
+    field.addEventListener('change', () => {
+      audio.play('select');
+      on.bot(Number(field.dataset.seat), field.value as Difficulty);
+    });
+  }
+  for (const field of document.querySelectorAll<HTMLSelectElement>('.team-select')) {
+    field.addEventListener('change', () => {
+      audio.play('select');
+      const teams = [...view.teams];
+      teams[Number(field.dataset.seat)] = Number(field.value);
+      on.table({ teams });
+    });
+  }
+
+  // Copying beats reading a code aloud, and the fallback matters: the clipboard API
+  // is unavailable over plain http on anything but localhost, which is exactly how
+  // somebody will first try this on a home network.
+  const copy = document.querySelector<HTMLButtonElement>('#copy-code');
+  copy?.addEventListener('click', () => {
+    audio.play('select');
+    void navigator.clipboard
+      ?.writeText(view.code ?? '')
+      .then(() => {
+        copy.textContent = 'Copied';
+        setTimeout(() => (copy.textContent = 'Copy'), 1200);
+      })
+      .catch(() => {
+        // Select it instead, so it can still be copied by hand.
+        const node = document.querySelector('#room-code');
+        if (node) globalThis.getSelection()?.selectAllChildren(node);
+        copy.textContent = 'Select and copy';
+      });
+  });
+  document.querySelector('#begin')?.addEventListener('click', () => {
+    audio.play('select');
+    on.start();
+  });
+  document.querySelector('#watch')?.addEventListener('click', () => {
+    audio.play('select');
+    on.watch();
+  });
+}
+
+/** The table as the local lobby holds it, and as a room reports it. */
+interface TableState extends Table {
+  bots: Difficulty[];
+}
+
+/**
+ * Plays a table on this computer: the person in seat 0 unless watching, bots in the
+ * rest, islands shuffled among the seats exactly as the server would.
+ */
+function playLocally(common: Common, table: TableState, watching: boolean): void {
+  const setup: Setup = {
+    ...common,
+    seats: table.bots
+      .slice(0, table.playerCount)
+      .map((tier, seat) => (seat === 0 && !watching ? null : tier)),
+    settings: table.settings,
+    teams: table.teams,
+  };
+  void runSession(localSession(localMatchFor(setup)), setup).catch((error: unknown) =>
+    showError('Failed to start match', error),
+  );
+}
+
+/**
+ * Opens the lobby: a room if a server answers, a table on this computer if not.
+ *
+ * "Answers" means a welcome within the wait, not merely an open socket: under the dev
+ * server the socket's address is the dev server's own, which may accept the connection
+ * and then say nothing. Solo play never waits on a network for longer than that. Joining
+ * by code does need the server, so that fails plainly rather than dropping the player at
+ * a table of their own.
+ */
+async function openLobby(
+  common: Common,
+  code: string | null,
+  playerCount = DEFAULT_PLAYERS,
+): Promise<void> {
+  app!.innerHTML = `<div class="menu"><h1>Setting the table</h1><p class="note">Looking for a server…</p></div>`;
+  const connection = new ServerConnection(ServerConnection.defaultUrl());
+  const answered = new Promise<ServerMessage | null>((resolve) => {
+    connection.onMessage((message) => {
+      if (message.type === 'welcome' || message.type === 'error') resolve(message);
+    });
+    setTimeout(() => resolve(null), SERVER_WAIT_MS);
+  });
+  connection.connect().catch(() => undefined);
+
+  const stored = sessionStorage.getItem(TOKEN_KEY)?.split(':') ?? [];
+  if (code === null) connection.createRoom(common.name, playerCount);
+  else if (stored[0] === code.toUpperCase() && stored[1])
+    connection.joinRoom(common.name, code, stored[1]);
+  else connection.joinRoom(common.name, code);
+
+  const first = await answered;
+  if (first?.type === 'welcome') {
+    roomLobby(common, connection, code, first);
+    return;
+  }
+  connection.close();
+  if (first?.type === 'error') {
+    showError(`Server refused: ${first.code}`, first.message);
+    return;
+  }
+  if (code !== null) {
+    showError('Could not join', `no server answered at ${ServerConnection.defaultUrl()}`);
+    return;
+  }
+  localLobby(common, playerCount);
+}
+
+/** The lobby with no server: the table lives here, under the same rules as a room's. */
+function localLobby(common: Common, playerCount: number): void {
+  const limits = defaultConfigBundle.ruleset.players;
+  const start = reshapeTable(
+    { settings: DEFAULT_SETTINGS, playerCount: limits.min, teams: defaultTeams(limits.min, 1) },
+    { playerCount },
+    limits,
+    1,
+  );
+  let table: TableState = { ...start, bots: Array.from({ length: limits.max }, () => DEFAULT_BOT) };
+
+  const redraw = (): void =>
+    drawLobby(
+      {
+        code: null,
+        playerCount: table.playerCount,
+        hostId: 0,
+        humanPlayer: 0,
+        seats: [{ playerId: 0, name: common.name, isBot: false, connected: true, ready: true }],
+        bots: table.bots.slice(0, table.playerCount),
+        settings: table.settings,
+        settingBounds: SETTING_BOUNDS,
+        teams: table.teams,
+        playerLimits: limits,
+      },
+      {
+        table: (change) => {
+          table = { ...table, ...reshapeTable(table, change, limits, 1) };
+          redraw();
+        },
+        bot: (seat, tier) => {
+          table.bots[seat] = tier;
+          redraw();
+        },
+        start: () => playLocally(common, table, false),
+        watch: () => playLocally(common, table, true),
+      },
+    );
+  redraw();
+  document.querySelector('#leave')?.addEventListener('click', () => showMenu());
+}
+
+/**
+ * The lobby as a room on the server. At the start, a table nobody else has joined is
+ * played locally from the room's settings, and the room is left: there is nobody to
+ * share a server with.
+ */
+function roomLobby(
+  common: Common,
+  connection: ServerConnection,
+  code: string | null,
+  welcome: Extract<ServerMessage, { type: 'welcome' }>,
+): void {
+  const match = new NetworkMatch(connection);
+  let view: LobbyView | null = null;
   let roomCode = code ?? '';
+  let hostId = -1;
   let started = false;
+
+  const tableOf = (v: LobbyView): TableState => ({
+    settings: v.settings,
+    playerCount: v.playerCount,
+    teams: [...v.teams],
+    bots: [...v.bots],
+  });
+
+  const render = (): void => {
+    if (started || view === null) return;
+    const current = view;
+    drawLobby(current, {
+      table: (change) => connection.send({ type: 'configure', ...change }),
+      bot: (seat, tier) => {
+        const bots = [...current.bots];
+        bots[seat] = tier;
+        connection.send({ type: 'configure', bots });
+      },
+      start: () => {
+        if (current.seats.length > 1) {
+          connection.send({ type: 'start' });
+          return;
+        }
+        started = true;
+        connection.close();
+        playLocally(common, tableOf(current), false);
+      },
+      watch: () => {
+        started = true;
+        connection.close();
+        playLocally(common, tableOf(current), true);
+      },
+    });
+    document.querySelector('#leave')?.addEventListener('click', () => {
+      audio.play('select');
+      started = true;
+      connection.close();
+      showMenu();
+    });
+  };
 
   connection.onMessage((message) => {
     match.receive(message);
@@ -327,23 +469,28 @@ async function startOnline(setup: Setup, code: string | null): Promise<void> {
       case 'welcome':
         roomCode = message.code;
         hostId = message.hostId;
-        // A new room opens on the server's defaults; the host carries the menu's
-        // choice across rather than having to make it twice.
-        if (code === null) connection.send({ type: 'configure', settings: setup.settings });
         sessionStorage.setItem(TOKEN_KEY, `${message.code}:${message.token}`);
         break;
       case 'room':
-        seats = message.seats;
-        bots = [...message.bots];
-        settings = message.settings;
-        settingBounds = message.settingBounds;
-        playerCount = message.playerCount;
         hostId = message.hostId;
-        if (!message.started) renderLobby();
+        view = {
+          code: roomCode,
+          playerCount: message.playerCount,
+          hostId,
+          humanPlayer: match.humanPlayer,
+          seats: message.seats,
+          bots: [...message.bots],
+          settings: message.settings,
+          settingBounds: message.settingBounds,
+          teams: [...message.teams],
+          playerLimits: message.playerLimits,
+        };
+        if (!message.started) render();
         break;
       case 'snapshot':
         if (!started) {
           started = true;
+          const setup: Setup = { ...common, seats: [], settings: DEFAULT_SETTINGS };
           void runSession(networkSession(match, connection), setup).catch((e: unknown) =>
             showError('Match failed', e),
           );
@@ -357,73 +504,11 @@ async function startOnline(setup: Setup, code: string | null): Promise<void> {
     }
   });
 
-  function renderLobby(): void {
-    if (started) return;
-    app!.innerHTML = lobbyMarkup({
-      code: roomCode,
-      playerCount,
-      hostId,
-      humanPlayer: match.humanPlayer,
-      seats,
-      bots,
-      settings,
-      settingBounds,
-    });
-
-    const rounds = document.querySelector<HTMLSelectElement>('#max-rounds');
-    rounds?.addEventListener('change', () => {
-      audio.play('select');
-      connection.send({ type: 'configure', settings: { maxRounds: Number(rounds.value) } });
-    });
-
-    for (const field of document.querySelectorAll<HTMLSelectElement>('.bot-select')) {
-      field.addEventListener('change', () => {
-        audio.play('select');
-        const next = [...bots];
-        next[Number(field.dataset.seat)] = field.value as Difficulty;
-        connection.send({ type: 'configure', bots: next });
-      });
-    }
-
-    // Copying beats reading a code aloud, and the fallback matters: the clipboard API
-    // is unavailable over plain http on anything but localhost, which is exactly how
-    // somebody will first try this on a home network.
-    const copy = document.querySelector<HTMLButtonElement>('#copy-code');
-    copy?.addEventListener('click', () => {
-      audio.play('select');
-      void navigator.clipboard
-        ?.writeText(roomCode)
-        .then(() => {
-          copy.textContent = 'Copied';
-          setTimeout(() => (copy.textContent = 'Copy'), 1200);
-        })
-        .catch(() => {
-          // Select it instead, so it can still be copied by hand.
-          const node = document.querySelector('#room-code');
-          if (node) globalThis.getSelection()?.selectAllChildren(node);
-          copy.textContent = 'Select and copy';
-        });
-    });
-
-    document.querySelector('#begin')?.addEventListener('click', () => {
-      audio.play('select');
-      connection.send({ type: 'start' });
-    });
-    document.querySelector('#leave')?.addEventListener('click', () => {
-      audio.play('select');
-      connection.close();
-      showMenu();
-    });
-  }
-
-  app!.innerHTML = `<div class="menu"><h1>Connecting</h1><p class="note">${ServerConnection.defaultUrl()}</p></div>`;
-  await connection.connect();
-
-  const stored = sessionStorage.getItem(TOKEN_KEY)?.split(':') ?? [];
-  if (code === null) connection.createRoom(setup.name, setup.seats.length);
-  else if (stored[0] === code.toUpperCase() && stored[1])
-    connection.joinRoom(setup.name, code, stored[1]);
-  else connection.joinRoom(setup.name, code);
+  // The welcome that decided there was a server arrived before this listener did.
+  match.receive(welcome);
+  roomCode = welcome.code;
+  hostId = welcome.hostId;
+  sessionStorage.setItem(TOKEN_KEY, `${welcome.code}:${welcome.token}`);
 
   setInterval(() => connection.ping(), 2000);
 }
@@ -753,6 +838,10 @@ if (params.get('autostart') === '1') {
     style: preferredStyle,
     name: 'Player',
     settings: settingsFromParams(),
+    // &teams=N puts the seats in teams of N, in seat order, when N divides the table.
+    ...(Number(params.get('teams') ?? 1) > 1 && count % Number(params.get('teams')) === 0
+      ? { teams: defaultTeams(count, Number(params.get('teams'))) }
+      : {}),
   };
   const match = localMatchFor(setup);
   const phase = params.get('snapshot');
@@ -768,21 +857,17 @@ if (params.get('autostart') === '1') {
     showError('Failed to start match', error),
   );
 } else if (params.get('host') !== null || params.get('join') !== null) {
-  // The online lobby had no way in except clicking through the menu, which meant it
-  // could not be looked at the way `?autostart=1` lets the offline game be looked at —
-  // and it went un-inspected at more than four seats for exactly that long.
+  // The lobby had no way in except clicking through the menu, which meant it could not
+  // be looked at the way `?autostart=1` lets a match be looked at — and it went
+  // un-inspected at more than four seats for exactly that long.
   const joining = params.get('join');
-  const setup: Setup = {
-    seats: Array.from({ length: Number(params.get('host') ?? 2) }, (_, i) =>
-      i === 0 ? null : DEFAULT_BOT,
-    ),
+  const common: Common = {
     seed: Number(params.get('seed') ?? 1),
     style: preferredStyle,
     name: params.get('name') ?? 'Player',
-    settings: settingsFromParams(),
   };
-  void startOnline(setup, joining).catch((error: unknown) =>
-    showError(joining !== null ? 'Could not join' : 'Could not host', error),
+  void openLobby(common, joining, Number(params.get('host') ?? DEFAULT_PLAYERS)).catch(
+    (error: unknown) => showError(joining !== null ? 'Could not join' : 'Could not host', error),
   );
 } else {
   showMenu();

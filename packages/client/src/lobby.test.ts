@@ -17,6 +17,8 @@ function view(over: Partial<LobbyView> = {}): LobbyView {
     bots: ['gunner', 'gunner', 'gunner', 'gunner'],
     settings: { maxRounds: 10, teamSize: 1 },
     settingBounds: { maxRounds: { min: 5, max: 20 }, teamSize: { min: 1, max: 4 } },
+    teams: [0, 1, 2, 3],
+    playerLimits: { min: 2, max: 8 },
     ...over,
   };
 }
@@ -48,13 +50,8 @@ describe('lobby', () => {
     expect(rows(html)[1]).toContain('Bot 2');
   });
 
-  it('gives every seat the colour it will play in', () => {
-    const html = lobbyMarkup(view({ playerCount: 8 }));
-    const swatches = [...html.matchAll(/class="swatch" style="background:(#[0-9a-f]{6})"/g)].map(
-      (m) => m[1],
-    );
-    expect(swatches).toHaveLength(8);
-    expect(new Set(swatches).size).toBe(8);
+  it('shows no colour per seat, since islands — and so colours — are dealt at the start', () => {
+    expect(lobbyMarkup(view({ playerCount: 8 }))).not.toContain('class="swatch"');
   });
 
   it('lets only the host change the bots or start the match', () => {
@@ -105,16 +102,70 @@ describe('lobby', () => {
     expect(html).toContain('&lt;img');
   });
 
-  it('gives the host a round control bounded by the server, and guests a statement', () => {
+  it('gives the host the table controls, bounded by the rules, and guests a statement', () => {
     const host = lobbyMarkup(view({ settings: { maxRounds: 12, teamSize: 1 } }));
     expect(host).toContain('id="max-rounds"');
-    expect(host.match(/<option value="\d+"/g)).toHaveLength(16); // 5 to 20
     expect(host).toContain('<option value="12" selected>');
-    expect(host).not.toContain('<option value="4"');
-    expect(host).not.toContain('<option value="21"');
+    expect(host).toContain('id="team-size"');
+    expect(host).toContain('id="player-count"');
 
-    const guest = lobbyMarkup(view({ humanPlayer: 1, settings: { maxRounds: 12, teamSize: 1 } }));
+    const guest = lobbyMarkup(
+      view({
+        humanPlayer: 1,
+        seats: [seat(0, 'Ada'), seat(1, 'Bo')],
+        settings: { maxRounds: 12, teamSize: 1 },
+      }),
+    );
     expect(guest).not.toContain('id="max-rounds"');
     expect(guest).toContain('12 rounds');
+    expect(guest).toContain('Free-for-all');
+  });
+
+  it('offers only the player counts a team size allows', () => {
+    const html = lobbyMarkup(
+      view({ settings: { maxRounds: 10, teamSize: 2 }, teams: [0, 0, 1, 1] }),
+    );
+    const select = html.slice(
+      html.indexOf('id="player-count"'),
+      html.indexOf('</select>', html.indexOf('id="player-count"')),
+    );
+    const counts = [...select.matchAll(/<option value="(\d+)"/g)].map((m) => Number(m[1]));
+    expect(counts).toEqual([4, 6, 8]);
+  });
+
+  it('puts every seat in a team, and lets only the host move them', () => {
+    const teamed = { settings: { maxRounds: 10, teamSize: 2 }, teams: [0, 1, 0, 1] };
+    const host = lobbyMarkup(view(teamed));
+    expect(host.match(/class="team-select"/g)).toHaveLength(4);
+    expect(host).toContain('Team B');
+
+    const guest = lobbyMarkup(
+      view({ ...teamed, humanPlayer: 1, seats: [seat(0, 'Ada'), seat(1, 'Bo')] }),
+    );
+    expect(guest).not.toContain('team-select');
+    expect(rows(guest)[1]).toContain('Team B');
+  });
+
+  it('will not start unequal teams, and says why', () => {
+    const html = lobbyMarkup(
+      view({ settings: { maxRounds: 10, teamSize: 2 }, teams: [0, 0, 0, 1] }),
+    );
+    expect(html).toContain('id="begin" disabled');
+    expect(html).toContain('Teams must be the same size');
+  });
+
+  it('works without a server: no code, and says the table is local', () => {
+    const html = lobbyMarkup(view({ code: null }));
+    expect(html).not.toContain('room-code');
+    expect(html).toContain('on this computer only');
+  });
+
+  it('tells a host alone that the match will run locally, and offers to watch', () => {
+    const html = lobbyMarkup(view());
+    expect(html).toContain('If nobody joins, the match runs on this computer');
+    expect(html).toContain('id="watch"');
+    // Not once somebody else has joined: the table is theirs too.
+    const shared = lobbyMarkup(view({ seats: [seat(0, 'Ada'), seat(1, 'Bo')] }));
+    expect(shared).not.toContain('id="watch"');
   });
 });

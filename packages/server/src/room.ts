@@ -3,8 +3,8 @@ import {
   defaultSettings,
   defaultTeams,
   mergeSettings,
+  reshapeTable,
   teamsBalanced,
-  validPlayerCounts,
   type AiConfig,
   type MatchSettings,
   type Ruleset,
@@ -244,27 +244,21 @@ export class Room {
     playerCount: number,
     teams: readonly number[] | undefined,
   ): void {
-    const limits = this.options.ruleset.players;
-    const humans = this.seats.length;
-    const valid = validPlayerCounts(settings.teamSize, limits).filter((n) => n >= humans);
-    const count = valid.includes(playerCount)
-      ? playerCount
-      : (valid.find((n) => n >= this.playerCount) ?? valid[0]);
-    if (count === undefined) return; // no table that size seats everyone who has joined
-
-    const reshaped = settings.teamSize !== this.settings.teamSize || count !== this.playerCount;
-    this.settings = settings;
-    if (count !== this.playerCount) {
+    const table = reshapeTable(
+      { settings: this.settings, playerCount: this.playerCount, teams: this.teams },
+      { settings, playerCount, ...(teams === undefined ? {} : { teams }) },
+      this.options.ruleset.players,
+      this.seats.length,
+    );
+    this.settings = table.settings;
+    this.teams = table.teams;
+    if (table.playerCount !== this.playerCount) {
       // Seats kept keep their bot's skill; new ones take the server's default.
-      this.playerCount = count;
-      this.botDifficulties.length = count;
-      for (let i = 0; i < count; i++) {
+      this.playerCount = table.playerCount;
+      this.botDifficulties.length = table.playerCount;
+      for (let i = 0; i < table.playerCount; i++) {
         this.botDifficulties[i] ??= this.options.server.botDifficulty as Difficulty;
       }
-    }
-    if (reshaped) this.teams = defaultTeams(count, settings.teamSize);
-    if (teams !== undefined && teams.length === count && teamsBalanced(teams, settings.teamSize)) {
-      this.teams = [...teams];
     }
   }
 

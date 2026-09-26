@@ -535,7 +535,7 @@ aggressive, defensive, expander), how the lobby offers the pair, and whether
 `server.botDifficulty` becomes two settings. Independent of balance, so it can run beside
 11.2.
 
-### 11.7 Team mode — in progress, T1–T3 done
+### 11.7 Team mode — in progress, T1–T4 done
 
 Chosen by the user to come next, ahead of 11.2–11.6. **T1, the sim core, is built**: teams in
 the state, pooled lives, team elimination and winners, no friendly fire, the capped
@@ -549,7 +549,14 @@ the stopgap's, the scripted soak player's — and cannons face the other teams' 
 Bots build only from their own island's plans, so they never help across islands even
 under `all`; teaching them to help is left for later, if wanted. A 2v2 bot match makes
 no refused move and never aims at a teammate; before the change the same two matches
-made 598 refused shots at teammates.
+made 598 refused shots at teammates. **T4, the lobby, is built**: one lobby screen for
+online and offline (`lobby.ts`, a pure view), fed by a room when a server answers with a
+welcome within two seconds and by a local table when not; team size, player count and
+teams set by the host through one shared rule, `reshapeTable` in config, used by both;
+the seeded seat shuffle at the start, server and local alike, applied to free-for-all
+too; a table nobody else joined is played locally from the room's settings. Checked in a
+browser both ways: a local table with teams of two, and a room joined by a second browser
+by code, started by the host, with the islands shuffled and both clients in the match.
 
 #### The rules
 

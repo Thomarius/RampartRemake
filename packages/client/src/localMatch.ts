@@ -6,6 +6,7 @@ import {
   applyAction,
   createMatch,
   drainEvents,
+  seatOrder,
   step,
   type Action,
   type MatchEvent,
@@ -22,6 +23,8 @@ export interface LocalMatchOptions {
    * is the clearest way to see how the bots actually play.
    */
   seats: readonly (Difficulty | null)[];
+  /** Each seat's team, by seat. Omitted, every seat is on its own. */
+  teams?: readonly number[];
   ruleset?: Ruleset;
 }
 
@@ -46,21 +49,31 @@ export class LocalMatch {
   constructor(options: LocalMatchOptions) {
     const ruleset = options.ruleset ?? defaultRuleset;
     const seats = options.seats;
-    this.humanPlayer = seats.findIndex((seat) => seat === null);
+    // Which player — so which island — each seat becomes, shuffled exactly as the server
+    // does it, so an offline match seats people as an online one would.
+    const order = seatOrder(options.seed, seats.length);
+    const humanSeat = seats.findIndex((seat) => seat === null);
+    this.humanPlayer = humanSeat < 0 ? -1 : (order[humanSeat] as number);
 
+    const players = new Array<{ name: string; isBot: boolean; team: number }>(seats.length);
+    seats.forEach((seat, index) => {
+      players[order[index] as number] = {
+        name: seat === null ? 'You' : `${seat[0]?.toUpperCase()}${seat.slice(1)} ${index + 1}`,
+        isBot: seat !== null,
+        team: options.teams?.[index] ?? index,
+      };
+    });
     this.state = createMatch({
       seed: options.seed,
       ruleset,
       terrainConfig: defaultTerrainConfig,
-      players: seats.map((seat, i) => ({
-        name: seat === null ? 'You' : `${seat[0]?.toUpperCase()}${seat.slice(1)} ${i + 1}`,
-        isBot: seat !== null,
-      })),
+      players,
     });
 
-    for (const [id, seat] of seats.entries()) {
+    seats.forEach((seat, index) => {
+      const id = order[index] as number;
       if (seat !== null) this.bots.set(id, new Bot(id, seat));
-    }
+    });
     this.rng = new Rng(options.seed ^ 0x5f3759df);
     this.tickMs = 1000 / ruleset.tickRateHz;
   }

@@ -28,9 +28,10 @@ wait rather than assuming it hung.
 Client dev query parameters: `?autostart=1&players=3&seed=7`, `&snapshot=build` to jump
 to a phase (`&round=N` for one deep in a match, `&idle=1` to leave your seat undriven on
 the way, so you are soon knocked out), `&speed=10`, `&style=flat|pixel`, `&watch=1&bots=marshal` to observe a bot
-match, `&rounds=12` for the round cap. Online: `?host=8` opens a room, `?join=CODE` joins
-one, `&name=Bo` sets the name. All are reachable from the menu too, which configures every
-seat individually.
+match, `&rounds=12` for the round cap, `&teams=2` for teams of two in seat order. `?host=8`
+opens the lobby at eight seats — a room if a server answers, a local table if not —
+`?join=CODE` joins one, `&name=Bo` sets the name. The menu's Play and Join reach the same
+lobby, which sets players, teams, bots and rounds.
 
 ## Layout
 

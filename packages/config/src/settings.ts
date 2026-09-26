@@ -102,3 +102,46 @@ export function teamsBalanced(teams: readonly number[], teamSize: number): boole
   }
   return sizes.every((size) => size === teamSize);
 }
+
+/** The shape of a table: its settings, how many seats, and each seat's team. */
+export interface Table {
+  settings: MatchSettings;
+  playerCount: number;
+  teams: number[];
+}
+
+/**
+ * A host's change to the table, applied — the one rule both the room and the local lobby
+ * follow, so the two cannot drift apart.
+ *
+ * Team size, player count and teams constrain each other, so they change together. A
+ * team size needs a count that makes at least two equal teams; if the wanted count does
+ * not, the smallest that does and still seats everyone who has joined is taken, and if
+ * none does the change is refused. Changing the size or the count resets the teams to
+ * seat order; an assignment is taken only if it makes equal teams at the resulting size.
+ */
+export function reshapeTable(
+  current: Table,
+  change: { settings?: MatchSettings; playerCount?: number; teams?: readonly number[] },
+  limits: { min: number; max: number },
+  seated: number,
+): Table {
+  const settings = change.settings ?? current.settings;
+  const wanted = change.playerCount ?? current.playerCount;
+  const valid = validPlayerCounts(settings.teamSize, limits).filter((n) => n >= seated);
+  const count = valid.includes(wanted)
+    ? wanted
+    : (valid.find((n) => n >= current.playerCount) ?? valid[0]);
+  if (count === undefined) return current;
+
+  const reshaped = settings.teamSize !== current.settings.teamSize || count !== current.playerCount;
+  let teams = reshaped ? defaultTeams(count, settings.teamSize) : current.teams;
+  if (
+    change.teams !== undefined &&
+    change.teams.length === count &&
+    teamsBalanced(change.teams, settings.teamSize)
+  ) {
+    teams = [...change.teams];
+  }
+  return { settings, playerCount: count, teams };
+}
