@@ -8,7 +8,10 @@ import type { MatchState } from '@rampart/sim';
  * team one family of hues and each member a shade of it, in player order within the
  * team, so a team reads as one colour while every player keeps their own.
  */
-export function matchPalette(art: ArtConfig, state: MatchState): PlayerPalette[] {
+export function matchPalette(
+  art: ArtConfig,
+  state: Pick<MatchState, 'players'> | { players: readonly { id: number; team: number }[] },
+): PlayerPalette[] {
   const teamSizes = new Map<number, number>();
   for (const p of state.players) teamSizes.set(p.team, (teamSizes.get(p.team) ?? 0) + 1);
   const teamed = [...teamSizes.values()].some((size) => size > 1);

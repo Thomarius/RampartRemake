@@ -31,8 +31,43 @@ body {
 
 #app {
   position: relative;
+  z-index: 1;
   width: 100vw;
   height: 100vh;
+}
+
+/*
+ * The game's own sea behind the menu and lobby, drifting slowly (decor.ts). A match's
+ * canvas covers it entirely. The drift is a whole number of tiles, so the loop is seamless.
+ */
+#backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  image-rendering: pixelated;
+  animation: backdrop-drift 48s linear infinite;
+}
+
+#backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgb(10 10 18 / 35%), rgb(10 10 18 / 85%));
+}
+
+@keyframes backdrop-drift {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 192px 96px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #backdrop {
+    animation: none;
+  }
 }
 
 /* ---------- menu ---------- */
@@ -45,7 +80,19 @@ body {
   height: fit-content;
   padding: 2rem;
   border: 1px solid var(--edge);
-  background: var(--panel);
+  background: rgb(26 26 36 / 94%);
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 50%);
+}
+
+/* The title set in stone blocks (decor.ts), scaled on the pixel grid. */
+.menu h1.title {
+  margin-bottom: 1rem;
+}
+
+.menu h1.title img {
+  display: block;
+  height: 60px;
+  image-rendering: pixelated;
 }
 
 .menu h1 {
@@ -756,4 +803,114 @@ table.final tr.you td:nth-child(2) {
   padding-left: 1.4rem;
   font-size: 0.78rem;
   opacity: 0.55;
+}
+
+/* --- Lobby, V5: the map, seat cards, teams --------------------------------- */
+
+.menu.lobby {
+  width: min(58rem, 94vw);
+  max-height: 94vh;
+  overflow-y: auto;
+}
+
+.lobby-body {
+  display: grid;
+  grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+@media (max-width: 760px) {
+  .lobby-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The map everyone will play, each island numbered for its seat (preview.ts). */
+.map-preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--edge);
+  image-rendering: pixelated;
+}
+
+.map-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.6rem 0 1rem;
+}
+
+.map-row label {
+  flex: 1;
+  margin: 0;
+}
+
+.menu .map-row button {
+  width: auto;
+  margin: 0;
+  padding: 0.35rem 0.7rem;
+}
+
+.menu .map-note {
+  margin: 0.4rem 0 1rem;
+}
+
+/* The seat's number in the colour it will play, matching its island on the map. */
+.seats .num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 3px;
+  background: var(--edge);
+  color: var(--ink);
+  font-size: 0.8rem;
+  text-shadow: 0 1px 0 rgb(10 10 18 / 70%);
+}
+
+.seats .insignia {
+  flex: none;
+  color: var(--accent);
+}
+
+.seats select,
+.seats #host-bot {
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--edge);
+  background: #0f0f18;
+  color: var(--ink);
+  font: inherit;
+  width: auto;
+}
+
+.team-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 1rem;
+}
+
+.team-column h2 {
+  margin: 0 0 0.3rem;
+  color: var(--accent);
+  font-size: 0.8rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* Somebody has just sat down. */
+.seats li.arrived {
+  animation: seat-arrive 1.4s ease-out;
+}
+
+@keyframes seat-arrive {
+  from {
+    background: rgb(216 184 74 / 35%);
+  }
+  to {
+    background: transparent;
+  }
 }

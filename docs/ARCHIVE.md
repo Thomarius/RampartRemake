@@ -1519,3 +1519,35 @@ The fourth package of the visual pass, mostly in the pixel style, which is the c
   land. Playwright's `mouse.click` did not fire in this game where a move followed by a
   press did — worth knowing before concluding a click handler is broken. The flag coming
   down was not caught on screen; the user checked it in play.
+
+## 11a. The lobby shows the real map (V5)
+
+The fifth package of the visual pass, with three decisions from the user: draw the seed
+when the table is set so the preview is the real map; make it random every time a lobby
+opens, with `?seed=` kept for testing; and let the host seat a bot in their own place,
+which replaces the "watch the bots play" button.
+
+- **The seed moved from the start to the table.** A room draws it at creation (from its
+  random generator, which also issues tokens, so match seeds changed for every room seed;
+  no test depended on the old values) and sends it in every `room` message; a local table
+  takes it from `crypto.getRandomValues`. The host may draw another or type one in.
+  Protocol 7.
+- **The preview deals exactly what the match will** (`preview.ts`): the terrain from the
+  seed, the island of each seat from `seatOrder`, the colour from `matchPalette`. A test
+  builds the real local match and compares all three. **The first colours were wrong**:
+  `createMatch` renumbers team labels densely in order of first appearance among the
+  players, after the shuffle, and the colour family follows the renumbered id. The same
+  renumbering means the lobby's team letter can differ from the match's — recorded in
+  PLAN 11.5, since it predates V5.
+- **A host watching**: the server marks the host's seat a bot's at the start, ignores the
+  host's actions, and — found while writing it — must not hand the seat back when the host
+  reconnects, which the generic "reclaim a seat a bot was holding" path would have done.
+- **Server bots are numbered from one**, as the lobby numbers seats: the match said "Bot 2"
+  for the lobby's "Bot 3".
+- **Dressing**: a stone-block title and the game's sea drifting behind the menu and lobby
+  (`decor.ts`), seat cards with the seat's number in its colour, rank badges per tier
+  (chevrons, a star for the baron), team columns, a flash for a newcomer.
+- Checked over a real socket on a second port, host and guest in two pages: the guest saw
+  the host watching, the host's match ran as a spectator, and the guest's island was the
+  one the preview had shown. A server already on 8080 belonged to the user and was left
+  alone — it runs the old protocol until restarted.

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { SnapshotSchema } from './snapshot.js';
 
 /** Bumped on any breaking change to the message set; mismatched clients are rejected. */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 /**
  * A player's intent. The server overwrites `player` with the sender's own seat before
@@ -75,6 +75,10 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
     playerCount: z.number().int().min(2).max(8).optional(),
     /** Each seat's team, by seat; taken only if it makes equal teams. */
     teams: z.array(z.number().int().nonnegative()).max(8).optional(),
+    /** The map: every island, castle and seat's island follow from it. */
+    seed: z.number().int().nonnegative().max(0xffffffff).optional(),
+    /** A bot to play the host's own seat, or null for the host to play it. */
+    hostBot: DifficultySchema.nullable().optional(),
   }),
   z.strictObject({ type: z.literal('start') }),
   z.strictObject({ type: z.literal('action'), action: ActionSchema }),
@@ -105,6 +109,13 @@ export const ServerMessageSchema = z.discriminatedUnion('type', [
     settingBounds: SettingBoundsSchema,
     /** Each seat's team, by seat. */
     teams: z.array(z.number().int().nonnegative()),
+    /**
+     * The match seed, drawn when the room is created rather than at the start, so the
+     * lobby can show the map that will be played — and which island each seat gets.
+     */
+    seed: z.number().int().nonnegative(),
+    /** The bot playing the host's seat while the host watches, or null. */
+    hostBot: DifficultySchema.nullable(),
     /** The player counts the rules allow at all, before the team size narrows them. */
     playerLimits: z.strictObject({ min: z.number().int(), max: z.number().int() }),
     hostId: z.number().int().nonnegative(),

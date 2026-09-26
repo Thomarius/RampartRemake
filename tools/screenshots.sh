@@ -23,6 +23,9 @@ WATCH="$GAME&watch=1&bots=gunner"
 # name|query appended to the base|milliseconds to wait
 SCENES=(
   "menu|$BASE/|1500"
+  # The lobby, with the map it will play; no server under the dev server, so a local table.
+  "lobby|$BASE/?host=3&seed=5&name=Ada|3000"
+  "lobby-eight|$BASE/?host=8&seed=11&name=Ada|3000"
   "build-flat|$GAME&snapshot=build&style=flat|2000"
   "build-pixel|$GAME&snapshot=build&style=pixel|2000"
   "cannons-pixel|$GAME&snapshot=cannon_place&round=2&style=pixel|2000"

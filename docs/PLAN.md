@@ -310,6 +310,15 @@ sender's seat**, so a client cannot act for someone else.
 - **Seats are shuffled onto islands at the start**, seeded from the match seed, server and
   local alike. The sim's invariant that player p owns island p + 1 is untouched — it is
   the seats that move, and the server tells each connection which player it has become.
+- **The seed is fixed when the table is set, not when the match starts**: a room draws it
+  at creation and a local table from the browser's entropy as the lobby opens, and the
+  host may draw another or type one (`configure.seed`; `?seed=N` for testing). Since
+  terrain and the seat shuffle follow from the seed alone, the lobby shows the map that
+  will be played and which island each seat gets, in the colour it will play.
+- **The host may put a bot in their own seat** (`configure.hostBot`) and watch: the server
+  marks the seat a bot's, ignores the host's actions, and keeps it the bot's if they
+  reconnect. With nobody else at the table that is a match of bots alone, which replaced
+  the separate "watch the bots" button.
 - **Lobby settings are a mechanism, not a special case**: an explicit list of typed
   settings (`config/src/settings.ts`), bounded by `server.lobbySettings`, accepted only
   from the host before the start, refused whole when out of bounds, and applied over the
@@ -348,6 +357,13 @@ watched match is still on round 0 after two minutes of virtual time, because the
 loop is barely driven; headless Chrome catches a crash on load and nothing else. The
 pattern that works is to pull the decision out into a pure function and test that —
 `bannersFor` in `banners.ts`, `lobbyMarkup` in `lobby.ts`, the score text in `scores.ts`.
+
+**The menu and lobby** are dressed in the game's own art (`decor.ts`): the title set in
+stone blocks, and the pixel sea drifting behind the panel. The lobby shows the map the
+table will play (`preview.ts`) — each island in the colour its seat will play and numbered
+for it, the viewer's own ringed — beside seat cards that carry the same number and
+colour, a rank badge per bot tier, and columns per team. A newcomer's card flashes as they
+sit down.
 
 **Territory is drawn as the board stands, not as the sim last recorded it.** The sim
 refreshes `territory` at placements and resolutions but not when shots land, since a
@@ -503,8 +519,8 @@ playing test matches. The next milestone is **11.2, elimination tuning**, as soo
 play has given a feel for it — its plan is ready and starts with a baseline measurement.
 Beside it, independent of balance: **11.6**, bots as personality × skill, and **11.8**,
 the visual pass, which changes no game logic and so can run while the human testing
-does — V1 (the original's theme-switching banner), V2 (the pixel style as the combat
-look), V3 (build-phase effects) and V4 (combat effects) are done; V5 and V6 are next. Smaller items are in 11.5.
+does — V1–V5 (the theme-switching banner, the cinematic pixel style, build and combat
+effects, the lobby) are done; V6 is next. Smaller items are in 11.5.
 
 ### 11.1 Round cap and points scoring — done
 
@@ -612,6 +628,12 @@ balanced means.
   every trigger are wired.
 - Islands look boxy; `coastlineRoughness` and `noiseFrequency` are config.
 - Rings at 5 and 7 players make considerably larger maps than grids would. One JSON edit.
+- **Team letters can differ between the lobby and the match.** The lobby names teams by
+  the labels seats were given; `createMatch` renumbers labels densely in order of first
+  appearance among the players, after the shuffle — so the lobby's Team A may be called
+  Team B in play. Membership and colours are right (the preview renumbers the same way);
+  only the letter moves. Found in V5, predates it. Fix by passing labels already dense in
+  player order, or by keeping the host's labels in the sim.
 
 ### 11.6 Bots as personality and skill
 
@@ -632,7 +654,7 @@ teaching one to help without wrecking a person's plan is its own question.
 
 ### 11.8 Visual pass — in progress
 
-**Agreed 2026-09-26. V1–V4 done** (ARCHIVE 10w–10z); V5 and V6 open. Everything here
+**Agreed 2026-09-26. V1–V5 done** (ARCHIVE 10w–10z, 11a); V6 open. Everything here
 is client-side and cosmetic: no sim, protocol or ruleset change, so it cannot desync a match or move a balance measurement,
 and it can proceed while 11.2 waits on human play. Cosmetic randomness may use
 `Math.random` (the client is outside the lint rule), but durations, sizes and counts
@@ -784,7 +806,12 @@ Kept as planned, for the record; how it turned out is §7 and ARCHIVE 10z.
   vanishing.
 - **Muzzle smoke** drifting from each gun after it fires.
 
-#### V5 — Lobby and menu
+#### V5 — Lobby and menu — done
+
+Kept as planned, for the record; how it turned out is §6, §7 and ARCHIVE 11a. Decided
+with the user: the seed is drawn when the table is set, so the preview is the real map;
+it is random each time a lobby opens (`?seed=` still sets one); and the host may seat a
+bot in their own place, which replaces the "watch the bots" button.
 
 - **A mini-map** of the table as it stands: the pattern for the chosen player count,
   generated from the seed exactly as a match would be, with team letters. Islands are

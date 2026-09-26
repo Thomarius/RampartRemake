@@ -26,14 +26,14 @@ tools/screenshots.sh /tmp/shots [scene...]   # client in fixed states, against t
 `npm run check` takes a few minutes, mostly bot matches. Run it in the background and
 wait rather than assuming it hung.
 
-Client dev query parameters: `?autostart=1&players=3&seed=7`, `&snapshot=build` to jump
+Client dev query parameters: `?autostart=1&players=3&seed=7` (a random seed without it), `&snapshot=build` to jump
 to a phase (`&round=N` for one deep in a match, `&idle=1` to leave your seat undriven on
 the way, so you are soon knocked out), `&speed=10`, `&style=flat|pixel` for both looks
 (`&buildStyle=`, `&combatStyle=` for one), `&watch=1&bots=marshal` to observe a bot match,
 `&rounds=12` for the round cap, `&teams=2` for teams of two in seat order. `?host=8` opens
 the lobby at eight seats — a room if a server answers, a local table if not —
-`?join=CODE` joins one, `&name=Bo` sets the name. The menu's Play and Join reach the same
-lobby, which sets players, teams, bots and rounds.
+`?join=CODE` joins one, `&name=Bo` sets the name, `&seed=N` the map. The menu's Play and
+Join reach the same lobby, which sets the map, players, teams, bots and rounds.
 
 ## Layout
 
@@ -144,7 +144,9 @@ board, with the "Place cannons" banner drawing the sweep away. V2 is done (ARCHI
 the pixel style made the cinematic combat look. V3 is done (ARCHIVE 10y): sealed ground
 floods out from its castle, flags are hoisted, pieces settle, overtime rings the board.
 V4 is done (ARCHIVE 10z): impacts by what they hit, smoke, warnings on your own wall,
-flags lowered on a breach. V5 and V6 are next.
+flags lowered on a breach. V5 is done (ARCHIVE 11a): the lobby shows the real map, the
+seed is fixed and random when a table is set, the host may seat a bot in their own place.
+V6 is next.
 
 **No audio files exist yet** beyond two test files; the user is producing them, and
 missing files are silent by design. `assets/audio/README.md` lists every cue.

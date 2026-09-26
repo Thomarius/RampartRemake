@@ -100,6 +100,14 @@ export class Room {
   private playerCount: number;
   /** Each seat's team, by seat. Free-for-all is every seat on its own. */
   private teams: number[];
+  /**
+   * The match seed, drawn with the room rather than at the start, so the lobby shows the
+   * map everyone will play and which island each seat will get. The host may draw
+   * another, or set one.
+   */
+  private seed: number;
+  /** A bot the host has put in their own seat, to watch rather than play. */
+  private hostBot: Difficulty | null = null;
   private idle = 0;
 
   constructor(options: RoomOptions) {
@@ -112,6 +120,7 @@ export class Room {
     this.settings = defaultSettings(options.ruleset, options.server.lobbySettings);
     this.playerCount = options.playerCount;
     this.teams = defaultTeams(this.playerCount, this.settings.teamSize);
+    this.seed = this.rng.nextU32();
   }
 
   get started(): boolean {
@@ -137,9 +146,12 @@ export class Room {
     if (token !== undefined) {
       const seat = this.seats.find((s) => s.token === token);
       if (seat) {
-        // Reclaiming a seat a bot has been holding.
+        // Reclaiming a seat a bot has been holding — unless it is the seat the host
+        // gave to a bot on purpose, which stays the bot's: they came back to watch.
         seat.connection = connection;
-        seat.bot = false;
+        const watching =
+          this.state !== null && seat.playerId === this.hostId && this.hostBot !== null;
+        seat.bot = watching;
         seat.graceTicks = 0;
         this.sendWelcome(seat);
         if (this.state) this.sendSnapshot(seat);
@@ -214,10 +226,14 @@ export class Room {
             mergeSettings(this.settings, change, this.options.server.lobbySettings) ?? settings;
         }
         this.configureTable(settings, message.playerCount ?? this.playerCount, message.teams);
+        if (message.seed !== undefined) this.seed = message.seed;
+        if (message.hostBot !== undefined) this.hostBot = message.hostBot as Difficulty | null;
         this.broadcastRoom();
         return;
       }
       case 'action': {
+        // A seat its bot is playing — the host who chose to watch — acts only through it.
+        if (seat.bot) return;
         // The seat decides who acted, never the message: otherwise a client could
         // move on another player's behalf simply by writing a different id.
         const action = ActionSchema.parse({ ...message.action, player: seat.playerId });
@@ -274,7 +290,8 @@ export class Room {
     for (let i = humans; i < this.playerCount; i++) {
       this.seats.push({
         playerId: i,
-        name: `Bot ${i}`,
+        // Numbered from one, as the lobby numbers its seats.
+        name: `Bot ${i + 1}`,
         connection: null,
         token: this.newToken(),
         ready: true,
@@ -286,11 +303,18 @@ export class Room {
     // Which player, and so which island, each seat becomes — shuffled, so no seat is
     // always the one with the awkward neighbours. Seats are in join order here, and
     // until now each seat's player id was its index.
-    const seed = this.rng.nextU32();
+    const seed = this.seed;
     const order = seatOrder(seed, this.seats.length);
     const players = new Array<{ name: string; isBot: boolean; team: number }>(this.seats.length);
     const difficulties = this.seats.map((_, index) => this.botDifficulties[index] ?? 'gunner');
     const hostSeat = this.seats.findIndex((seat) => seat.playerId === this.hostId);
+    // The host chose to watch: their seat is played by the bot they picked, and they stay
+    // connected to see it. With nobody else at the table, it is a match of bots alone.
+    const hosting = this.seats[hostSeat];
+    if (this.hostBot !== null && hosting !== undefined) {
+      hosting.bot = true;
+      difficulties[hostSeat] = this.hostBot;
+    }
     this.seats.forEach((seat, index) => {
       const player = order[index] as number;
       players[player] = { name: seat.name, isBot: seat.bot, team: this.teams[index] ?? index };
@@ -416,6 +440,8 @@ export class Room {
       settings: { ...this.settings },
       settingBounds: this.options.server.lobbySettings,
       teams: [...this.teams],
+      seed: this.seed,
+      hostBot: this.hostBot,
       playerLimits: { ...this.options.ruleset.players },
       hostId: this.hostId,
       started: this.started,

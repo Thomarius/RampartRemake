@@ -19,6 +19,8 @@ function view(over: Partial<LobbyView> = {}): LobbyView {
     settingBounds: { maxRounds: { min: 5, max: 20 }, teamSize: { min: 1, max: 4 } },
     teams: [0, 1, 2, 3],
     playerLimits: { min: 2, max: 8 },
+    seed: 42,
+    hostBot: null,
     ...over,
   };
 }
@@ -50,8 +52,48 @@ describe('lobby', () => {
     expect(rows(html)[1]).toContain('Bot 2');
   });
 
-  it('shows no colour per seat, since islands — and so colours — are dealt at the start', () => {
-    expect(lobbyMarkup(view({ playerCount: 8 }))).not.toContain('class="swatch"');
+  it('numbers every seat in the colour it will play in, as its island is labelled', () => {
+    // The seed is fixed while the table is set, so the deal — and the colours — are known.
+    const html = lobbyMarkup(view({ seatColours: ['#c8283c', '#2850c8', '#d8a020', '#28a050'] }));
+    expect(rows(html)[0]).toContain('style="background:#c8283c">1</b>');
+    expect(rows(html)[3]).toContain('style="background:#28a050">4</b>');
+  });
+
+  it('shows the map, and lets only the host draw another', () => {
+    const asHost = lobbyMarkup(view());
+    expect(asHost).toContain('id="map-preview"');
+    expect(asHost).toContain('id="seed"');
+    expect(asHost).toContain('value="42"');
+    expect(asHost).toContain('id="reroll"');
+    const asGuest = lobbyMarkup(view({ humanPlayer: 1, seats: [seat(0, 'Ada'), seat(1, 'Bo')] }));
+    expect(asGuest).toContain('id="map-preview"');
+    expect(asGuest).toContain('Map 42');
+    expect(asGuest).not.toContain('id="reroll"');
+  });
+
+  it('gives each bot tier its own badge', () => {
+    const html = lobbyMarkup(view({ bots: ['gunner', 'recruit', 'marshal', 'baron'] }));
+    const badges = (row: string): number => (row.match(/<polyline/g) ?? []).length;
+    expect(badges(rows(html)[1] as string)).toBe(1);
+    expect(badges(rows(html)[2] as string)).toBe(3);
+    expect(rows(html)[3]).toContain('<polygon');
+  });
+
+  it('puts the seats in one column per team', () => {
+    const html = lobbyMarkup(
+      view({ settings: { maxRounds: 10, teamSize: 2 }, teams: [0, 1, 1, 0] }),
+    );
+    const columns = [...html.matchAll(/<section class="team-column">([\s\S]*?)<\/section>/g)];
+    expect(columns).toHaveLength(2);
+    expect(columns[0]?.[1]).toContain('Team A');
+    expect(columns[0]?.[1]).toContain('Ada');
+    expect(columns[0]?.[1]).toContain('Bot 4');
+    expect(columns[1]?.[1]).toContain('Bot 2');
+  });
+
+  it('marks a seat somebody has just taken', () => {
+    const html = lobbyMarkup(view({ seats: [seat(0, 'Ada'), seat(1, 'Bo')], arrived: [1] }));
+    expect(html).toContain('<li class="seat arrived">');
   });
 
   it('lets only the host change the bots or start the match', () => {
@@ -143,7 +185,8 @@ describe('lobby', () => {
       view({ ...teamed, humanPlayer: 1, seats: [seat(0, 'Ada'), seat(1, 'Bo')] }),
     );
     expect(guest).not.toContain('team-select');
-    expect(rows(guest)[1]).toContain('Team B');
+    // Rows come in team columns now, so find Bo's by name rather than by position.
+    expect(rows(guest).find((row) => row.includes('>Bo<'))).toContain('Team B');
   });
 
   it('will not start unequal teams, and says why', () => {
@@ -160,12 +203,26 @@ describe('lobby', () => {
     expect(html).toContain('on this computer only');
   });
 
-  it('tells a host alone that the match will run locally, and offers to watch', () => {
+  it('tells a host alone that the match will run locally', () => {
     const html = lobbyMarkup(view());
     expect(html).toContain('If nobody joins, the match runs on this computer');
-    expect(html).toContain('id="watch"');
-    // Not once somebody else has joined: the table is theirs too.
-    const shared = lobbyMarkup(view({ seats: [seat(0, 'Ada'), seat(1, 'Bo')] }));
-    expect(shared).not.toContain('id="watch"');
+    // Watching is no separate button any more: it is a bot in the host's own seat.
+    expect(html).not.toContain('id="watch"');
+  });
+
+  it('lets the host give their own seat to a bot, and then says they will watch', () => {
+    const playing = lobbyMarkup(view());
+    expect(rows(playing)[0]).toContain('id="host-bot"');
+    expect(rows(playing)[0]).toContain('<option value="" selected>You play</option>');
+    const watching = lobbyMarkup(view({ hostBot: 'marshal' }));
+    expect(rows(watching)[0]).toContain('<option value="marshal" selected>Marshal</option>');
+    expect(rows(watching)[0]).toContain('Ada watches');
+    expect(watching).toContain('A bot plays your seat: you will watch.');
+    // A guest sees who is playing the host's seat, and cannot change it.
+    const guest = lobbyMarkup(
+      view({ hostBot: 'marshal', humanPlayer: 1, seats: [seat(0, 'Ada'), seat(1, 'Bo')] }),
+    );
+    expect(rows(guest)[0]).not.toContain('id="host-bot"');
+    expect(rows(guest)[0]).toContain('Marshal');
   });
 });

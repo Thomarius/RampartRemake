@@ -41,7 +41,13 @@ export const E = 2;
 export const S = 4;
 export const W = 8;
 
-function water(art: ArtConfig, rng: Rng, size: number, frame: number, frames: number): Pixels {
+export function water(
+  art: ArtConfig,
+  rng: Rng,
+  size: number,
+  frame: number,
+  frames: number,
+): Pixels {
   const p = new Pixels(size, size);
   const { waterDeep, waterMid, waterShallow, waterFoam } = art.palette;
   p.fill(waterMid);

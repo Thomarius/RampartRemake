@@ -35,6 +35,8 @@ import { LocalMatch } from './localMatch.js';
 import { announcementLines, isTeamMatch, teamLetter } from './scores.js';
 import { buildHints, type BuildHints } from './hints.js';
 import { timerSpot } from './timerSpot.js';
+import { installBackdrop, stoneTitle } from './decor.js';
+import { drawPreview, tablePreview } from './preview.js';
 import {
   floodFrom,
   floodOver,
@@ -71,6 +73,7 @@ if (problems.length > 0) {
 
 const app = document.querySelector<HTMLElement>('#app');
 if (!app) throw new Error('missing #app');
+installBackdrop(defaultConfigBundle.art);
 
 /** Surfaces failures on the page: a renderer that throws otherwise looks like a black screen. */
 function showError(source: string, detail: unknown): void {
@@ -145,6 +148,21 @@ function preferredStyles(): ArtStyles {
 }
 const timeScale = Math.max(1, Number(params.get('speed') ?? 1));
 
+/** A seed from the browser's own entropy, for a table nobody has asked a map of. */
+function randomSeed(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0] as number;
+}
+
+/**
+ * The map for a new table: `?seed=N` when testing wants a particular one, otherwise a
+ * fresh random one every time a lobby opens.
+ */
+function chosenSeed(): number {
+  const asked = params.get('seed');
+  const n = Number(asked);
+  return asked !== null && Number.isInteger(n) && n >= 0 ? n >>> 0 : randomSeed();
+}
+
 /** What the render loop needs, whichever way the match is being played. */
 interface Session {
   readonly state: MatchState;
@@ -194,7 +212,6 @@ const DEFAULT_PLAYERS = 3;
 /** What the menu gathers before a table is set: who you are and how it looks. */
 interface Common {
   name: string;
-  seed: number;
   styles: ArtStyles;
 }
 
@@ -228,7 +245,6 @@ function styleOptions(): string {
 
 function readCommon(): Common {
   return {
-    seed: Number(document.querySelector<HTMLInputElement>('#seed')?.value ?? 1),
     styles: readStyles(),
     name: document.querySelector<HTMLInputElement>('#name')?.value.trim() || 'Player',
   };
@@ -243,11 +259,10 @@ function showMenu(): void {
   audio.music('music_menu');
   app!.innerHTML = `
     <div class="menu">
-      <h1>Rampart</h1>
+      <h1 class="title"><img src="${stoneTitle('Rampart', defaultConfigBundle.art)}" alt="Rampart" /></h1>
       <p>Shoot down their walls. Rebuild yours before the next barrage.
          Fail to seal a castle and you lose a life.</p>
       <label>Name <input id="name" type="text" maxlength="16" value="Player" /></label>
-      <label>Seed <input id="seed" type="number" value="1" min="0" step="1" /></label>
       <label>Building look <select id="build-style">${styleOptions()}</select></label>
       <label>Combat look <select id="combat-style">${styleOptions()}</select></label>
       <button id="play">Play</button>
@@ -310,13 +325,22 @@ const SERVER_WAIT_MS = 2000;
 interface LobbyHandlers {
   table(change: { settings?: MatchSettings; playerCount?: number; teams?: number[] }): void;
   bot(seat: number, tier: Difficulty): void;
+  /** A new map: a seed typed in, or a fresh random one. */
+  seed(seed: number): void;
+  /** A bot to play the host's own seat while they watch, or null to play it. */
+  hostBot(tier: Difficulty | null): void;
   start(): void;
-  watch(): void;
 }
 
 /** Draws the lobby and wires its controls to whichever backend holds the table. */
 function drawLobby(view: LobbyView, on: LobbyHandlers): void {
-  app!.innerHTML = lobbyMarkup(view);
+  // The map, which island each seat is dealt and the colour it plays in: all known now,
+  // since the seed is fixed while the table is set. See `preview.ts`.
+  const { art, terrain } = defaultConfigBundle;
+  const preview = tablePreview(view.seed, view.playerCount, view.teams, art, terrain);
+  app!.innerHTML = lobbyMarkup({ ...view, seatColours: preview.colourOfSeat.map((c) => c.base) });
+  const canvas = document.querySelector<HTMLCanvasElement>('#map-preview');
+  if (canvas !== null) drawPreview(canvas, preview, view.humanPlayer, art, 320);
   const number = (id: string, apply: (n: number) => void): void => {
     const field = document.querySelector<HTMLSelectElement>(id);
     field?.addEventListener('change', () => {
@@ -333,6 +357,20 @@ function drawLobby(view: LobbyView, on: LobbyHandlers): void {
       on.bot(Number(field.dataset.seat), field.value as Difficulty);
     });
   }
+  const seedField = document.querySelector<HTMLInputElement>('#seed');
+  seedField?.addEventListener('change', () => {
+    const n = Number(seedField.value);
+    if (Number.isInteger(n) && n >= 0) on.seed(n >>> 0);
+  });
+  document.querySelector('#reroll')?.addEventListener('click', () => {
+    audio.play('select');
+    on.seed(randomSeed());
+  });
+  const hostBot = document.querySelector<HTMLSelectElement>('#host-bot');
+  hostBot?.addEventListener('change', () => {
+    audio.play('select');
+    on.hostBot(hostBot.value === '' ? null : (hostBot.value as Difficulty));
+  });
   for (const field of document.querySelectorAll<HTMLSelectElement>('.team-select')) {
     field.addEventListener('change', () => {
       audio.play('select');
@@ -365,14 +403,12 @@ function drawLobby(view: LobbyView, on: LobbyHandlers): void {
     audio.play('select');
     on.start();
   });
-  document.querySelector('#watch')?.addEventListener('click', () => {
-    audio.play('select');
-    on.watch();
-  });
 }
 
 /** The table as the local lobby holds it, and as a room reports it. */
 interface TableState extends Table {
+  seed: number;
+  hostBot: Difficulty | null;
   bots: Difficulty[];
 }
 
@@ -380,12 +416,15 @@ interface TableState extends Table {
  * Plays a table on this computer: the person in seat 0 unless watching, bots in the
  * rest, islands shuffled among the seats exactly as the server would.
  */
-function playLocally(common: Common, table: TableState, watching: boolean): void {
+function playLocally(common: Common, table: TableState): void {
   const setup: Setup = {
     ...common,
+    seed: table.seed,
+    // The host's seat is theirs unless they put a bot in it — then it is a match of bots
+    // alone, and the host watches.
     seats: table.bots
       .slice(0, table.playerCount)
-      .map((tier, seat) => (seat === 0 && !watching ? null : tier)),
+      .map((tier, seat) => (seat === 0 ? table.hostBot : tier)),
     settings: table.settings,
     teams: table.teams,
   };
@@ -408,6 +447,7 @@ async function openLobby(
   code: string | null,
   playerCount = DEFAULT_PLAYERS,
 ): Promise<void> {
+  const seed = chosenSeed();
   app!.innerHTML = `<div class="menu"><h1>Setting the table</h1><p class="note">Looking for a server…</p></div>`;
   const connection = new ServerConnection(ServerConnection.defaultUrl());
   const answered = new Promise<ServerMessage | null>((resolve) => {
@@ -426,6 +466,9 @@ async function openLobby(
 
   const first = await answered;
   if (first?.type === 'welcome') {
+    // A room draws its own random map; a seed asked for in the address is the host's
+    // to set, like any other choice of theirs.
+    if (code === null && params.get('seed') !== null) connection.send({ type: 'configure', seed });
     roomLobby(common, connection, code, first);
     return;
   }
@@ -438,11 +481,11 @@ async function openLobby(
     showError('Could not join', `no server answered at ${ServerConnection.defaultUrl()}`);
     return;
   }
-  localLobby(common, playerCount);
+  localLobby(common, playerCount, seed);
 }
 
 /** The lobby with no server: the table lives here, under the same rules as a room's. */
-function localLobby(common: Common, playerCount: number): void {
+function localLobby(common: Common, playerCount: number, seed: number): void {
   const limits = defaultConfigBundle.ruleset.players;
   const start = reshapeTable(
     { settings: DEFAULT_SETTINGS, playerCount: limits.min, teams: defaultTeams(limits.min, 1) },
@@ -450,7 +493,12 @@ function localLobby(common: Common, playerCount: number): void {
     limits,
     1,
   );
-  let table: TableState = { ...start, bots: Array.from({ length: limits.max }, () => DEFAULT_BOT) };
+  let table: TableState = {
+    ...start,
+    bots: Array.from({ length: limits.max }, () => DEFAULT_BOT),
+    seed,
+    hostBot: null,
+  };
 
   const redraw = (): void =>
     drawLobby(
@@ -465,6 +513,8 @@ function localLobby(common: Common, playerCount: number): void {
         settingBounds: SETTING_BOUNDS,
         teams: table.teams,
         playerLimits: limits,
+        seed: table.seed,
+        hostBot: table.hostBot,
       },
       {
         table: (change) => {
@@ -475,8 +525,15 @@ function localLobby(common: Common, playerCount: number): void {
           table.bots[seat] = tier;
           redraw();
         },
-        start: () => playLocally(common, table, false),
-        watch: () => playLocally(common, table, true),
+        seed: (seed) => {
+          table.seed = seed;
+          redraw();
+        },
+        hostBot: (tier) => {
+          table.hostBot = tier;
+          redraw();
+        },
+        start: () => playLocally(common, table),
       },
     );
   redraw();
@@ -505,7 +562,11 @@ function roomLobby(
     playerCount: v.playerCount,
     teams: [...v.teams],
     bots: [...v.bots],
+    seed: v.seed,
+    hostBot: v.hostBot,
   });
+  /** Seats already seen, so a newcomer can be marked as they arrive. */
+  let known: Set<number> | null = null;
 
   const render = (): void => {
     if (started || view === null) return;
@@ -517,6 +578,8 @@ function roomLobby(
         bots[seat] = tier;
         connection.send({ type: 'configure', bots });
       },
+      seed: (seed) => connection.send({ type: 'configure', seed }),
+      hostBot: (tier) => connection.send({ type: 'configure', hostBot: tier }),
       start: () => {
         if (current.seats.length > 1) {
           connection.send({ type: 'start' });
@@ -524,12 +587,7 @@ function roomLobby(
         }
         started = true;
         connection.close();
-        playLocally(common, tableOf(current), false);
-      },
-      watch: () => {
-        started = true;
-        connection.close();
-        playLocally(common, tableOf(current), true);
+        playLocally(common, tableOf(current));
       },
     });
     document.querySelector('#leave')?.addEventListener('click', () => {
@@ -548,8 +606,13 @@ function roomLobby(
         hostId = message.hostId;
         sessionStorage.setItem(TOKEN_KEY, `${message.code}:${message.token}`);
         break;
-      case 'room':
+      case 'room': {
         hostId = message.hostId;
+        // Somebody new at the table: marked as they arrive, and heard.
+        const ids = new Set(message.seats.map((seat) => seat.playerId));
+        const arrived = known === null ? [] : [...ids].filter((id) => !known?.has(id));
+        if (arrived.length > 0 && !message.started) audio.play('select');
+        known = ids;
         view = {
           code: roomCode,
           playerCount: message.playerCount,
@@ -561,14 +624,26 @@ function roomLobby(
           settingBounds: message.settingBounds,
           teams: [...message.teams],
           playerLimits: message.playerLimits,
+          seed: message.seed,
+          hostBot: message.hostBot,
+          arrived,
         };
         if (!message.started) render();
         break;
+      }
       case 'snapshot':
         if (!started) {
           started = true;
-          const setup: Setup = { ...common, seats: [], settings: DEFAULT_SETTINGS };
-          void runSession(networkSession(match, connection), setup).catch((e: unknown) =>
+          // A host who gave their seat to a bot watches it play, whoever else is here.
+          const watching =
+            view !== null && view.hostBot !== null && match.humanPlayer === view.hostId;
+          const setup: Setup = {
+            ...common,
+            seed: view?.seed ?? 0,
+            seats: [],
+            settings: DEFAULT_SETTINGS,
+          };
+          void runSession(networkSession(match, connection, watching), setup).catch((e: unknown) =>
             showError('Match failed', e),
           );
         }
@@ -590,14 +665,18 @@ function roomLobby(
   setInterval(() => connection.ping(), 2000);
 }
 
-function networkSession(match: NetworkMatch, connection: ServerConnection): Session {
+function networkSession(
+  match: NetworkMatch,
+  connection: ServerConnection,
+  watching = false,
+): Session {
   return {
     get state() {
       if (match.state === null) throw new Error('match has no state yet');
       return match.state;
     },
     get humanPlayer() {
-      return match.humanPlayer;
+      return watching ? -1 : match.humanPlayer;
     },
     get tickFraction() {
       return match.tickFraction;
@@ -1066,7 +1145,7 @@ if (params.get('autostart') === '1') {
     : DEFAULT_BOT;
   const setup: Setup = {
     seats: Array.from({ length: count }, (_, i) => (i === 0 && !watching ? null : difficulty)),
-    seed: Number(params.get('seed') ?? 1),
+    seed: chosenSeed(),
     styles: preferredStyles(),
     name: 'Player',
     settings: settingsFromParams(),
@@ -1094,7 +1173,6 @@ if (params.get('autostart') === '1') {
   // un-inspected at more than four seats for exactly that long.
   const joining = params.get('join');
   const common: Common = {
-    seed: Number(params.get('seed') ?? 1),
     styles: preferredStyles(),
     name: params.get('name') ?? 'Player',
   };

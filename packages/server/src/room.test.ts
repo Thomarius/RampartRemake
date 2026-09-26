@@ -516,3 +516,97 @@ describe('room manager', () => {
     expect(manager.size).toBe(0);
   });
 });
+
+describe('the map, chosen while the table is set', () => {
+  const lastRoom = (c: TestClient) => {
+    const m = c.received.filter((x) => x.type === 'room').at(-1);
+    if (m?.type !== 'room') throw new Error('no room message');
+    return m;
+  };
+  const snapshotOf = (c: TestClient) => {
+    const m = c.received.find((x) => x.type === 'snapshot');
+    if (m?.type !== 'snapshot') throw new Error('no snapshot');
+    return m.snapshot;
+  };
+
+  it('tells the table its seed before the start, and plays exactly that map', () => {
+    const r = room(3, 5);
+    const a = new TestClient('a');
+    r.join(a, 'Ada');
+    const seed = lastRoom(a).seed;
+    r.start();
+    expect(snapshotOf(a).seed).toBe(seed);
+  });
+
+  it('draws a different map for a different room', () => {
+    const seeds = [1, 2, 3].map((n) => {
+      const r = room(3, n);
+      const a = new TestClient('a');
+      r.join(a, 'Ada');
+      return lastRoom(a).seed;
+    });
+    expect(new Set(seeds).size).toBe(3);
+  });
+
+  it('lets the host set the seed, and nobody else', () => {
+    const r = room(3);
+    const a = new TestClient('a');
+    const b = new TestClient('b');
+    r.join(a, 'Ada');
+    r.join(b, 'Bo');
+    r.handle(b, { type: 'configure', seed: 777 });
+    expect(lastRoom(a).seed).not.toBe(777);
+    r.handle(a, { type: 'configure', seed: 777 });
+    expect(lastRoom(b).seed).toBe(777);
+    r.start();
+    expect(snapshotOf(b).seed).toBe(777);
+  });
+});
+
+describe('a host who watches', () => {
+  it('puts a bot in the host seat, which plays it while the host looks on', () => {
+    const r = room(3);
+    const a = new TestClient('a');
+    const b = new TestClient('b');
+    r.join(a, 'Ada');
+    r.join(b, 'Bo');
+    r.handle(a, { type: 'configure', hostBot: 'marshal' });
+    const roster = a.received.filter((m) => m.type === 'room').at(-1);
+    expect(roster?.type === 'room' && roster.hostBot).toBe('marshal');
+    r.start();
+
+    const snapshot = a.received.find((m) => m.type === 'snapshot');
+    if (snapshot?.type !== 'snapshot') throw new Error('no snapshot');
+    // The host's player is a bot now; Bo's is still a person.
+    expect(snapshot.snapshot.players[a.playerId]?.isBot).toBe(true);
+    expect(snapshot.snapshot.players[b.playerId]?.isBot).toBe(false);
+
+    // Whatever the host sends as their own seat is ignored: the bot has it.
+    run(r, 1);
+    r.handle(a, { type: 'action', action: { kind: 'select_castle', player: 0, castleId: 0 } });
+    run(r, 1);
+    expect(a.received.some((m) => m.type === 'rejected')).toBe(false);
+    // And the bot really plays it: the host's player chooses a castle on its own.
+    run(r, 400);
+    expect(a.state?.players[a.playerId]?.startingCastleId).not.toBeNull();
+    expect(a.desyncs).toEqual([]);
+  });
+
+  it('keeps a returning host watching rather than handing the seat back', () => {
+    const r = room(2);
+    const a = new TestClient('a');
+    r.join(a, 'Ada');
+    r.handle(a, { type: 'configure', hostBot: 'gunner' });
+    r.start();
+    const back = new TestClient('a2');
+    r.join(back, 'Ada', a.token);
+    const snapshot = back.received.find((m) => m.type === 'snapshot');
+    if (snapshot?.type !== 'snapshot') throw new Error('no snapshot');
+    // Still the bot's, as the table is told.
+    const roster = back.received.filter((m) => m.type === 'room').at(-1);
+    const seat =
+      roster?.type === 'room' ? roster.seats.find((s) => s.playerId === back.playerId) : undefined;
+    expect(seat?.isBot).toBe(true);
+    expect(seat?.connected).toBe(true);
+  });
+});
