@@ -140,7 +140,8 @@ lists it in priority order:
 **M9, the visual pass (§11.8), is in progress** and touches no game logic, so it can run
 while human testing does. V1 is done (ARCHIVE 10w): a build look and a combat look (flat
 and pixel by default), swapped by the banners either side of combat as they cross the
-board, with the "Place cannons" banner drawing the sweep away. V2–V6 are next.
+board, with the "Place cannons" banner drawing the sweep away. V2 is done (ARCHIVE 10x):
+the pixel style made the cinematic combat look. V3–V6 are next.
 
 **No audio files exist yet** beyond two test files; the user is producing them, and
 missing files are silent by design. `assets/audio/README.md` lists every cue.

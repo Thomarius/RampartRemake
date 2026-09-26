@@ -22,10 +22,14 @@ export const KEY = {
   rock: (variant: number) => `rock.${variant}`,
   shore: (mask: number) => `shore.${mask}`,
   wall: (mask: number, damage: number) => `wall.${mask}.${damage}`,
+  rubble: (variant: number) => `rubble.${variant}`,
+  court: (variant: number) => `court.${variant}`,
+  foam: (mask: number) => `foam.${mask}`,
   castle: 'castle',
   banner: (frame: number) => `banner.${frame}`,
   cannon: 'cannon',
   barrel: (step: number, recoil: number) => `barrel.${step}.${recoil}`,
+  droop: (step: number) => `droop.${step}`,
   shot: 'shot',
   crater: (variant: number) => `crater.${variant}`,
   blast: (frame: number) => `blast.${frame}`,
@@ -162,6 +166,25 @@ function wall(art: ArtConfig, rng: Rng, size: number, mask: number, damage: numb
   if ((mask & E) === 0) for (let y = 0; y < size; y++) p.set(size - 1, y, shadow, 0.8);
   if ((mask & N) === 0) for (let x = 0; x < size; x++) p.set(x, 1, rockLight, 0.45);
 
+  // A block with nothing to its south shows its front face, which is what gives the
+  // wall height: the light lip of its top, then darker dressed stone below it. Light
+  // falls from the north, as on the castle, and the drop shadow is drawn beside it.
+  if ((mask & S) === 0) {
+    const face = art.generators.wall.frontFacePx;
+    const top = size - face;
+    for (let x = 0; x < size; x++) p.set(x, top - 1, rockLight, 0.7);
+    p.rect(0, top, size, face, rockDark);
+    p.rect(0, top, size, face, shadow, 0.3);
+    for (let y = top; y < size; y++) {
+      const offset = y - top < face / 2 ? 0 : 3;
+      for (let x = offset; x < size; x += 6) p.set(x, y, shadow, 0.6);
+    }
+    for (let x = 0; x < size; x++) p.set(x, top + Math.floor(face / 2), shadow, 0.45);
+    for (let x = 0; x < size; x++) p.set(x, size - 1, shadow, 0.9);
+    if ((mask & W) === 0) for (let y = top; y < size; y++) p.set(0, y, shadow, 0.8);
+    if ((mask & E) === 0) for (let y = top; y < size; y++) p.set(size - 1, y, shadow, 0.8);
+  }
+
   // Damage chews the block from its edges inward.
   for (let level = 0; level < damage; level++) {
     for (let i = 0; i < size; i++) {
@@ -172,6 +195,74 @@ function wall(art: ArtConfig, rng: Rng, size: number, mask: number, damage: numb
       p.set(x, y, level === 0 ? craterDark : shadow, 0.85);
     }
   }
+  return p;
+}
+
+/**
+ * What is left of an eliminated player's wall: loose stones on open ground, with no
+ * courses and no face, so it reads as a ruin and not as a wall somebody still holds.
+ * Transparent between the stones, so the grass shows through.
+ */
+function rubble(art: ArtConfig, rng: Rng, size: number): Pixels {
+  const p = new Pixels(size, size);
+  const { rockDark, rockMid, rockLight, shadow } = art.palette;
+  const stones = 5 + rng.nextInt(3);
+  for (let i = 0; i < stones; i++) {
+    const x = 2 + rng.nextInt(size - 4);
+    const y = 2 + rng.nextInt(size - 4);
+    const r = 1 + rng.nextFloat() * 1.6;
+    p.disc(x + 0.6, y + 0.8, r, shadow);
+    p.disc(x, y, r, i % 2 === 0 ? rockMid : rockDark);
+    p.set(x - 1, y - 1, rockLight, 0.7);
+  }
+  return p;
+}
+
+/**
+ * Flagstones for sealed ground, in pale neutral stone to be tinted by the owner. A
+ * courtyard reads as held ground at a glance where a wash of colour did not, and it
+ * must not read as wall: no courses, no seams, flat and pale.
+ */
+function court(art: ArtConfig, rng: Rng, size: number): Pixels {
+  const p = new Pixels(size, size);
+  const { sand, rockLight, craterMid } = art.palette;
+  p.fill(rockLight);
+  p.speckle(rng, sand, 0.35);
+  // Irregular slabs: a grout line across at a varying height, and down at varying
+  // places above and below it.
+  const across = 6 + rng.nextInt(4);
+  for (let x = 0; x < size; x++) p.set(x, across, craterMid, 0.35);
+  for (let x = 0; x < size; x++) p.set(x, 0, craterMid, 0.35);
+  const upper = 3 + rng.nextInt(size - 6);
+  const lower = 3 + rng.nextInt(size - 6);
+  for (let y = 0; y < across; y++) p.set(upper, y, craterMid, 0.35);
+  for (let y = across; y < size; y++) p.set(lower, y, craterMid, 0.35);
+  p.set(0, 0, craterMid, 0.2);
+  return p;
+}
+
+/**
+ * Surf on a water tile, along the sides that meet land (`mask`, N E S W). Faded in and
+ * out per tile at draw time, so the coast seems to breathe.
+ */
+function foam(art: ArtConfig, rng: Rng, size: number, mask: number): Pixels {
+  const p = new Pixels(size, size);
+  const { waterFoam, uiInk } = art.palette;
+  const edge = (side: number, at: (i: number, depth: number) => [number, number]): void => {
+    if ((mask & side) === 0) return;
+    for (let i = 0; i < size; i++) {
+      for (let depth = 0; depth < 3; depth++) {
+        const chance = [0.8, 0.4, 0.12][depth] as number;
+        if (rng.nextFloat() >= chance) continue;
+        const [x, y] = at(i, depth);
+        p.set(x, y, depth === 0 && rng.nextFloat() < 0.4 ? uiInk : waterFoam, 0.9 - depth * 0.25);
+      }
+    }
+  };
+  edge(N, (i, d) => [i, d]);
+  edge(S, (i, d) => [i, size - 1 - d]);
+  edge(W, (i, d) => [d, i]);
+  edge(E, (i, d) => [size - 1 - d, i]);
   return p;
 }
 
@@ -200,6 +291,12 @@ function castle(art: ArtConfig, rng: Rng, size: number): Pixels {
     for (let y = 2; y < size - 1; y++) p.set(tx, y, rockLight, 0.35);
   }
 
+  // The front face, below the roofline, in shade: it is what stands the keep up off
+  // the ground rather than leaving it a plan drawn on it.
+  const face = art.generators.wall.frontFacePx + 2;
+  p.rect(1, size - face - 1, size - 2, face, rockDark, 0.55);
+  for (let x = 1; x < size - 1; x++) p.set(x, size - face - 2, rockLight, 0.6);
+
   // The gate. A sealed castle flies a banner in its owner's colour, drawn over this as
   // its own sprite so it can wave and come down when the wall is breached.
   const gate = Math.floor(size / 2);
@@ -225,10 +322,17 @@ function cannon(art: ArtConfig, size: number): Pixels {
  * `recoil` pixels. Rasterised at each angle rather than rotating one sprite, which at
  * this size smears the pixels into mush.
  */
-function barrel(art: ArtConfig, size: number, step: number, steps: number, recoil: number): Pixels {
+function barrel(
+  art: ArtConfig,
+  size: number,
+  step: number,
+  steps: number,
+  recoil: number,
+  length = art.generators.cannon.barrelLengthPx,
+  lit = true,
+): Pixels {
   const p = new Pixels(size, size);
   const { rockMid, rockLight, shadow, emberMid } = art.palette;
-  const length = art.generators.cannon.barrelLengthPx;
   const half = 2.5;
   const angle = (2 * Math.PI * step) / steps;
   const ux = Math.sin(angle);
@@ -248,7 +352,7 @@ function barrel(art: ArtConfig, size: number, step: number, steps: number, recoi
       else if (across > half - 1) colour = shadow;
       if (along > length - 2) colour = rockLight;
       p.set(x, y, colour);
-      if (along > length - 1 && Math.abs(across) < 1.2) p.set(x, y, emberMid, 0.6);
+      if (lit && along > length - 1 && Math.abs(across) < 1.2) p.set(x, y, emberMid, 0.6);
     }
   }
   p.disc(centre, centre, 2, rockLight);
@@ -334,6 +438,12 @@ export function buildAtlas(art: ArtConfig, seed: number): Map<string, Texture> {
     }
   }
 
+  for (let v = 0; v < gen.wall.rubbleVariants; v++)
+    atlas.add(KEY.rubble(v), rubble(art, rng, tile));
+  for (let v = 0; v < gen.terrain.courtyardVariants; v++)
+    atlas.add(KEY.court(v), court(art, rng, tile));
+  for (let mask = 1; mask < 16; mask++) atlas.add(KEY.foam(mask), foam(art, rng, tile, mask));
+
   atlas.add(KEY.castle, castle(art, rng, tile * 3));
   for (let f = 0; f < gen.castle.bannerWaveFrames; f++) {
     const width = gen.castle.bannerWidthPx;
@@ -347,6 +457,15 @@ export function buildAtlas(art: ArtConfig, seed: number): Map<string, Texture> {
     for (let r = 0; r < gen.cannon.recoilFrames; r++) {
       atlas.add(KEY.barrel(step, r), barrel(art, tile * 2, step, gen.cannon.rotationSteps, r));
     }
+  }
+  // An inert gun's barrel, slumped: short, as a barrel tipped toward the ground looks
+  // from above, and with no glow at the muzzle.
+  const slump = Math.round(gen.cannon.barrelLengthPx * 0.45);
+  for (let step = 0; step < gen.cannon.rotationSteps; step++) {
+    atlas.add(
+      KEY.droop(step),
+      barrel(art, tile * 2, step, gen.cannon.rotationSteps, 0, slump, false),
+    );
   }
   atlas.add(KEY.shot, shot(art, 8));
   for (let v = 0; v < gen.fx.craterDecalVariants; v++)

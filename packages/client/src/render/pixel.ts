@@ -36,6 +36,25 @@ interface Fragment {
   colour: number;
 }
 
+/** A scorch mark on open ground, fading over the rounds after the shot. */
+interface Crater {
+  index: number;
+  variant: number;
+  round: number;
+}
+
+/** Cracks in a standing wall block beside a breach, for the rest of the round. */
+interface Crack {
+  level: number;
+  round: number;
+}
+
+/** A surf sprite along the coast, and where it is in its breath. */
+interface Surf {
+  sprite: Sprite;
+  phase: number;
+}
+
 /** Where a cannon points, and how long ago it last fired. */
 interface Aim {
   angle: number;
@@ -86,7 +105,22 @@ export class PixelTheme implements Theme {
   /** By cannon id. A gun that has never fired faces the nearest enemy castle. */
   private aims = new Map<number, Aim>();
   private bannerElapsed = 0;
-  private craters: Container = new Container();
+  /** Milliseconds since the theme began drawing, for anything that loops. */
+  private clock = 0;
+
+  /** Flagstones on sealed ground, under the scorch marks and the greying of the out. */
+  private readonly courtLayer = new Container();
+  private readonly craterLayer = new Container();
+  private craters: Crater[] = [];
+  /** By tile index. */
+  private cracks = new Map<number, Crack>();
+  private surf: Surf[] = [];
+
+  /** Remembered from the last draw, since impacts arrive without the board. */
+  private terrain: Uint8Array | null = null;
+  private width = 0;
+  private view: ViewTransform = { tile: 16, originX: 0, originY: 0 };
+  private round = 0;
 
   constructor(seed = 1) {
     this.seed = seed;
@@ -100,8 +134,7 @@ export class PixelTheme implements Theme {
     this.structureLayer = layers.structures;
     this.effectLayer = layers.effects;
 
-    layers.territory.addChild(this.territoryGfx);
-    layers.effects.addChild(this.craters);
+    layers.territory.addChild(this.courtLayer, this.craterLayer, this.territoryGfx);
     layers.effects.addChild(this.effectGfx);
     layers.overlay.addChild(this.overlayGfx);
     return Promise.resolve();
@@ -114,10 +147,12 @@ export class PixelTheme implements Theme {
     this.territoryGfx.destroy();
     this.overlayGfx.destroy();
     this.effectGfx.destroy();
-    this.craters.destroy({ children: true });
+    this.courtLayer.destroy({ children: true });
+    this.craterLayer.destroy({ children: true });
     for (const texture of this.textures.values()) texture.destroy();
     this.textures.clear();
     this.waterSprites = [];
+    this.surf = [];
   }
 
   private texture(key: string): Texture {
@@ -147,7 +182,11 @@ export class PixelTheme implements Theme {
   drawTerrain(state: MatchState, view: ViewTransform): void {
     this.terrainLayer.removeChildren();
     this.waterSprites = [];
+    this.surf = [];
     this.waterFrame = -1;
+    this.terrain = state.terrain;
+    this.width = state.width;
+    this.view = view;
 
     const land = (x: number, y: number): boolean =>
       x >= 0 &&
@@ -162,12 +201,32 @@ export class PixelTheme implements Theme {
     // animated sea stopped in a hard rectangle with the page's flat blue beyond it.
     const marginX = Math.ceil(view.originX / view.tile) + 1;
     const marginY = Math.ceil(view.originY / view.tile) + 1;
+    const depth = seaDepth(state, marginX, marginY, this.art.generators.terrain.depthShadeTiles);
+    const spanX = state.width + marginX * 2;
+    const deepest = this.art.generators.terrain.depthShadeTiles;
+    const strength = this.art.generators.terrain.depthShadeStrength;
     for (let y = -marginY; y < state.height + marginY; y++) {
       for (let x = -marginX; x < state.width + marginX; x++) {
         const inside = x >= 0 && y >= 0 && x < state.width && y < state.height;
         const i = y * state.width + x;
         if (!inside || state.terrain[i] !== Terrain.Land) {
-          this.waterSprites.push(this.place(this.terrainLayer, KEY.water(0), view, x, y));
+          const sprite = this.place(this.terrainLayer, KEY.water(0), view, x, y);
+          this.waterSprites.push(sprite);
+          // Darker the further from land, so the islands stand in shallows and the
+          // channels between them read as open sea.
+          const d = depth[(y + marginY) * spanX + (x + marginX)] as number;
+          const shade = Math.round(255 * (1 - (strength * Math.max(0, d - 1)) / (deepest - 1)));
+          sprite.tint = (shade << 16) | (shade << 8) | Math.min(255, shade + 24);
+
+          let coast = 0;
+          if (land(x, y - 1)) coast |= N;
+          if (land(x + 1, y)) coast |= E;
+          if (land(x, y + 1)) coast |= S;
+          if (land(x - 1, y)) coast |= W;
+          if (coast !== 0) {
+            const surf = this.place(this.terrainLayer, KEY.foam(coast), view, x, y);
+            this.surf.push({ sprite: surf, phase: ((x * 7 + y * 11) % 13) / 13 });
+          }
           continue;
         }
 
@@ -192,36 +251,63 @@ export class PixelTheme implements Theme {
         // territory shading instead.
         const owner = (state.islandId[i] as number) - 1;
         if (owner >= 0) {
-          const strength = mask === 0 ? 0.78 : 0.45;
-          sprite.tint = washed(playerColour(this.art, owner, 'base'), strength);
+          const wash = mask === 0 ? 0.78 : 0.45;
+          sprite.tint = washed(playerColour(this.art, owner, 'base'), wash);
         }
       }
     }
+    this.layoutCraters();
   }
 
+  /** Places the scorch marks, whose sprites must follow the camera. */
+  private layoutCraters(): void {
+    this.craterLayer.removeChildren();
+    const rounds = this.art.generators.fx.craterRounds;
+    for (const crater of this.craters) {
+      const x = crater.index % this.width;
+      const y = (crater.index - x) / this.width;
+      const sprite = this.place(this.craterLayer, KEY.crater(crater.variant), this.view, x, y);
+      sprite.alpha = 0.9 * (1 - (this.round - crater.round) / rounds);
+    }
+  }
+
+  /**
+   * Sealed ground as a courtyard of flagstones in the owner's colour. A wash of colour
+   * was hard to read at a glance under textured grass; paving says "held" by itself.
+   */
   drawTerritory(state: MatchState, view: ViewTransform): void {
+    this.courtLayer.removeChildren();
+    const variants = this.art.generators.terrain.courtyardVariants;
+    for (let i = 0; i < state.territory.length; i++) {
+      const owner = (state.territory[i] as number) - 1;
+      if (owner < 0) continue;
+      const x = i % state.width;
+      const y = (i - x) / state.width;
+      const sprite = this.place(this.courtLayer, KEY.court((x * 5 + y * 3) % variants), view, x, y);
+      sprite.tint = washed(playerColour(this.art, owner, 'light'), 0.55);
+      sprite.alpha = 0.8;
+    }
     const g = this.territoryGfx;
     g.clear();
-    for (let player = 0; player < state.players.length; player++) {
-      let any = false;
-      for (let i = 0; i < state.territory.length; i++) {
-        if (state.territory[i] !== player + 1) continue;
-        const x = i % state.width;
-        g.rect(tileX(view, x), tileY(view, (i - x) / state.width), view.tile, view.tile);
-        any = true;
-      }
-      if (any) {
-        g.fill({
-          color: playerColour(this.art, player, 'light'),
-          alpha: this.art.flat.territoryAlpha * 0.7,
-        });
-      }
-    }
     dimEliminated(g, state, view);
   }
 
   drawStructures(state: MatchState, view: ViewTransform): void {
     this.structureLayer.removeChildren();
+    // Shadows first, under everything that casts them.
+    const shade = new Graphics();
+    this.structureLayer.addChild(shade);
+    this.dropShadows(shade, state, view);
+
+    // Cracks last only the round they were made in: the walls are dressed again by
+    // the time the next barrage comes.
+    for (const [index, crack] of this.cracks) {
+      if (crack.round !== state.round || state.structure[index] !== Structure.Wall) {
+        this.cracks.delete(index);
+      }
+    }
+    const worst = this.art.generators.wall.damageStates - 1;
+    const rubbleVariants = this.art.generators.wall.rubbleVariants;
 
     const isWall = (x: number, y: number): boolean =>
       x >= 0 &&
@@ -242,12 +328,15 @@ export class PixelTheme implements Theme {
         if (isWall(x, y + 1)) mask |= S;
         if (isWall(x - 1, y)) mask |= W;
 
-        const sprite = this.place(this.structureLayer, KEY.wall(mask, 0), view, x, y);
         const owner = (state.owner[i] as number) - 1;
-        sprite.tint =
-          owner >= 0
-            ? washed(playerColour(this.art, owner, 'light'), 0.15)
-            : hex(this.art.palette.rockMid);
+        if (owner < 0) {
+          // An eliminated player's wall: still in the way, but nobody's any more.
+          this.place(this.structureLayer, KEY.rubble((x * 3 + y * 7) % rubbleVariants), view, x, y);
+          continue;
+        }
+        const damage = Math.min(worst, this.cracks.get(i)?.level ?? 0);
+        const sprite = this.place(this.structureLayer, KEY.wall(mask, damage), view, x, y);
+        sprite.tint = washed(playerColour(this.art, owner, 'light'), 0.15);
       }
     }
 
@@ -279,8 +368,55 @@ export class PixelTheme implements Theme {
     }
   }
 
+  /**
+   * What stands up casts a shadow onto the ground to its south, as the light falls on
+   * the generated sprites from the north. With the front faces, it is what lifts the
+   * walls off the map. Rubble casts none; it is lying down.
+   */
+  private dropShadows(g: Graphics, state: MatchState, view: ViewTransform): void {
+    const depth = view.tile * 0.35;
+    for (let i = 0; i < state.structure.length; i++) {
+      if (state.structure[i] !== Structure.Wall || state.owner[i] === 0) continue;
+      const x = i % state.width;
+      const y = (i - x) / state.width;
+      if (y + 1 < state.height && state.structure[i + state.width] === Structure.Wall) continue;
+      g.rect(tileX(view, x), tileY(view, y + 1), view.tile, depth);
+    }
+    for (const castle of state.castles) {
+      g.rect(tileX(view, castle.x), tileY(view, castle.y + castle.h), castle.w * view.tile, depth);
+    }
+    g.fill({ color: hex(this.art.palette.shadow), alpha: this.art.generators.wall.shadowAlpha });
+    for (const cannon of state.cannons) {
+      g.ellipse(
+        tileX(view, cannon.x + cannon.w / 2 + 0.12),
+        tileY(view, cannon.y + cannon.h / 2 + 0.2),
+        (cannon.w * view.tile) / 2 - 1,
+        (cannon.h * view.tile) / 2 - 2,
+      );
+    }
+    g.fill({ color: hex(this.art.palette.shadow), alpha: this.art.generators.wall.shadowAlpha });
+  }
+
   noteImpact(x: number, y: number, debris: readonly Debris[]): void {
     this.blasts.push({ x, y, age: 0 });
+    this.scorch(x, y);
+    // The blocks either side of a breach are shaken too.
+    const worst = this.art.generators.wall.damageStates - 1;
+    for (const block of debris) {
+      for (const [dx, dy] of [
+        [0, -1],
+        [1, 0],
+        [0, 1],
+        [-1, 0],
+      ] as const) {
+        const nx = block.x + dx;
+        const ny = block.y + dy;
+        if (nx < 0 || ny < 0 || nx >= this.width) continue;
+        const index = ny * this.width + nx;
+        const level = Math.min(worst, (this.cracks.get(index)?.level ?? 0) + 1);
+        this.cracks.set(index, { level, round: this.round });
+      }
+    }
     const count = this.art.generators.fx.debrisPerTile;
     for (const block of debris) {
       const colour = playerColour(this.art, block.owner, 'base');
@@ -297,6 +433,17 @@ export class PixelTheme implements Theme {
         });
       }
     }
+  }
+
+  /** Leaves a scorch mark where a shot came down on land, replacing any older one. */
+  private scorch(x: number, y: number): void {
+    if (this.terrain === null || x < 0 || y < 0 || x >= this.width) return;
+    const index = y * this.width + x;
+    if (this.terrain[index] !== Terrain.Land) return;
+    this.craters = this.craters.filter((c) => c.index !== index);
+    const variant = Math.floor(Math.random() * this.art.generators.fx.craterDecalVariants);
+    this.craters.push({ index, variant, round: this.round });
+    this.layoutCraters();
   }
 
   /** The banner takes a swept block: a puff of its stone, lighter than a hit's. */
@@ -352,28 +499,14 @@ export class PixelTheme implements Theme {
     const g = this.effectGfx;
     g.clear();
 
+    this.clock += frame.deltaMs;
     this.animateWater(frame.deltaMs);
     this.effectLayer.removeChildren();
-    this.effectLayer.addChild(this.craters, g);
-
-    // An inert cannon reads as struck through, as in the flat style: it survives but
-    // cannot fire. A darker tint alone was too faint to tell at a glance.
-    for (const cannon of state.cannons) {
-      if (cannon.active) continue;
-      const x = tileX(view, cannon.x);
-      const y = tileY(view, cannon.y);
-      const w = view.tile * cannon.w;
-      const h = view.tile * cannon.h;
-      const inset = Math.max(1, Math.floor(view.tile / 6));
-      g.moveTo(x + inset, y + inset);
-      g.lineTo(x + w - inset, y + h - inset);
-      g.stroke({
-        width: Math.max(2, Math.floor(view.tile / 6)),
-        color: hex(this.art.palette.uiInvalid),
-      });
-    }
+    this.effectLayer.addChild(g);
+    this.age(state);
 
     this.drawBarrels(state, view, frame.deltaMs);
+    this.drawInertSmoke(state, view);
     this.drawBanners(state, view, frame);
 
     const now = state.tick + frame.tickFraction;
@@ -435,6 +568,38 @@ export class PixelTheme implements Theme {
     this.fragments = this.fragments.filter((f) => f.age < life);
   }
 
+  /** Fades the scorch marks as rounds pass, and forgets the ones that have gone. */
+  private age(state: MatchState): void {
+    if (state.round === this.round) return;
+    this.round = state.round;
+    const rounds = this.art.generators.fx.craterRounds;
+    this.craters = this.craters.filter((c) => this.round - c.round < rounds);
+    this.layoutCraters();
+  }
+
+  /**
+   * An inert gun smoulders: grey puffs rise from it and fade. With its slumped barrel
+   * that says "silenced" without the struck-through mark the flat style uses, which
+   * reads as information rather than as part of a battlefield.
+   */
+  private drawInertSmoke(state: MatchState, view: ViewTransform): void {
+    const g = this.effectGfx;
+    const period = this.art.generators.cannon.inertSmokeMs;
+    const colour = hex(this.art.palette.rockDark);
+    for (const cannon of state.cannons) {
+      if (cannon.active) continue;
+      const cx = cannon.x + cannon.w / 2;
+      const cy = cannon.y + cannon.h / 2;
+      for (let k = 0; k < 3; k++) {
+        const t = (this.clock / period + k / 3 + cannon.id * 0.37) % 1;
+        const x = cx + Math.sin(t * 5 + cannon.id) * 0.18;
+        const y = cy - 0.2 - t * 1.3;
+        g.circle(tileX(view, x), tileY(view, y), view.tile * (0.12 + t * 0.22));
+        g.fill({ color: colour, alpha: 0.45 * (1 - t) });
+      }
+    }
+  }
+
   /** Barrels turn to their last target and kick back when they fire. */
   private drawBarrels(state: MatchState, view: ViewTransform, deltaMs: number): void {
     const steps = this.art.generators.cannon.rotationSteps;
@@ -452,7 +617,7 @@ export class PixelTheme implements Theme {
       const recoil = kick < recoilFrames ? recoilFrames - 1 - kick : 0;
       const sprite = this.place(
         this.effectLayer,
-        KEY.barrel(step, recoil),
+        cannon.active ? KEY.barrel(step, recoil) : KEY.droop(step),
         view,
         cannon.x,
         cannon.y,
@@ -463,7 +628,7 @@ export class PixelTheme implements Theme {
         ? washed(playerColour(this.art, cannon.owner, 'light'), 0.45)
         : hex(this.art.palette.rockMid);
 
-      if (kick < flashFrames) {
+      if (cannon.active && kick < flashFrames) {
         const cx = cannon.x + cannon.w / 2 + Math.sin(aim.angle) * (length + 0.15);
         const cy = cannon.y + cannon.h / 2 - Math.cos(aim.angle) * (length + 0.15);
         const r = view.tile * (0.35 - kick * 0.09);
@@ -508,6 +673,12 @@ export class PixelTheme implements Theme {
 
   /** Cycles the sea through its generated frames. */
   private animateWater(deltaMs: number): void {
+    // The surf breathes along the coast, each tile a little out of step with the next.
+    const cycle = this.art.generators.terrain.foamCycleMs;
+    for (const surf of this.surf) {
+      const t = (this.clock / cycle + surf.phase) * Math.PI * 2;
+      surf.sprite.alpha = 0.45 + 0.4 * Math.sin(t);
+    }
     const frames = this.art.generators.terrain.waterAnimFrames;
     this.waterElapsed += deltaMs;
     const next =
@@ -564,4 +735,42 @@ export class PixelTheme implements Theme {
 
     if (ghost.aiming) drawFireReticle(g, view, ghost, this.art, humanPlayer);
   }
+}
+
+/**
+ * Distance from each tile of the drawn area to the nearest land, in tiles, capped at
+ * `limit`. Euclidean, measured outright within the limit: a breadth-first flood gave
+ * Manhattan distance, and the sea stepped in diamonds. Run only when the terrain is
+ * drawn, so a few million comparisons at eight players cost nothing that matters. The
+ * drawn area runs past the board by the given margins, which are open sea.
+ */
+export function seaDepth(
+  state: MatchState,
+  marginX: number,
+  marginY: number,
+  limit: number,
+): Float32Array {
+  const w = state.width + marginX * 2;
+  const h = state.height + marginY * 2;
+  const depth = new Float32Array(w * h).fill(limit);
+  const reach = Math.ceil(limit);
+  for (let y = 0; y < state.height; y++) {
+    for (let x = 0; x < state.width; x++) {
+      if (state.terrain[y * state.width + x] !== Terrain.Land) continue;
+      const cx = x + marginX;
+      const cy = y + marginY;
+      for (let dy = -reach; dy <= reach; dy++) {
+        const ny = cy + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -reach; dx <= reach; dx++) {
+          const nx = cx + dx;
+          if (nx < 0 || nx >= w) continue;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          const j = ny * w + nx;
+          if (d < (depth[j] as number)) depth[j] = d;
+        }
+      }
+    }
+  }
+  return depth;
 }

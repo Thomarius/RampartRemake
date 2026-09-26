@@ -1,6 +1,9 @@
 import { ArtStyleSchema, defaultArtConfig } from '@rampart/config';
 import { describe, expect, it } from 'vitest';
 
+import { stateFromAscii } from '@rampart/sim';
+
+import { seaDepth } from './pixel.js';
 import { createTheme } from './scene.js';
 import { hex, playerColour, tileX, tileY, type ViewTransform } from './theme.js';
 
@@ -49,5 +52,33 @@ describe('theme selection', () => {
     for (const style of ArtStyleSchema.options) {
       expect(createTheme(style).id).toBe(style);
     }
+  });
+});
+
+describe('sea depth, for shading the pixel style', () => {
+  it('measures straight-line distance to the nearest land, capped', () => {
+    const state = stateFromAscii(`
+      .....
+      .....
+      ..,..
+      .....
+      .....
+    `);
+    const depth = seaDepth(state, 0, 0, 2);
+    const at = (x: number, y: number): number => depth[y * 5 + x] as number;
+    expect(at(2, 2)).toBe(0);
+    expect(at(3, 2)).toBe(1);
+    // Diagonal is not two steps, which is what made the sea step in diamonds.
+    expect(at(3, 3)).toBeCloseTo(Math.SQRT2);
+    expect(at(0, 0)).toBe(2);
+  });
+
+  it('counts the margin beyond the board as open sea', () => {
+    const state = stateFromAscii(`
+      ,
+    `);
+    const depth = seaDepth(state, 1, 1, 3);
+    // A 3x3 drawn area with the one land tile in the middle.
+    expect(Array.from(depth.slice(3, 6))).toEqual([1, 0, 1]);
   });
 });

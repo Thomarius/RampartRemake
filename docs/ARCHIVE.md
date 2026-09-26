@@ -1443,3 +1443,28 @@ banner showed.
 - Seen in real-time screenshots, frames diffed before and after the banner: blocks above
   the line gone mid-crossing, those below still standing, and the pixel look coming into
   view with the cannons placed while it was hidden.
+
+## 10x. The pixel style as the combat look (V2)
+
+With V1 the pixel style became specifically the combat look, the cinematic half of a pair,
+so it was pushed further from the flat one. All client-side; the tunables are new fields
+under `art.generators`.
+
+- **Height, from light falling from the north**: a wall block with nothing to its south
+  shows a front face — a light lip, then dark dressed stone — and walls, castles and guns
+  cast a shadow onto the ground south of them. The castle gained a shaded front below its
+  roofline. At first the face was too subtle under the owner's tint and was darkened a step.
+- **Sealed ground paved**, flagstones tinted with the owner's colour, instead of an alpha
+  wash that was hard to read under textured grass.
+- **Water**: darker with distance from land, and surf along the coast whose opacity breathes
+  a little out of step tile to tile. The first depth measure was a breadth-first flood,
+  i.e. Manhattan distance, and the sea stepped in visible diamonds; it is Euclidean now,
+  measured outright within the shading range, and only when terrain is drawn.
+- **What was generated but never drawn is used**: the crater decals mark shots on land,
+  fading over `fx.craterRounds`, and the damaged-wall variants crack the blocks either side
+  of a breach for the rest of the round. Both sit below the walls, so rebuilding covers them.
+- **Rubble** for an eliminated player's wall: loose stones with the grass showing through,
+  no face, no shadow — in the way, but plainly nobody's.
+- **Inert guns** slump (a short, unlit barrel) and smoulder instead of the red strike the
+  flat style keeps. No reachable snapshot has an inert gun — that needs a gun left
+  outside sealed ground at a resolution — so it was first seen by the user in play.

@@ -375,6 +375,15 @@ on the last; a knockout stamps the island and greys it for the rest of the match
 wall throws debris in its owner's colour; shots trail; the board shakes, but only when a
 shot breaks your own wall. The flat style stays plain, as the one to debug against.
 
+**The pixel style is the cinematic one**, since it is the default combat look. Light falls
+from the north: a wall block with nothing to its south shows a dark front face under a
+light lip, and walls, castles and guns cast a shadow onto the ground south of them. Sealed
+ground is paved in the owner's colour rather than tinted. The sea darkens with distance
+from land and surf breathes along the coasts. A shot on land leaves a scorch mark that
+fades over `fx.craterRounds`; the blocks either side of a breach crack for the rest of the
+round. An eliminated player's wall is rubble, and an inert gun slumps its barrel and
+smoulders instead of being struck through.
+
 **Looking at it.** `tools/screenshots.sh` captures fixed states against the dev server —
 in real time through Playwright, which renders fine where virtual time does not — using
 `&snapshot`, `&round`, `&idle` and a wait. Anything lasting under a second (debris, the
@@ -475,8 +484,8 @@ playing test matches. The next milestone is **11.2, elimination tuning**, as soo
 play has given a feel for it — its plan is ready and starts with a baseline measurement.
 Beside it, independent of balance: **11.6**, bots as personality × skill, and **11.8**,
 the visual pass, which changes no game logic and so can run while the human testing
-does — V1, the original's theme-switching banner, is done; V2–V6 are next. Smaller items are in
-11.5.
+does — V1, the original's theme-switching banner, and V2, the pixel style as the combat
+look, are done; V3–V6 are next. Smaller items are in 11.5.
 
 ### 11.1 Round cap and points scoring — done
 
@@ -604,8 +613,8 @@ teaching one to help without wrecking a person's plan is its own question.
 
 ### 11.8 Visual pass — in progress
 
-**Agreed 2026-09-26. V1 done** (ARCHIVE 10w); V2–V6 open. Everything here is client-side and cosmetic: no sim,
-protocol or ruleset change, so it cannot desync a match or move a balance measurement,
+**Agreed 2026-09-26. V1 and V2 done** (ARCHIVE 10w, 10x); V3–V6 open. Everything here
+is client-side and cosmetic: no sim, protocol or ruleset change, so it cannot desync a match or move a balance measurement,
 and it can proceed while 11.2 waits on human play. Cosmetic randomness may use
 `Math.random` (the client is outside the lint rule), but durations, sizes and counts
 belong in `art.default.json` like every other visual tunable, not in code.
@@ -706,7 +715,9 @@ already reports exactly which tiles went (`walls_swept`, ignored by the client).
 9. **Docs.** §7 describes the two looks and the wipe; the style parameters in CLAUDE.md
    change.
 
-#### V2 — The pixel style as the combat look
+#### V2 — The pixel style as the combat look — done
+
+Kept as planned, for the record; how it turned out is §7 and ARCHIVE 10x.
 
 Now that it is the cinematic half of a pair, push it further from the flat style.
 

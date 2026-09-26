@@ -115,12 +115,25 @@ export const ArtConfigSchema = z
         waterAnimFrames: z.number().int().positive(),
         waterAnimMsPerFrame: z.number().int().positive(),
         noiseDetailFrequency: z.number().positive(),
+        /** Flagstone tiles for sealed ground, in the pixel style. */
+        courtyardVariants: z.number().int().positive(),
+        /** How far from land, in tiles, the sea goes on darkening. */
+        depthShadeTiles: z.number().int().positive(),
+        /** How much darker the open sea is than the water by the shore, 0 to 1. */
+        depthShadeStrength: z.number().min(0).max(1),
+        /** One breath of the surf along the coast. */
+        foamCycleMs: z.number().int().positive(),
       }),
       wall: z.strictObject({
         neighbourVariants: z.literal(16),
         damageStates: z.number().int().positive(),
         blockRows: z.number().int().positive(),
         mortarJitter: z.number().min(0).max(1),
+        /** Height of the front face on a block with nothing to its south. */
+        frontFacePx: z.number().int().positive(),
+        rubbleVariants: z.number().int().positive(),
+        /** Opacity of the shadow a wall, castle or gun casts on the ground. */
+        shadowAlpha: z.number().min(0).max(1),
       }),
       castle: z.strictObject({
         towerCountRange: z.tuple([z.number().int().positive(), z.number().int().positive()]),
@@ -132,12 +145,16 @@ export const ArtConfigSchema = z
         rotationSteps: z.number().int().positive(),
         barrelLengthPx: z.number().int().positive(),
         recoilFrames: z.number().int().positive(),
+        /** One puff of the smoke an inert gun gives off, from rising to gone. */
+        inertSmokeMs: z.number().int().positive(),
       }),
       fx: z.strictObject({
         explosionFrames: z.number().int().positive(),
         explosionMsPerFrame: z.number().int().positive(),
         muzzleFlashFrames: z.number().int().positive(),
         craterDecalVariants: z.number().int().positive(),
+        /** Rounds a scorch mark takes to fade from open ground. */
+        craterRounds: z.number().int().positive(),
         shotTrailLengthPx: z.number().int().nonnegative(),
         /** Fragments thrown up by each wall block a shot destroys. */
         debrisPerTile: z.number().int().nonnegative(),

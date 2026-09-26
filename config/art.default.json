@@ -220,13 +220,20 @@
       "shorelineTileset": "blob47",
       "waterAnimFrames": 8,
       "waterAnimMsPerFrame": 140,
-      "noiseDetailFrequency": 0.6
+      "noiseDetailFrequency": 0.6,
+      "courtyardVariants": 4,
+      "depthShadeTiles": 9,
+      "depthShadeStrength": 0.3,
+      "foamCycleMs": 2600
     },
     "wall": {
       "neighbourVariants": 16,
       "damageStates": 3,
       "blockRows": 3,
-      "mortarJitter": 0.25
+      "mortarJitter": 0.25,
+      "frontFacePx": 5,
+      "rubbleVariants": 4,
+      "shadowAlpha": 0.32
     },
     "castle": {
       "towerCountRange": [3, 5],
@@ -237,13 +244,15 @@
     "cannon": {
       "rotationSteps": 16,
       "barrelLengthPx": 14,
-      "recoilFrames": 3
+      "recoilFrames": 3,
+      "inertSmokeMs": 1800
     },
     "fx": {
       "explosionFrames": 8,
       "explosionMsPerFrame": 45,
       "muzzleFlashFrames": 3,
       "craterDecalVariants": 4,
+      "craterRounds": 3,
       "shotTrailLengthPx": 6,
       "debrisPerTile": 6,
       "debrisMs": 650,
