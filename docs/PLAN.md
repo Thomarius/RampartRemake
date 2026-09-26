@@ -582,29 +582,40 @@ second copy of every rule beside the first.
 - The roster grouped by team, one score and one lives display per team; "Team A knocked
   out"; the end screen names the winning team.
 
-#### Open, to settle before T4
+#### Seating and the lobby — decided 2026-09-26
 
-- **Randomised seating** — the user's preference. Read as: teams are chosen, and which
-  island each player gets is random, from `streamFor(seed, ...)` so every client agrees.
-  To confirm against the other reading, random teams. Either way a random layout can seat
-  teammates side by side in one match and diagonally in the next: symmetric at 2v2 on the
-  2x2 grid, not on the 3x2 grid at 2v2v2 — to be measured (T6).
-- **One lobby for online and offline.** Proposed: one lobby screen and one set of
-  controls; if a server is reachable it also opens a room and shows the code; at start,
-  if no other person has joined, the match runs locally in the browser as today,
-  otherwise on the server; with no server the code is simply not shown. Solo play must
-  never need a network — that would break the dev offline mode and static hosting.
+- **The host chooses the teams; which island each player gets is random.** The sim keeps
+  its invariant that player `p` owns island `p + 1` — territory, cannons, bots and the
+  client all lean on it — so islands are not shuffled inside the sim. Instead the room
+  shuffles **which seat becomes which player** at the start, seeded from the match seed
+  so a match is reproducible. The server still owns identity: it tells each connection
+  its player id once the match starts, as it does now at join. Offline, the local lobby
+  does the same shuffle. A random layout can seat teammates side by side one match and
+  diagonally the next — symmetric at 2v2 on the 2x2 grid, not at 2v2v2 on 3x2; T6
+  measures it.
+- **One lobby for online and offline.** One lobby screen, one set of controls — seats and
+  who holds them, bot skills, team size and each seat's team, rounds. If a server is
+  reachable the lobby also opens a room and shows its code; if not, the code is simply
+  not shown. At start, **if no other person has joined, the match runs locally** in the
+  browser exactly as offline play does now; otherwise on the server. Solo play never
+  needs a network, which keeps the dev offline mode and static hosting working. The
+  lobby is a pure view of a lobby model, tested like `lobbyMarkup`, with two backends:
+  local, and the room.
+- **Team assignment in the lobby.** The host picks a team size; only player counts that
+  make at least two equal teams remain (size 2: 4, 6 or 8; size 3: 6; size 4: 8). Seats
+  start in teams in order and the host can move any seat to another team, as long as the
+  teams stay equal; Start is refused otherwise. Guests see the teams, cannot change them.
 
 #### Steps, each shippable, FFA the default throughout
 
-| Step                      | Content                                                                                                                                                                                                                                        |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **T1 Sim core**           | Teams in the state, FFA as teams of one: team score, pooled lives, team elimination, team winners, no friendly fire, capped continue bonus. Tests, including that FFA outcomes are unchanged — identical hashes where the rules do not differ. |
-| **T2 Helping build**      | `crossIslandBuild`, walls owned by the island's owner, the piece ghost on a teammate's island.                                                                                                                                                 |
-| **T3 Bots**               | Never target a teammate; never build across islands unless the rule allows.                                                                                                                                                                    |
-| **T4 Lobby and protocol** | Team size as a lobby setting with its valid player counts, seat-to-team assignment and randomised islands, the snapshot, `PROTOCOL_VERSION`, and the lobby merge if agreed.                                                                    |
-| **T5 Client**             | Colour families and team letters, the roster by team, team score and lives, team banners and end screen.                                                                                                                                       |
-| **T6 Measure**            | Headless `--teams`; 2v2 fairness and the layout bias of random seating.                                                                                                                                                                        |
+| Step                      | Content                                                                                                                                                                                                                                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **T1 Sim core**           | Teams in the state, FFA as teams of one: team score, pooled lives, team elimination, team winners, no friendly fire, capped continue bonus. Tests, including that FFA outcomes are unchanged — identical hashes where the rules do not differ.                                            |
+| **T2 Helping build**      | `crossIslandBuild`, walls owned by the island's owner, the piece ghost on a teammate's island.                                                                                                                                                                                            |
+| **T3 Bots**               | Never target a teammate; never build across islands unless the rule allows.                                                                                                                                                                                                               |
+| **T4 Lobby and protocol** | The single lobby with its local and room backends; team size as a lobby setting with its valid player counts; seat-to-team assignment by the host; the seeded seat-to-player shuffle at start and the message that tells each connection its player id; the snapshot; `PROTOCOL_VERSION`. |
+| **T5 Client**             | Colour families and team letters, the roster by team, team score and lives, team banners and end screen.                                                                                                                                                                                  |
+| **T6 Measure**            | Headless `--teams`; 2v2 fairness and the layout bias of random seating.                                                                                                                                                                                                                   |
 
 ---
 
