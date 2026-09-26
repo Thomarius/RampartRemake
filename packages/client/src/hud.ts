@@ -91,6 +91,9 @@ export class Hud {
   private phaseKey = '';
   private phaseStartTick = 0;
 
+  /** The announcement crossing the screen, if one is. */
+  private phaseCall: HTMLElement | null = null;
+
   /** A team's letter over each of its islands, for the whole of a team match. */
   private teamTags = new Map<number, HTMLElement>();
 
@@ -185,7 +188,13 @@ export class Hud {
     // travel time comes from the ruleset rather than the stylesheet.
     banner.style.animationDuration = `${durationMs}ms`;
     banner.addEventListener('animationend', () => banner.remove());
-    this.bannerRoot.replaceChildren(banner);
+    // Replace only the last announcement. This layer also holds everything else drawn
+    // over the board — the island banners, the team tags, the big timer, the cannon
+    // count at the cursor — and clearing it all left those updating nodes no longer on
+    // the page, so the count vanished for good at the first announcement.
+    this.phaseCall?.remove();
+    this.phaseCall = banner;
+    this.bannerRoot.append(banner);
   }
 
   /**

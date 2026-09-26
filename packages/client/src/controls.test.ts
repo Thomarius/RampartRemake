@@ -13,7 +13,7 @@ import {
 } from '@rampart/sim';
 import { describe, expect, it } from 'vitest';
 
-import { inputMode, readyCannons } from './controls.js';
+import { inputMode, mayTarget, readyCannons } from './controls.js';
 
 /** Plays until somebody spends a life, then on to the cannon phase that follows. */
 function afterContinue(seed: number): { state: MatchState; player: number } {
@@ -107,5 +107,21 @@ describe('what a click means', () => {
       loaded.shotId = 999;
       expect(readyCannons(state, other)).toBe(expected - 1);
     }
+  });
+
+  it('never lets the cursor aim at a teammate’s island, or your own', () => {
+    const { state } = afterContinue(3);
+    state.players[1]!.team = state.players[0]!.team;
+    const tileOf = (island: number) => {
+      const i = state.islandId.findIndex((v) => v === island);
+      return { x: i % state.width, y: Math.floor(i / state.width) };
+    };
+    const mate = tileOf(2);
+    const own = tileOf(1);
+    expect(mayTarget(state, 0, mate.x, mate.y)).toBe(false);
+    expect(mayTarget(state, 0, own.x, own.y)).toBe(false);
+    // Open water is anybody's to aim at.
+    const water = state.islandId.findIndex((v) => v === 0);
+    expect(mayTarget(state, 0, water % state.width, Math.floor(water / state.width))).toBe(true);
   });
 });

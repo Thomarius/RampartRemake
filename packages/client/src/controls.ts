@@ -5,6 +5,7 @@ import {
   findReadyCannon,
   owesCastleChoice,
   pieceCells,
+  sameTeam,
   type Action,
   type MatchState,
 } from '@rampart/sim';
@@ -42,6 +43,19 @@ export function inputMode(state: MatchState, playerId: number): InputMode {
     default:
       return 'none';
   }
+}
+
+/**
+ * Whether the rules let this player aim at a tile at all: never at a teammate's island,
+ * nor at your own unless the rules allow it. The cursor and the click both ask, so the
+ * cursor never looks ready over ground the shot would be refused on.
+ */
+export function mayTarget(state: MatchState, playerId: number, x: number, y: number): boolean {
+  const island = state.islandId[y * state.width + x] as number;
+  if (island === 0) return true;
+  const own = island === state.players[playerId]?.islandId;
+  if (own) return state.ruleset.shots.damagesOwnWalls;
+  return !sameTeam(state, playerId, island - 1);
 }
 
 /** Cannons this player could fire right now: active, and with nothing in the air. */
@@ -156,10 +170,9 @@ export class Controls {
         return;
       }
       case 'fire': {
-        // Your own island is refused by the sim, so say so here rather than send it.
-        const own = this.state.islandId[tile.y * this.state.width + tile.x];
-        const mine = own === this.state.players[player]?.islandId;
-        if (mine && !this.state.ruleset.shots.damagesOwnWalls) this.cue('piece_invalid');
+        // Your own island and a teammate's are refused by the sim, so say so here rather
+        // than send it.
+        if (!mayTarget(this.state, player, tile.x, tile.y)) this.cue('piece_invalid');
         else this.submit({ kind: 'fire', player, x: tile.x, y: tile.y });
         return;
       }
@@ -231,14 +244,16 @@ export class Controls {
         return {
           tile,
           cells: [],
-          valid: readyCannons(state, player) > 0,
+          valid: readyCannons(state, player) > 0 && mayTarget(state, player, tile.x, tile.y),
           footprint: null,
           selectable,
           unsealed: [],
           aiming: true,
         };
       case 'fire': {
-        const valid = findReadyCannon(state, player, tile.x, tile.y) !== null;
+        const valid =
+          findReadyCannon(state, player, tile.x, tile.y) !== null &&
+          mayTarget(state, player, tile.x, tile.y);
         return { tile, cells: [], valid, footprint: null, selectable, unsealed: [], aiming: true };
       }
       case 'castle': {

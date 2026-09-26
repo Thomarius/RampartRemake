@@ -202,6 +202,10 @@ the hypothesis.
   `node_modules` resolves `@rampart/*` back into the working tree and measures the new
   code twice; a server left running on 8080 answers instead of the one you just built.
   Identical state hashes either side of a change mean the code did not load.
+- **The HUD's banner layer holds more than the announcement**: island banners, team tags,
+  the big timer, the cursor count. Replacing its children for each announcement detached
+  the rest, which went on updating nodes no longer on the page. Screenshots taken with
+  `&snapshot=` skip the announcements and could not catch it; watch a phase change.
 - Removing a rectangle's **corner** does not breach it under 4-connectivity; use a
   mid-edge tile in tests.
 
