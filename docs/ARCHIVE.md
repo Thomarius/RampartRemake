@@ -1495,3 +1495,27 @@ player does, and it used to pass unmarked: the territory simply appeared.
   on its edge, half of it fell under the HUD bar and off the bottom of the window.
 - Seen in screenshots driven through Playwright's library (for the mouse, to see the ghost)
   and in bursts of frames from a watched match, picked out by measuring what changed.
+
+## 10z. Combat effects (V4)
+
+The fourth package of the visual pass, mostly in the pixel style, which is the combat look.
+
+- **The lob**: the ball grows by up to half again toward the top of its arc while its
+  shadow shrinks and fades, so height reads twice over.
+- **Impacts by what they hit**: in the sea a white plume and two rings (no blast, no
+  scorch); on open ground a blast, a scorch mark and dust; on a wall a blast, the debris
+  already thrown, and a breach that smoulders for `fx.smoulderMs`. **The first splash was
+  too faint** against the patterned sea and gained the plume and a thicker bright ring;
+  **the first smoke was grey and vanished against the grass**, and is dark now, as burning
+  stone gives off, with embers that show more often.
+- **Muzzle smoke**: puffs blown out along the barrel, slowing under drag and drifting up.
+  The shot's origin is the tile at the gun's centre, so the muzzle is placed from there.
+- **The landing mark pulses ever faster** as the shot nears, and turns red and thick over
+  the watching player's own wall. Both styles, being the warning a player repairs by; the
+  effect frame now carries who is watching.
+- **Flags are lowered** on a breach, in a darker shade, and go back up from wherever they
+  had got to if the castle is sealed again. `FlagHoist` holds the logic and is unit-tested.
+- Looking at water needed the player's own shots, since even recruits land their misses on
+  land. Playwright's `mouse.click` did not fire in this game where a move followed by a
+  press did — worth knowing before concluding a click handler is broken. The flag coming
+  down was not caught on screen; the user checked it in play.

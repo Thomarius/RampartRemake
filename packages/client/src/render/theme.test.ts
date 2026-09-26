@@ -5,7 +5,7 @@ import { stateFromAscii } from '@rampart/sim';
 
 import { seaDepth } from './pixel.js';
 import { createTheme } from './scene.js';
-import { hex, playerColour, tileX, tileY, type ViewTransform } from './theme.js';
+import { FlagHoist, hex, playerColour, tileX, tileY, type ViewTransform } from './theme.js';
 
 const view: ViewTransform = { tile: 10, originX: 4, originY: 7 };
 
@@ -80,5 +80,45 @@ describe('sea depth, for shading the pixel style', () => {
     const depth = seaDepth(state, 1, 1, 3);
     // A 3x3 drawn area with the one land tile in the middle.
     expect(Array.from(depth.slice(3, 6))).toEqual([1, 0, 1]);
+  });
+});
+
+describe('flags, hoisted and lowered', () => {
+  const art = defaultArtConfig;
+  const { flagRaiseMs: up, flagLowerMs: down } = art.effects;
+
+  it('hoists a flag from the foot of its pole when its castle is sealed', () => {
+    const flags = new FlagHoist();
+    flags.update([false], 0, art);
+    expect(flags.raised(0, 0, art)).toBeNull();
+    flags.update([true], 100, art);
+    expect(flags.raised(0, 100, art)).toBe(0);
+    expect(flags.raised(0, 100 + up / 2, art)).toBeGreaterThan(0.5);
+    expect(flags.raised(0, 100 + up, art)).toBe(1);
+  });
+
+  it('lowers it, rather than dropping it, when a breach unseals the castle', () => {
+    const flags = new FlagHoist();
+    flags.update([true], 0, art);
+    flags.update([false], up, art);
+    expect(flags.lowering(0)).toBe(true);
+    expect(flags.raised(0, up, art)).toBe(1);
+    const halfway = flags.raised(0, up + down / 2, art) as number;
+    expect(halfway).toBeGreaterThan(0);
+    expect(halfway).toBeLessThan(1);
+    // Down, and gone.
+    expect(flags.raised(0, up + down, art)).toBeNull();
+  });
+
+  it('goes back up from wherever it had got to when sealed again', () => {
+    const flags = new FlagHoist();
+    flags.update([true], 0, art);
+    flags.update([false], up, art);
+    const at = up + down / 2;
+    const height = flags.raised(0, at, art) as number;
+    flags.update([true], at, art);
+    expect(flags.lowering(0)).toBe(false);
+    expect(flags.raised(0, at, art)).toBeCloseTo(height);
+    expect(flags.raised(0, at + up, art)).toBe(1);
   });
 });

@@ -10,6 +10,7 @@ import {
   drawFireReticle,
   drawOvertimeBorder,
   drawSealGlow,
+  drawShotTarget,
   hex,
   playerColour,
   tileX,
@@ -238,8 +239,7 @@ export class FlatTheme implements Theme {
       g.fill({ color: colour });
 
       // Where it will come down, so the target can read the threat.
-      g.circle(tileX(view, shot.toX + 0.5), tileY(view, shot.toY + 0.5), view.tile * 0.45);
-      g.stroke({ width: 1, color: colour, alpha: 0.5 });
+      drawShotTarget(g, view, state, shot, t, this.art, frame.humanPlayer);
     }
 
     for (const impact of this.impacts) {
@@ -280,9 +280,9 @@ export class FlatTheme implements Theme {
    */
   private drawFlags(state: MatchState, view: ViewTransform, frame: EffectFrame): void {
     const g = this.effectGfx;
-    this.flags.update(frame.castleSealed, this.clock);
+    this.flags.update(frame.castleSealed, this.clock, this.art);
     for (const castle of state.castles) {
-      const raised = this.flags.raised(castle.id, this.clock, this.art.effects.flagRaiseMs);
+      const raised = this.flags.raised(castle.id, this.clock, this.art);
       if (raised === null) continue;
       const pole = tileX(view, castle.x + castle.w / 2);
       const top = tileY(view, castle.y) - view.tile;

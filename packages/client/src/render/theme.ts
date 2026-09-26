@@ -1,5 +1,5 @@
 import type { ArtConfig, ArtStyle } from '@rampart/config';
-import type { MatchState, Shot } from '@rampart/sim';
+import { Structure, type MatchState, type Shot } from '@rampart/sim';
 import type { Container, Graphics } from 'pixi.js';
 
 import type { SealGlow } from '../seal.js';
@@ -72,6 +72,8 @@ export interface EffectFrame {
   castleSealed: readonly boolean[];
   /** The front of any flood of newly sealed ground; see `seal.ts`. */
   sealGlow: readonly SealGlow[];
+  /** The player at this screen, or -1 when watching: whose wall is under threat. */
+  humanPlayer: number;
 }
 
 export interface Cell {
@@ -240,26 +242,79 @@ export function drawOvertimeBorder(
 }
 
 /**
- * When each castle's flag went up, so it can be hoisted rather than appear. A flag
- * starts at the foot of its pole when its castle is sealed and is gone when it is not.
+ * Each castle's flag: hoisted from the foot of its pole when the castle is sealed, and
+ * lowered — not whisked away — when a breach unseals it, so a player watching their
+ * wall come down sees the moment their castle fell. Sealed again mid-way, it turns and
+ * goes back up from wherever it had got to.
  */
 export class FlagHoist {
-  private readonly since = new Map<number, number>();
+  private readonly flags = new Map<number, { from: number; to: 0 | 1; at: number }>();
 
-  update(castleSealed: readonly boolean[], nowMs: number): void {
+  update(castleSealed: readonly boolean[], nowMs: number, art: ArtConfig): void {
     castleSealed.forEach((sealed, id) => {
-      if (!sealed) this.since.delete(id);
-      else if (!this.since.has(id)) this.since.set(id, nowMs);
+      const flag = this.flags.get(id);
+      const target = sealed ? 1 : 0;
+      if (flag === undefined) {
+        if (sealed) this.flags.set(id, { from: 0, to: 1, at: nowMs });
+        return;
+      }
+      if (flag.to === target) return;
+      this.flags.set(id, { from: this.height(id, nowMs, art) ?? 0, to: target, at: nowMs });
     });
   }
 
-  /** How far up its pole, 0 to 1, eased to slow at the top; null when it flies none. */
-  raised(castleId: number, nowMs: number, raiseMs: number): number | null {
-    const since = this.since.get(castleId);
-    if (since === undefined) return null;
-    const t = Math.min(1, (nowMs - since) / raiseMs);
-    return 1 - (1 - t) * (1 - t);
+  /** How far up its pole, 0 to 1, eased; null when the castle flies no flag. */
+  raised(castleId: number, nowMs: number, art: ArtConfig): number | null {
+    const height = this.height(castleId, nowMs, art);
+    if (height === null) this.flags.delete(castleId);
+    return height;
   }
+
+  /** Whether the flag is on its way down, to be drawn as a castle fallen. */
+  lowering(castleId: number): boolean {
+    return this.flags.get(castleId)?.to === 0;
+  }
+
+  private height(castleId: number, nowMs: number, art: ArtConfig): number | null {
+    const flag = this.flags.get(castleId);
+    if (flag === undefined) return null;
+    const span = flag.to === 1 ? art.effects.flagRaiseMs : art.effects.flagLowerMs;
+    const t = Math.min(1, (nowMs - flag.at) / span);
+    if (flag.to === 0 && t >= 1) return null;
+    const eased = 1 - (1 - t) * (1 - t);
+    return flag.from + (flag.to - flag.from) * eased;
+  }
+}
+
+/**
+ * Where a shot will come down, pulsing faster as it nears — and in red, thicker, when
+ * it is coming down on the watching player's own wall. Shared by both styles: it is the
+ * warning a player repairs by.
+ */
+export function drawShotTarget(
+  g: Graphics,
+  view: ViewTransform,
+  state: MatchState,
+  shot: Shot,
+  t: number,
+  art: ArtConfig,
+  humanPlayer: number,
+): void {
+  const i = shot.toY * state.width + shot.toX;
+  const mine =
+    humanPlayer >= 0 &&
+    state.islandId[i] === humanPlayer + 1 &&
+    state.structure[i] === Structure.Wall;
+  // The phase runs ever faster: three beats early in the flight, a flutter at the end.
+  const beat = 0.5 + 0.5 * Math.sin(Math.PI * 2 * (2 * t + 6 * t * t));
+  const r = view.tile * (0.4 + 0.12 * beat);
+  const colour = mine ? hex(art.palette.uiInvalid) : playerColour(art, shot.owner, 'light');
+  g.circle(tileX(view, shot.toX + 0.5), tileY(view, shot.toY + 0.5), r);
+  g.stroke({
+    width: mine ? Math.max(2, Math.round(view.tile / 8)) : 1,
+    color: colour,
+    alpha: (mine ? 0.55 : 0.3) + 0.4 * t * beat,
+  });
 }
 
 /**

@@ -395,6 +395,14 @@ fades over `fx.craterRounds`; the blocks either side of a breach crack for the r
 round. An eliminated player's wall is rubble, and an inert gun slumps its barrel and
 smoulders instead of being struck through.
 
+**Combat, felt.** In pixel style a shot grows toward the top of its arc as its shadow
+shrinks and fades; what it hits decides how it lands — a plume and rings in the sea, a
+blast and dust on open ground, a blast on a wall that leaves the breach smouldering with
+dark smoke and embers for `fx.smoulderMs` — and each gun puffs smoke from its muzzle as it
+fires. In both styles the mark where a shot will land pulses ever faster as it nears, and
+turns red and thick when it is coming down on the watching player's own wall; and a
+breached castle's flag is lowered, struck in a darker shade, rather than vanishing.
+
 **Looking at it.** `tools/screenshots.sh` captures fixed states against the dev server —
 in real time through Playwright, which renders fine where virtual time does not — using
 `&snapshot`, `&round`, `&idle` and a wait. Anything lasting under a second (debris, the
@@ -496,7 +504,7 @@ play has given a feel for it — its plan is ready and starts with a baseline me
 Beside it, independent of balance: **11.6**, bots as personality × skill, and **11.8**,
 the visual pass, which changes no game logic and so can run while the human testing
 does — V1 (the original's theme-switching banner), V2 (the pixel style as the combat
-look) and V3 (build-phase effects) are done; V4–V6 are next. Smaller items are in 11.5.
+look), V3 (build-phase effects) and V4 (combat effects) are done; V5 and V6 are next. Smaller items are in 11.5.
 
 ### 11.1 Round cap and points scoring — done
 
@@ -624,7 +632,7 @@ teaching one to help without wrecking a person's plan is its own question.
 
 ### 11.8 Visual pass — in progress
 
-**Agreed 2026-09-26. V1–V3 done** (ARCHIVE 10w, 10x, 10y); V4–V6 open. Everything here
+**Agreed 2026-09-26. V1–V4 done** (ARCHIVE 10w–10z); V5 and V6 open. Everything here
 is client-side and cosmetic: no sim, protocol or ruleset change, so it cannot desync a match or move a balance measurement,
 and it can proceed while 11.2 waits on human play. Cosmetic randomness may use
 `Math.random` (the client is outside the lint rule), but durations, sizes and counts
@@ -763,7 +771,9 @@ and fire reticle already are; per style where they are decoration.
   it would form with its neighbours.
 - **Overtime** shows as a pulsing red border round the board.
 
-#### V4 — Combat effects
+#### V4 — Combat effects — done
+
+Kept as planned, for the record; how it turned out is §7 and ARCHIVE 10z.
 
 - **The lob**: the ball grows toward the top of its arc while its ground shadow shrinks.
 - **Impacts by what they hit**: a splash ring in water, dust on grass, embers and smoke

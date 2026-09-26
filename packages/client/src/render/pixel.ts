@@ -11,6 +11,7 @@ import {
   drawFireReticle,
   drawOvertimeBorder,
   drawSealGlow,
+  drawShotTarget,
   hex,
   playerColour,
   tileX,
@@ -52,6 +53,30 @@ interface Crater {
 interface Crack {
   level: number;
   round: number;
+}
+
+/** Rings spreading on the sea where a shot came down in it. */
+interface Splash {
+  x: number;
+  y: number;
+  age: number;
+}
+
+/** A destroyed wall block's embers and smoke, rising for a while after. */
+interface Smoulder {
+  x: number;
+  y: number;
+  age: number;
+  seed: number;
+}
+
+/** A puff of gun smoke drifting off from a muzzle, in tile coordinates. */
+interface Puff {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  age: number;
 }
 
 /** A surf sprite along the coast, and where it is in its breath. */
@@ -121,6 +146,9 @@ export class PixelTheme implements Theme {
   private cracks = new Map<number, Crack>();
   private surf: Surf[] = [];
   private readonly landings = new Landings();
+  private splashes: Splash[] = [];
+  private smoulders: Smoulder[] = [];
+  private puffs: Puff[] = [];
   private readonly flags = new FlagHoist();
   /** The piece in hand, drawn as the wall it would make. */
   private readonly ghostLayer = new Container();
@@ -407,9 +435,28 @@ export class PixelTheme implements Theme {
     g.fill({ color: hex(this.art.palette.shadow), alpha: this.art.generators.wall.shadowAlpha });
   }
 
+  /**
+   * A shot lands, and what it hits decides how it looks: the sea takes it in a splash,
+   * open ground in a blast and a puff of dust, a wall in a blast that leaves the breach
+   * smouldering.
+   */
   noteImpact(x: number, y: number, debris: readonly Debris[]): void {
+    const inSea =
+      this.terrain !== null &&
+      x >= 0 &&
+      y >= 0 &&
+      x < this.width &&
+      this.terrain[y * this.width + x] !== Terrain.Land;
+    if (inSea) {
+      this.splash(x, y);
+      return;
+    }
     this.blasts.push({ x, y, age: 0 });
     this.scorch(x, y);
+    if (debris.length === 0) this.dust(x, y);
+    for (const block of debris) {
+      this.smoulders.push({ x: block.x, y: block.y, age: 0, seed: Math.random() * 10 });
+    }
     // The blocks either side of a breach are shaken too.
     const worst = this.art.generators.wall.damageStates - 1;
     for (const block of debris) {
@@ -477,6 +524,38 @@ export class PixelTheme implements Theme {
     }
   }
 
+  /** Rings on the water, and spray thrown up and falling back. */
+  private splash(x: number, y: number): void {
+    this.splashes.push({ x, y, age: 0 });
+    const colour = hex(this.art.palette.waterFoam);
+    for (let k = 0; k < 8; k++) {
+      const angle = Math.random() * Math.PI * 2;
+      this.fragments.push({
+        x: x + 0.5,
+        y: y + 0.5,
+        vx: Math.cos(angle) * (0.8 + Math.random()),
+        vy: -2.2 - Math.random() * 1.8,
+        age: 0,
+        colour,
+      });
+    }
+  }
+
+  /** Earth thrown up by a shot that hit open ground. */
+  private dust(x: number, y: number): void {
+    const colours = [hex(this.art.palette.sand), hex(this.art.palette.craterMid)];
+    for (let k = 0; k < 7; k++) {
+      this.fragments.push({
+        x: x + 0.5,
+        y: y + 0.5,
+        vx: (Math.random() - 0.5) * 3,
+        vy: -1.5 - Math.random() * 2,
+        age: 0,
+        colour: colours[k % 2] as number,
+      });
+    }
+  }
+
   /** Leaves a scorch mark where a shot came down on land, replacing any older one. */
   private scorch(x: number, y: number): void {
     if (this.terrain === null || x < 0 || y < 0 || x >= this.width) return;
@@ -508,6 +587,22 @@ export class PixelTheme implements Theme {
   noteShot(shot: Shot): void {
     const angle = Math.atan2(shot.toX - shot.fromX, -(shot.toY - shot.fromY));
     this.aims.set(shot.cannonId, { angle, firedAgo: 0 });
+    // Smoke from the muzzle, blown out along the barrel and then drifting off. The
+    // shot's origin is the tile at the gun's centre, so the muzzle is half a tile on
+    // from there plus the barrel's length.
+    const reach = this.art.generators.cannon.barrelLengthPx / this.art.tileSizePx + 0.15;
+    const mx = shot.fromX + 0.5 + Math.sin(angle) * reach;
+    const my = shot.fromY + 0.5 - Math.cos(angle) * reach;
+    for (let k = 0; k < this.art.generators.fx.muzzleSmokePuffs; k++) {
+      const push = 0.4 + Math.random() * 0.5;
+      this.puffs.push({
+        x: mx,
+        y: my,
+        vx: Math.sin(angle) * push + (Math.random() - 0.5) * 0.3,
+        vy: -Math.cos(angle) * push - 0.25 + (Math.random() - 0.5) * 0.3,
+        age: -k * 60,
+      });
+    }
   }
 
   /** Aims a cannon that has not fired yet at the nearest enemy castle. */
@@ -549,8 +644,11 @@ export class PixelTheme implements Theme {
 
     drawSealGlow(g, view, frame.sealGlow, this.art);
     this.landings.draw(g, view, this.art, frame.deltaMs);
+    this.drawSplashes(view, frame.deltaMs);
+    this.drawSmoulders(view, frame.deltaMs);
     this.drawBarrels(state, view, frame.deltaMs);
     this.drawInertSmoke(state, view);
+    this.drawPuffs(view, frame.deltaMs);
     this.drawBanners(state, view, frame);
 
     const now = state.tick + frame.tickFraction;
@@ -575,16 +673,19 @@ export class PixelTheme implements Theme {
         g.fill({ color: hex(this.art.palette.rockLight), alpha: 0.45 - k * 0.12 });
       }
 
-      // Shadow on the ground reads the fall; the ball itself rides above it.
-      g.circle(tileX(view, x + 0.5), tileY(view, y + 0.5), view.tile * 0.25);
-      g.fill({ color: hex(this.art.palette.shadow), alpha: 0.35 });
+      // Height sold twice: the ball grows as it nears the top of its arc, as if
+      // coming toward the viewer, and its shadow on the ground shrinks and fades.
+      const height = Math.min(1, lift / 3);
+      const shadow = view.tile * 0.25 * (1 - 0.45 * height);
+      g.circle(tileX(view, x + 0.5), tileY(view, y + 0.5), shadow);
+      g.fill({ color: hex(this.art.palette.shadow), alpha: 0.4 - 0.2 * height });
 
-      const ball = this.place(this.effectLayer, KEY.shot, view, 0, 0, 0.6);
-      ball.x = tileX(view, x + 0.5) - view.tile * 0.3;
-      ball.y = tileY(view, y + 0.5 - lift) - view.tile * 0.3;
+      const size = 0.6 * (1 + 0.55 * height);
+      const ball = this.place(this.effectLayer, KEY.shot, view, 0, 0, size);
+      ball.x = tileX(view, x + 0.5) - (view.tile * size) / 2;
+      ball.y = tileY(view, y + 0.5 - lift) - (view.tile * size) / 2;
 
-      g.circle(tileX(view, shot.toX + 0.5), tileY(view, shot.toY + 0.5), view.tile * 0.45);
-      g.stroke({ width: 1, color: playerColour(this.art, shot.owner, 'light'), alpha: 0.5 });
+      drawShotTarget(g, view, state, shot, t, this.art, frame.humanPlayer);
     }
 
     const frames = this.art.generators.fx.explosionFrames;
@@ -610,6 +711,92 @@ export class PixelTheme implements Theme {
       g.fill({ color: f.colour, alpha: Math.max(0, 1 - f.age / life) });
     }
     this.fragments = this.fragments.filter((f) => f.age < life);
+  }
+
+  /** Two rings spreading and fading on the water where a shot went in. */
+  private drawSplashes(view: ViewTransform, deltaMs: number): void {
+    const g = this.effectGfx;
+    const span = this.art.generators.fx.splashMs;
+    const foam = hex(this.art.palette.waterFoam);
+    const white = hex(this.art.palette.uiInk);
+    for (const splash of this.splashes) {
+      splash.age += deltaMs;
+      const cx = tileX(view, splash.x + 0.5);
+      const cy = tileY(view, splash.y + 0.5);
+      // The plume where it went in, gone in the first third.
+      const plume = splash.age / span / 0.35;
+      if (plume < 1) {
+        g.circle(cx, cy - view.tile * 0.25 * plume, view.tile * 0.32 * (1 - plume * 0.6));
+        g.fill({ color: white, alpha: 0.85 * (1 - plume) });
+      }
+      for (const [lag, colour] of [
+        [0, white],
+        [0.3, foam],
+      ] as const) {
+        const t = splash.age / span - lag;
+        if (t <= 0 || t >= 1) continue;
+        g.ellipse(cx, cy, view.tile * (0.25 + 0.95 * t), view.tile * (0.15 + 0.6 * t));
+        g.stroke({ width: Math.max(2, view.tile / 7), color: colour, alpha: 0.9 * (1 - t) });
+      }
+    }
+    this.splashes = this.splashes.filter((s) => s.age < span * 1.3);
+  }
+
+  /**
+   * A breach smoulders for a while: smoke curling up from it and embers winking at the
+   * ground, dying away together. It marks where the wall was hit long after the blast.
+   */
+  private drawSmoulders(view: ViewTransform, deltaMs: number): void {
+    const g = this.effectGfx;
+    const span = this.art.generators.fx.smoulderMs;
+    // Dark, as burning stone and timber give off, and so it reads against the grass
+    // where grey vanished.
+    const smoke = hex(this.art.palette.rockDark);
+    const embers = [hex(this.art.palette.emberHot), hex(this.art.palette.emberMid)];
+    for (const s of this.smoulders) {
+      s.age += deltaMs;
+      const life = 1 - s.age / span;
+      if (life <= 0) continue;
+      for (let k = 0; k < 3; k++) {
+        const t = (s.age / 900 + k / 3 + s.seed) % 1;
+        const x = s.x + 0.5 + Math.sin(t * 4 + s.seed) * 0.2;
+        const y = s.y + 0.4 - t * 1.1;
+        g.circle(tileX(view, x), tileY(view, y), view.tile * (0.14 + t * 0.28));
+        g.fill({ color: smoke, alpha: 0.6 * (1 - t) * life });
+      }
+      for (let k = 0; k < 3; k++) {
+        const flicker = Math.sin(s.age / 70 + k * 2.1 + s.seed * 3);
+        if (flicker < -0.2) continue;
+        const px = s.x + 0.25 + ((k * 0.37 + s.seed) % 0.5);
+        const py = s.y + 0.55 + ((k * 0.23 + s.seed) % 0.3);
+        const size = Math.max(2, view.tile / 8);
+        g.rect(tileX(view, px), tileY(view, py), size, size);
+        g.fill({ color: embers[k % 2] as number, alpha: (0.6 + 0.4 * flicker) * life });
+      }
+    }
+    this.smoulders = this.smoulders.filter((s) => s.age < span);
+  }
+
+  /** Gun smoke: puffs slowing as they drift, swelling and thinning to nothing. */
+  private drawPuffs(view: ViewTransform, deltaMs: number): void {
+    const g = this.effectGfx;
+    const span = this.art.generators.fx.muzzleSmokeMs;
+    const colour = hex(this.art.palette.rockLight);
+    const dt = deltaMs / 1000;
+    for (const puff of this.puffs) {
+      puff.age += deltaMs;
+      if (puff.age < 0) continue;
+      const drag = Math.exp(-2.5 * dt);
+      puff.vx *= drag;
+      puff.vy = puff.vy * drag - 0.15 * dt;
+      puff.x += puff.vx * dt;
+      puff.y += puff.vy * dt;
+      const t = puff.age / span;
+      if (t >= 1) continue;
+      g.circle(tileX(view, puff.x), tileY(view, puff.y), view.tile * (0.15 + 0.35 * t));
+      g.fill({ color: colour, alpha: 0.55 * (1 - t) });
+    }
+    this.puffs = this.puffs.filter((p) => p.age < span);
   }
 
   /** Fades the scorch marks as rounds pass, and forgets the ones that have gone. */
@@ -696,9 +883,9 @@ export class PixelTheme implements Theme {
     const wave = Math.floor(this.bannerElapsed / 160) % frames;
     const texture = this.texture(KEY.banner(wave));
     const g = this.effectGfx;
-    this.flags.update(frame.castleSealed, this.clock);
+    this.flags.update(frame.castleSealed, this.clock, this.art);
     for (const castle of state.castles) {
-      const raised = this.flags.raised(castle.id, this.clock, this.art.effects.flagRaiseMs);
+      const raised = this.flags.raised(castle.id, this.clock, this.art);
       if (raised === null) continue;
       // A pole rising from the middle of the castle, the banner hoisted to its head
       // above the roofline, where it reads from across the map.
@@ -713,7 +900,12 @@ export class PixelTheme implements Theme {
       sprite.height = (view.tile * 0.8 * texture.height) / Math.max(1, texture.width);
       sprite.x = poleX + pole / 2;
       sprite.y = top + (1 - raised) * (length - sprite.height);
-      sprite.tint = playerColour(this.art, castle.islandId - 1, 'base');
+      // A flag coming down after a breach is struck in a darker shade.
+      sprite.tint = playerColour(
+        this.art,
+        castle.islandId - 1,
+        this.flags.lowering(castle.id) ? 'dark' : 'base',
+      );
       this.effectLayer.addChild(sprite);
     }
   }

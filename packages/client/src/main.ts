@@ -1038,6 +1038,7 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
       delta,
       live.castleEnclosed,
       advanceFloods(),
+      session.humanPlayer,
     );
     const ghost = { ...controls.ghost(), ...hints };
     scene.drawOverlay(session.state, ghost, session.humanPlayer);

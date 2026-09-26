@@ -253,6 +253,10 @@
       "muzzleFlashFrames": 3,
       "craterDecalVariants": 4,
       "craterRounds": 3,
+      "splashMs": 650,
+      "smoulderMs": 2600,
+      "muzzleSmokeMs": 950,
+      "muzzleSmokePuffs": 3,
       "shotTrailLengthPx": 6,
       "debrisPerTile": 6,
       "debrisMs": 650,
@@ -277,6 +281,7 @@
     "sealFloodTilesPerSecond": 16,
     "sealGlowTiles": 3,
     "flagRaiseMs": 700,
+    "flagLowerMs": 550,
     "landingMs": 240,
     "landingDustPerEdge": 2,
     "overtimePulseMs": 800

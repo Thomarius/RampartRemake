@@ -89,6 +89,8 @@ export const ArtConfigSchema = z
       sealGlowTiles: z.number().positive(),
       /** A sealed castle's flag, from the foot of its pole to the head. */
       flagRaiseMs: z.number().int().positive(),
+      /** A breached castle's flag, from the head of its pole to gone. */
+      flagLowerMs: z.number().int().positive(),
       /** A placed piece settling into place. */
       landingMs: z.number().int().positive(),
       /** Dust thrown from each open edge of a placed piece, in the pixel style. */
@@ -170,6 +172,13 @@ export const ArtConfigSchema = z
         craterDecalVariants: z.number().int().positive(),
         /** Rounds a scorch mark takes to fade from open ground. */
         craterRounds: z.number().int().positive(),
+        /** Rings spreading where a shot comes down in the sea. */
+        splashMs: z.number().int().positive(),
+        /** Embers and smoke rising from where a wall block was destroyed. */
+        smoulderMs: z.number().int().positive(),
+        /** Smoke drifting from a gun's muzzle after it fires. */
+        muzzleSmokeMs: z.number().int().positive(),
+        muzzleSmokePuffs: z.number().int().nonnegative(),
         shotTrailLengthPx: z.number().int().nonnegative(),
         /** Fragments thrown up by each wall block a shot destroys. */
         debrisPerTile: z.number().int().nonnegative(),

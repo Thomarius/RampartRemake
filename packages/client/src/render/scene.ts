@@ -283,10 +283,17 @@ export class Scene {
     deltaMs: number,
     castleSealed: readonly boolean[],
     sealGlow: readonly SealGlow[] = [],
+    humanPlayer = -1,
   ): void {
     this.applyShake(deltaMs);
     for (const slot of this.visible()) {
-      slot.theme.drawEffects(state, this.view, { tickFraction, deltaMs, castleSealed, sealGlow });
+      slot.theme.drawEffects(state, this.view, {
+        tickFraction,
+        deltaMs,
+        castleSealed,
+        sealGlow,
+        humanPlayer,
+      });
     }
   }
 
