@@ -4,6 +4,7 @@ import {
   canPlacePiece,
   currentPieceId,
   pieceCells,
+  sameTeam,
   type Action,
   type MatchState,
   type Rng,
@@ -51,7 +52,8 @@ export function stopgapAction(state: MatchState, playerId: number, rng: Rng): Ac
         const y = rng.nextInt(state.height);
         const i = y * state.width + x;
         if (state.structure[i] !== Structure.Wall) continue;
-        if (state.islandId[i] === player.islandId) continue;
+        const island = state.islandId[i] as number;
+        if (island === 0 || sameTeam(state, playerId, island - 1)) continue;
         if (state.owner[i] === 0) continue; // rubble cannot be damaged
         return { kind: 'fire', player: playerId, x, y };
       }

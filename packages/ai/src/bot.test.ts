@@ -205,6 +205,50 @@ describe('cannon siting', () => {
   });
 });
 
+describe('bots in teams', () => {
+  it('play a 2v2 without ever aiming at a teammate, or asking for a refused move', () => {
+    for (const seed of [1, 2]) {
+      const state = createMatch({
+        seed,
+        ruleset: defaultRuleset,
+        terrainConfig: defaultTerrainConfig,
+        // Teammates on opposite corners of the grid one match, side by side the next.
+        players: (seed === 1 ? [0, 1, 1, 0] : [0, 0, 1, 1]).map((team, i) => ({
+          name: `b${i}`,
+          isBot: true,
+          team,
+        })),
+      });
+      const rng = new Rng(seed);
+      const bots = state.players.map((p) => new Bot(p.id, 'gunner'));
+      const rejections: string[] = [];
+      let shots = 0;
+      while (state.phase !== 'game_over' && state.tick < 20_000) {
+        for (const player of state.players) {
+          const action = bots[player.id]?.think(state, rng) ?? null;
+          if (action === null) continue;
+          const rejection = applyAction(state, action);
+          if (rejection !== null) rejections.push(rejection);
+          if (action.kind === 'fire' && rejection === null) {
+            shots++;
+            const island = state.islandId[action.y * state.width + action.x] as number;
+            expect(island === 0 || state.players[island - 1]!.team !== player.team).toBe(true);
+          }
+        }
+        step(state);
+        drainEvents(state);
+      }
+      expect(rejections).toEqual([]);
+      expect(shots).toBeGreaterThan(20);
+      expect(state.phase).toBe('game_over');
+      // A team wins or loses whole: the winners are every member of one side.
+      const teams = new Set(state.winners.map((id) => state.players[id]!.team));
+      expect(teams.size).toBeLessThanOrEqual(1);
+      if (teams.size === 1) expect(state.winners).toHaveLength(2);
+    }
+  }, 120_000);
+});
+
 describe('bot conduct', () => {
   it('never asks for a move the rules refuse', () => {
     // A bot goes through the same validated action API as a person, so it cannot

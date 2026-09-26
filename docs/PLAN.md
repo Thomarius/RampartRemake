@@ -535,7 +535,7 @@ aggressive, defensive, expander), how the lobby offers the pair, and whether
 `server.botDifficulty` becomes two settings. Independent of balance, so it can run beside
 11.2.
 
-### 11.7 Team mode — in progress, T1 and T2 done
+### 11.7 Team mode — in progress, T1–T3 done
 
 Chosen by the user to come next, ahead of 11.2–11.6. **T1, the sim core, is built**: teams in
 the state, pooled lives, team elimination and winners, no friendly fire, the capped
@@ -543,7 +543,13 @@ continue bonus. Free-for-all outcomes checked unchanged to the tick against the 
 before it, over four three-player matches. **T2, helping build, is built**:
 `teams.crossIslandBuild` in the ruleset, `mayBuildOn` in placement, walls owned by the
 island. The client's piece ghost asks the same check, so it shows on a teammate's island
-with no client change; the hint text and team visuals come with T5.
+with no client change; the hint text and team visuals come with T5. **T3, bots, is
+built**: rivals are the other teams in every target choice — the bot's, its fallback,
+the stopgap's, the scripted soak player's — and cannons face the other teams' castles.
+Bots build only from their own island's plans, so they never help across islands even
+under `all`; teaching them to help is left for later, if wanted. A 2v2 bot match makes
+no refused move and never aims at a teammate; before the change the same two matches
+made 598 refused shots at teammates.
 
 #### The rules
 

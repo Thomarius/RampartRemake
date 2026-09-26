@@ -10,6 +10,7 @@ import {
   distanceSquared,
   pieceById,
   pieceCells,
+  sameTeam,
   type Action,
   type MatchState,
   type Rng,
@@ -223,7 +224,9 @@ export class Bot {
       const y = rng.nextInt(state.height);
       const i = y * state.width + x;
       if (state.structure[i] !== Structure.Wall || taken.has(i)) continue;
-      if (state.islandId[i] === state.players[this.playerId]?.islandId) continue;
+      // Only an opponent's: your own island and a teammate's are refused.
+      const island = state.islandId[i] as number;
+      if (island === 0 || sameTeam(state, this.playerId, island - 1)) continue;
       // Rubble left by an eliminated player is nobody's, and only an opponent's wall
       // can be damaged, so a shot there would land and change nothing.
       if (state.owner[i] === 0) continue;
@@ -234,7 +237,10 @@ export class Bot {
 
   /** The opponent closest to winning, so a leader is not left to run away with it. */
   private chooseOpponent(state: MatchState, rng: Rng): number {
-    const rivals = state.players.filter((p) => p.id !== this.playerId && !p.eliminated);
+    // Rivals are the other teams — a teammate is never a target.
+    const rivals = state.players.filter(
+      (p) => !p.eliminated && !sameTeam(state, this.playerId, p.id),
+    );
     if (rivals.length === 0) return this.playerId;
     if (!this.profile.picksTarget) {
       return (rivals[rng.nextInt(rivals.length)] as (typeof rivals)[number]).id;
@@ -705,7 +711,8 @@ export class Bot {
     if (state.tick < this.nextCannonTick) return null;
     this.nextCannonTick = state.tick + this.ticks(this.profile.placementBaseMs, state);
 
-    const enemies = state.castles.filter((c) => c.islandId !== player.islandId);
+    // Toward the other teams' castles; a teammate's is not the front line.
+    const enemies = state.castles.filter((c) => !sameTeam(state, this.playerId, c.islandId - 1));
     const hazard = this.clearanceField(state, player.islandId);
     const [cw, ch] = state.ruleset.cannons.footprint;
 

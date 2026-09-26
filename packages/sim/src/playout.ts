@@ -8,6 +8,7 @@
 import { applyAction, createMatch, hashMatchState, step, type MatchOptions } from './match.js';
 import { canPlacePiece, canPlaceCannon } from './placement.js';
 import { Rng } from './rng.js';
+import { sameTeam } from './teams.js';
 import { Structure, type Action, type LoggedAction, type MatchState } from './types.js';
 
 export interface PlayoutBehaviour {
@@ -51,7 +52,9 @@ export function scriptedAction(
         const y = rng.nextInt(state.height);
         const i = y * state.width + x;
         if (state.structure[i] !== Structure.Wall) continue;
-        if (state.islandId[i] === player.islandId) continue;
+        // Only an opponent's wall: your own and a teammate's are refused.
+        const island = state.islandId[i] as number;
+        if (island === 0 || sameTeam(state, playerId, island - 1)) continue;
         return { kind: 'fire', player: playerId, x, y };
       }
       return null;

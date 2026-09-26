@@ -315,7 +315,9 @@ export class PixelTheme implements Theme {
     let best = Number.POSITIVE_INFINITY;
     let angle = 0;
     for (const castle of state.castles) {
-      if (castle.islandId === cannon.owner + 1) continue;
+      // Toward the other teams: a teammate's castle is not what a gun faces.
+      const owner = state.players[castle.islandId - 1];
+      if (owner === undefined || owner.team === state.players[cannon.owner]?.team) continue;
       const dx = castle.x + castle.w / 2 - cx;
       const dy = castle.y + castle.h / 2 - cy;
       const d = dx * dx + dy * dy;
