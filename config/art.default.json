@@ -273,6 +273,14 @@
     "cannonBoreScale": 0.34,
     "crumbleMs": 450
   },
+  "effects": {
+    "sealFloodTilesPerSecond": 16,
+    "sealGlowTiles": 3,
+    "flagRaiseMs": 700,
+    "landingMs": 240,
+    "landingDustPerEdge": 2,
+    "overtimePulseMs": 800
+  },
   "hud": {
     "pointsBannerMs": 8000
   }

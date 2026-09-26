@@ -1468,3 +1468,30 @@ under `art.generators`.
 - **Inert guns** slump (a short, unlit barrel) and smoulder instead of the red strike the
   flat style keeps. No reachable snapshot has an inert gun — that needs a gun left
   outside sealed ground at a resolution — so it was first seen by the user in play.
+
+## 10y. Build-phase effects (V3)
+
+The third package of the visual pass. Sealing a castle is the most satisfying thing a
+player does, and it used to pass unmarked: the territory simply appeared.
+
+- **The flood** (`seal.ts`). The client compares the enclosure before and after every
+  change and floods whatever territory was gained, breadth-first from the castle's own
+  footprint or from the edge of the territory already held, so a widened loop floods only
+  its new ground. Drawing hides what the front has not reached and never adds anything
+  back, so a flood outlived by a breach cannot restore lost ground. A lit front trails
+  `sealGlowTiles` behind it. It is drawn in both styles, since it shows exactly what the
+  last piece sealed. **40 tiles a second was too fast**: a typical region filled in about
+  150 ms and read as a flash. 16 lets the ground be seen being taken.
+- **Flags hoisted** in both styles: the flat style gained a plain pennant, since the
+  flat look is where building happens by default and the moment would otherwise have no
+  flag at all. Its first pennant was too small at a three-player tile size and was
+  enlarged.
+- **Pieces settle** from slightly large and bright, and in pixel style throw dust from
+  their outer edges only.
+- **The pixel ghost is the wall it would make**, joined to itself and to the standing wall.
+  At first each of its cells was outlined, which cut the joined wall into squares again;
+  only the outside is outlined now.
+- **Overtime rings the board** in a pulsing red border, drawn just inside the board: drawn
+  on its edge, half of it fell under the HUD bar and off the bottom of the window.
+- Seen in screenshots driven through Playwright's library (for the mouse, to see the ghost)
+  and in bursts of frames from a watched match, picked out by measuring what changed.

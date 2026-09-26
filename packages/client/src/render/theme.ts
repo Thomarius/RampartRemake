@@ -2,6 +2,8 @@ import type { ArtConfig, ArtStyle } from '@rampart/config';
 import type { MatchState, Shot } from '@rampart/sim';
 import type { Container, Graphics } from 'pixi.js';
 
+import type { SealGlow } from '../seal.js';
+
 /**
  * A visual style.
  *
@@ -37,6 +39,8 @@ export interface Theme {
   noteShot(shot: Shot): void;
   /** A swept wall block has just been taken away by the banner passing over it. */
   noteCrumble(block: Debris): void;
+  /** A piece has just been placed: these cells, on this player's island. */
+  noteLanding(cells: readonly Cell[], owner: number): void;
 
   /** Releases textures and display objects. */
   destroy(): void;
@@ -66,6 +70,13 @@ export interface EffectFrame {
    * `enclosed`, which a breach in combat does not change until the next resolution.
    */
   castleSealed: readonly boolean[];
+  /** The front of any flood of newly sealed ground; see `seal.ts`. */
+  sealGlow: readonly SealGlow[];
+}
+
+export interface Cell {
+  x: number;
+  y: number;
 }
 
 /** A wall block a shot destroyed, and whose it was. */
@@ -177,6 +188,109 @@ export function drawBuildHints(
       castle.h * view.tile + 4,
     );
     g.stroke({ width: Math.max(3, Math.round(view.tile / 7)), color: warn, alpha: pulse });
+  }
+}
+
+/**
+ * The front of newly sealed ground, lit as it floods out from the castle. Shared by
+ * both styles: it shows exactly what the last piece sealed.
+ */
+export function drawSealGlow(
+  g: Graphics,
+  view: ViewTransform,
+  glow: readonly SealGlow[],
+  art: ArtConfig,
+): void {
+  for (const tile of glow) {
+    g.rect(tileX(view, tile.x), tileY(view, tile.y), view.tile, view.tile);
+    g.fill({ color: playerColour(art, tile.owner, 'light'), alpha: 0.7 * tile.strength });
+    const inset = view.tile * 0.3;
+    g.rect(
+      tileX(view, tile.x) + inset,
+      tileY(view, tile.y) + inset,
+      view.tile - inset * 2,
+      view.tile - inset * 2,
+    );
+    g.fill({ color: hex(art.palette.uiInk), alpha: 0.6 * tile.strength });
+  }
+}
+
+/**
+ * A red border round the board, pulsing, while overtime lasts: the clock has run out
+ * and only the piece in hand may still go down. Shared, since it is purely information.
+ */
+export function drawOvertimeBorder(
+  g: Graphics,
+  state: MatchState,
+  view: ViewTransform,
+  art: ArtConfig,
+  nowMs: number,
+): void {
+  if (state.phase !== 'build' || !state.overtime) return;
+  const pulse = 0.5 + 0.5 * Math.sin((nowMs / art.effects.overtimePulseMs) * Math.PI * 2);
+  const width = Math.max(3, Math.round(view.tile / 3));
+  // Just inside the board, whose edge is often the window's or the HUD bar's.
+  g.rect(
+    view.originX + width / 2,
+    view.originY + width / 2,
+    state.width * view.tile - width,
+    state.height * view.tile - width,
+  );
+  g.stroke({ width, color: hex(art.palette.uiInvalid), alpha: 0.35 + 0.5 * pulse });
+}
+
+/**
+ * When each castle's flag went up, so it can be hoisted rather than appear. A flag
+ * starts at the foot of its pole when its castle is sealed and is gone when it is not.
+ */
+export class FlagHoist {
+  private readonly since = new Map<number, number>();
+
+  update(castleSealed: readonly boolean[], nowMs: number): void {
+    castleSealed.forEach((sealed, id) => {
+      if (!sealed) this.since.delete(id);
+      else if (!this.since.has(id)) this.since.set(id, nowMs);
+    });
+  }
+
+  /** How far up its pole, 0 to 1, eased to slow at the top; null when it flies none. */
+  raised(castleId: number, nowMs: number, raiseMs: number): number | null {
+    const since = this.since.get(castleId);
+    if (since === undefined) return null;
+    const t = Math.min(1, (nowMs - since) / raiseMs);
+    return 1 - (1 - t) * (1 - t);
+  }
+}
+
+/**
+ * Pieces settling as they land: each block starts a little large and bright and eases
+ * down onto its tile, which is what makes a placement feel like a stone set down
+ * rather than a square switched on.
+ */
+export class Landings {
+  private landings: { cells: readonly Cell[]; owner: number; age: number }[] = [];
+
+  add(cells: readonly Cell[], owner: number): void {
+    this.landings.push({ cells, owner, age: 0 });
+  }
+
+  draw(g: Graphics, view: ViewTransform, art: ArtConfig, deltaMs: number): void {
+    const span = art.effects.landingMs;
+    for (const landing of this.landings) {
+      landing.age += deltaMs;
+      const t = Math.min(1, landing.age / span);
+      const grow = view.tile * 0.22 * (1 - t) * (1 - t);
+      for (const cell of landing.cells) {
+        g.rect(
+          tileX(view, cell.x) - grow,
+          tileY(view, cell.y) - grow,
+          view.tile + grow * 2,
+          view.tile + grow * 2,
+        );
+      }
+      g.fill({ color: playerColour(art, landing.owner, 'light'), alpha: 0.55 * (1 - t) });
+    }
+    this.landings = this.landings.filter((landing) => landing.age < span);
   }
 }
 

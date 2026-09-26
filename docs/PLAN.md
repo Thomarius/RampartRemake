@@ -367,9 +367,20 @@ aiming cursor** says whether a click will fire — a bright crosshair when a gun
 a small grey ring struck through when none is — with the number ready beside it; it
 appears as "Fire!" is announced, though a click does nothing until the phase opens. When
 placing cannons the same badge counts the guns still to place. The points an island
-banked hold over it with the new total for the whole intermission (`hud.pointsBannerMs`). Sealed
-castles fly a banner in pixel style; a lost life lands as a banner over the island, red
-on the last; a knockout stamps the island and greys it for the rest of the match.
+banked hold over it with the new total for the whole intermission
+(`hud.pointsBannerMs`). A lost life lands as a banner over the island, red on the last; a
+knockout stamps the island and greys it for the rest of the match.
+
+**The build phase, felt** (`seal.ts`, `art.effects`). Sealing is drawn as ground being
+taken: whenever the board's enclosure gains territory — a breach closed, a castle chosen,
+a loop widened — the new ground floods outward from the castle, or from the edge of what
+was already held, with a bright front running ahead of the paving. Every sealed castle
+hoists a flag, in both styles, from the foot of its pole. A placed piece settles onto its
+tiles from slightly large and bright, and in pixel style kicks up dust from its outer
+edges. In pixel style the piece in hand is drawn as the wall it would make, joined to
+itself and to the wall standing, and outlined in valid or invalid ink round its outside.
+Overtime rings the board in a pulsing red border. All shared effects are drawn alike in
+both styles where they carry information.
 
 **Combat, in pixel style.** Barrels turn to their target, recoil and flash; destroyed
 wall throws debris in its owner's colour; shots trail; the board shakes, but only when a
@@ -484,8 +495,8 @@ playing test matches. The next milestone is **11.2, elimination tuning**, as soo
 play has given a feel for it — its plan is ready and starts with a baseline measurement.
 Beside it, independent of balance: **11.6**, bots as personality × skill, and **11.8**,
 the visual pass, which changes no game logic and so can run while the human testing
-does — V1, the original's theme-switching banner, and V2, the pixel style as the combat
-look, are done; V3–V6 are next. Smaller items are in 11.5.
+does — V1 (the original's theme-switching banner), V2 (the pixel style as the combat
+look) and V3 (build-phase effects) are done; V4–V6 are next. Smaller items are in 11.5.
 
 ### 11.1 Round cap and points scoring — done
 
@@ -613,7 +624,7 @@ teaching one to help without wrecking a person's plan is its own question.
 
 ### 11.8 Visual pass — in progress
 
-**Agreed 2026-09-26. V1 and V2 done** (ARCHIVE 10w, 10x); V3–V6 open. Everything here
+**Agreed 2026-09-26. V1–V3 done** (ARCHIVE 10w, 10x, 10y); V4–V6 open. Everything here
 is client-side and cosmetic: no sim, protocol or ruleset change, so it cannot desync a match or move a balance measurement,
 and it can proceed while 11.2 waits on human play. Cosmetic randomness may use
 `Math.random` (the client is outside the lint rule), but durations, sizes and counts
@@ -738,7 +749,9 @@ Now that it is the cinematic half of a pair, push it further from the flat style
 - **Inert cannons**: a drooping barrel and a wisp of dark smoke rather than a red strike
   through. The flat style keeps the strike-through, where plain information is the point.
 
-#### V3 — Build-phase effects
+#### V3 — Build-phase effects — done
+
+Kept as planned, for the record; how it turned out is §7 and ARCHIVE 10y.
 
 In both styles where they are information, shared through `theme.ts` as the build hints
 and fire reticle already are; per style where they are decoration.

@@ -4,13 +4,18 @@ import { Container, Graphics, Sprite, Texture } from 'pixi.js';
 
 import { E, KEY, N, S, W, buildAtlas } from './pixel/generators.js';
 import {
+  FlagHoist,
+  Landings,
   dimEliminated,
   drawBuildHints,
   drawFireReticle,
+  drawOvertimeBorder,
+  drawSealGlow,
   hex,
   playerColour,
   tileX,
   tileY,
+  type Cell,
   type Debris,
   type EffectFrame,
   type Ghost,
@@ -115,6 +120,10 @@ export class PixelTheme implements Theme {
   /** By tile index. */
   private cracks = new Map<number, Crack>();
   private surf: Surf[] = [];
+  private readonly landings = new Landings();
+  private readonly flags = new FlagHoist();
+  /** The piece in hand, drawn as the wall it would make. */
+  private readonly ghostLayer = new Container();
 
   /** Remembered from the last draw, since impacts arrive without the board. */
   private terrain: Uint8Array | null = null;
@@ -136,7 +145,7 @@ export class PixelTheme implements Theme {
 
     layers.territory.addChild(this.courtLayer, this.craterLayer, this.territoryGfx);
     layers.effects.addChild(this.effectGfx);
-    layers.overlay.addChild(this.overlayGfx);
+    layers.overlay.addChild(this.ghostLayer, this.overlayGfx);
     return Promise.resolve();
   }
 
@@ -146,6 +155,7 @@ export class PixelTheme implements Theme {
     this.effectLayer?.removeChildren();
     this.territoryGfx.destroy();
     this.overlayGfx.destroy();
+    this.ghostLayer.destroy({ children: true });
     this.effectGfx.destroy();
     this.courtLayer.destroy({ children: true });
     this.craterLayer.destroy({ children: true });
@@ -435,6 +445,38 @@ export class PixelTheme implements Theme {
     }
   }
 
+  /**
+   * A piece set down: it settles, and kicks up a little dust from its outer edges —
+   * light and brief, a stone laid rather than a shot landing.
+   */
+  noteLanding(cells: readonly Cell[], owner: number): void {
+    this.landings.add(cells, owner);
+    const inPiece = new Set(cells.map((c) => `${c.x},${c.y}`));
+    const colour = hex(this.art.palette.sand);
+    const count = this.art.effects.landingDustPerEdge;
+    for (const cell of cells) {
+      for (const [dx, dy] of [
+        [0, -1],
+        [1, 0],
+        [0, 1],
+        [-1, 0],
+      ] as const) {
+        if (inPiece.has(`${cell.x + dx},${cell.y + dy}`)) continue;
+        for (let k = 0; k < count; k++) {
+          const along = Math.random() - 0.5;
+          this.fragments.push({
+            x: cell.x + 0.5 + dx * 0.5 + (dy === 0 ? 0 : along),
+            y: cell.y + 0.5 + dy * 0.5 + (dx === 0 ? 0 : along),
+            vx: dx * (0.6 + Math.random() * 0.8),
+            vy: dy * (0.6 + Math.random() * 0.8) - 0.8,
+            age: 0,
+            colour,
+          });
+        }
+      }
+    }
+  }
+
   /** Leaves a scorch mark where a shot came down on land, replacing any older one. */
   private scorch(x: number, y: number): void {
     if (this.terrain === null || x < 0 || y < 0 || x >= this.width) return;
@@ -505,6 +547,8 @@ export class PixelTheme implements Theme {
     this.effectLayer.addChild(g);
     this.age(state);
 
+    drawSealGlow(g, view, frame.sealGlow, this.art);
+    this.landings.draw(g, view, this.art, frame.deltaMs);
     this.drawBarrels(state, view, frame.deltaMs);
     this.drawInertSmoke(state, view);
     this.drawBanners(state, view, frame);
@@ -652,23 +696,82 @@ export class PixelTheme implements Theme {
     const wave = Math.floor(this.bannerElapsed / 160) % frames;
     const texture = this.texture(KEY.banner(wave));
     const g = this.effectGfx;
+    this.flags.update(frame.castleSealed, this.clock);
     for (const castle of state.castles) {
-      if (!frame.castleSealed[castle.id]) continue;
-      // A pole rising from the middle of the castle, the banner flying from its head
+      const raised = this.flags.raised(castle.id, this.clock, this.art.effects.flagRaiseMs);
+      if (raised === null) continue;
+      // A pole rising from the middle of the castle, the banner hoisted to its head
       // above the roofline, where it reads from across the map.
       const poleX = tileX(view, castle.x + castle.w / 2);
       const top = tileY(view, castle.y) - view.tile * 0.9;
+      const length = view.tile * 1.4;
       const pole = Math.max(2, Math.round(view.tile / 10));
-      g.rect(poleX - pole / 2, top, pole, view.tile * 1.4);
+      g.rect(poleX - pole / 2, top, pole, length);
       g.fill({ color: hex(this.art.palette.rockDark) });
       const sprite = new Sprite(texture);
-      sprite.x = poleX + pole / 2;
-      sprite.y = top;
       sprite.width = view.tile * 0.8;
       sprite.height = (view.tile * 0.8 * texture.height) / Math.max(1, texture.width);
+      sprite.x = poleX + pole / 2;
+      sprite.y = top + (1 - raised) * (length - sprite.height);
       sprite.tint = playerColour(this.art, castle.islandId - 1, 'base');
       this.effectLayer.addChild(sprite);
     }
+  }
+
+  /**
+   * The piece in hand as the wall it would make: each block joined to the others and to
+   * the wall already standing, so a player sees the shape they are about to have rather
+   * than a stencil. Whether it fits stays plain — the player's colour when it does, red
+   * when it does not, each with an outline in the style's usual valid or invalid ink.
+   */
+  private drawGhostWall(
+    state: MatchState,
+    view: ViewTransform,
+    ghost: Ghost,
+    humanPlayer: number,
+  ): void {
+    const anchor = ghost.tile;
+    if (anchor === null) return;
+    const cells = ghost.cells.map(([ox, oy]) => ({ x: anchor.x + ox, y: anchor.y + oy }));
+    const inPiece = new Set(cells.map((c) => `${c.x},${c.y}`));
+    const joins = (x: number, y: number): boolean =>
+      inPiece.has(`${x},${y}`) ||
+      (x >= 0 &&
+        y >= 0 &&
+        x < state.width &&
+        y < state.height &&
+        state.structure[y * state.width + x] === Structure.Wall);
+    const tint = ghost.valid
+      ? washed(playerColour(this.art, humanPlayer, 'light'), 0.15)
+      : hex(this.art.palette.uiInvalid);
+    for (const { x, y } of cells) {
+      let mask = 0;
+      if (joins(x, y - 1)) mask |= N;
+      if (joins(x + 1, y)) mask |= E;
+      if (joins(x, y + 1)) mask |= S;
+      if (joins(x - 1, y)) mask |= W;
+      const sprite = this.place(this.ghostLayer, KEY.wall(mask, 0), view, x, y);
+      sprite.tint = tint;
+      sprite.alpha = ghost.valid ? 0.8 : 0.6;
+    }
+    // Round the piece's outside only; lines between its own blocks would cut up the
+    // joined wall the sprites just drew.
+    const g = this.overlayGfx;
+    for (const { x, y } of cells) {
+      const left = tileX(view, x);
+      const top = tileY(view, y);
+      const right = left + view.tile;
+      const bottom = top + view.tile;
+      if (!inPiece.has(`${x},${y - 1}`)) g.moveTo(left, top).lineTo(right, top);
+      if (!inPiece.has(`${x + 1},${y}`)) g.moveTo(right, top).lineTo(right, bottom);
+      if (!inPiece.has(`${x},${y + 1}`)) g.moveTo(left, bottom).lineTo(right, bottom);
+      if (!inPiece.has(`${x - 1},${y}`)) g.moveTo(left, top).lineTo(left, bottom);
+    }
+    g.stroke({
+      width: 1,
+      color: ghost.valid ? hex(this.art.palette.uiValid) : hex(this.art.palette.uiInvalid),
+      alpha: 0.8,
+    });
   }
 
   /** Cycles the sea through its generated frames. */
@@ -692,6 +795,8 @@ export class PixelTheme implements Theme {
   drawOverlay(state: MatchState, view: ViewTransform, ghost: Ghost, humanPlayer: number): void {
     const g = this.overlayGfx;
     g.clear();
+    this.ghostLayer.removeChildren();
+    drawOvertimeBorder(g, state, view, this.art, performance.now());
 
     for (const castle of ghost.selectable) {
       g.rect(
@@ -709,16 +814,7 @@ export class PixelTheme implements Theme {
     const colour = ghost.valid ? hex(this.art.palette.uiValid) : hex(this.art.palette.uiInvalid);
 
     if (state.phase === 'build' && ghost.cells.length > 0) {
-      for (const [ox, oy] of ghost.cells) {
-        g.rect(
-          tileX(view, ghost.tile.x + ox),
-          tileY(view, ghost.tile.y + oy),
-          view.tile,
-          view.tile,
-        );
-      }
-      g.fill({ color: colour, alpha: 0.5 });
-      g.stroke({ width: 1, color: colour });
+      this.drawGhostWall(state, view, ghost, humanPlayer);
       return;
     }
 

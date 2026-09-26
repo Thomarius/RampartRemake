@@ -39,6 +39,8 @@ SCENES=(
   "wipe-to-build|$WATCH&snapshot=combat&round=2|20000"
   "sweep|$WATCH&snapshot=build&round=2|24500"
   "wipe-to-combat|$WATCH&snapshot=build&round=2|30500"
+  # The clock has run out; the border pulses, so it may be caught faint.
+  "overtime|$GAME&snapshot=build&round=2|21500"
   "four-players|$BASE/?autostart=1&players=4&seed=3&snapshot=combat&round=3&style=pixel|3000"
 )
 

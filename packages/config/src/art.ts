@@ -81,6 +81,21 @@ export const ArtConfigSchema = z
   .strictObject({
     styles: ArtStylesSchema,
     flat: FlatStyleSchema,
+    /** Effects both styles draw alike, because they carry information. */
+    effects: z.strictObject({
+      /** How fast newly sealed ground floods out from the castle. */
+      sealFloodTilesPerSecond: z.number().positive(),
+      /** How far behind the flood's front the glow trails off. */
+      sealGlowTiles: z.number().positive(),
+      /** A sealed castle's flag, from the foot of its pole to the head. */
+      flagRaiseMs: z.number().int().positive(),
+      /** A placed piece settling into place. */
+      landingMs: z.number().int().positive(),
+      /** Dust thrown from each open edge of a placed piece, in the pixel style. */
+      landingDustPerEdge: z.number().int().nonnegative(),
+      /** One pulse of the red border round the board in overtime. */
+      overtimePulseMs: z.number().int().positive(),
+    }),
     /** How long the HUD holds its news. */
     hud: z.strictObject({
       /** The points an island banked, over it, after each resolution. */

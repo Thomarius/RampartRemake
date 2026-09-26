@@ -36,6 +36,14 @@ import { announcementLines, isTeamMatch, teamLetter } from './scores.js';
 import { buildHints, type BuildHints } from './hints.js';
 import { timerSpot } from './timerSpot.js';
 import {
+  floodFrom,
+  floodOver,
+  sealGlow,
+  territoryDuring,
+  type Flood,
+  type SealGlow,
+} from './seal.js';
+import {
   bannerProgress,
   boardWithStanding,
   looksAround,
@@ -874,6 +882,33 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
   /** The board's enclosure as it stands, for display; see `Scene.drawTerritory`. */
   let live = computeEnclosure(session.state);
 
+  /**
+   * Newly sealed ground flooding out from its castle; see `seal.ts`. Started whenever
+   * the enclosure gains territory — a breach closed, a castle chosen, a loop widened —
+   * and drawn in both looks, since it shows exactly what was sealed.
+   */
+  let floods: Flood[] = [];
+  const { sealFloodTilesPerSecond, sealGlowTiles } = defaultConfigBundle.art.effects;
+
+  /** Territory as it stands, less what the floods have not reached yet. */
+  function drawFloodedTerritory(now: number): void {
+    scene.drawTerritory(
+      session.state,
+      territoryDuring(live.territory, floods, now, sealFloodTilesPerSecond),
+    );
+  }
+
+  /** Advances the floods by a frame, and returns the glow at their fronts. */
+  function advanceFloods(): SealGlow[] {
+    if (floods.length === 0) return [];
+    const now = performance.now();
+    floods = floods.filter(
+      (flood) => !floodOver(flood, now, sealFloodTilesPerSecond, sealGlowTiles),
+    );
+    drawFloodedTerritory(now);
+    return sealGlow(floods, now, session.state.width, sealFloodTilesPerSecond, sealGlowTiles);
+  }
+
   function applyEvents(events: readonly MatchEvent[]): void {
     let structuresChanged = false;
     let territoryChanged = false;
@@ -896,8 +931,17 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
         case 'shot_fired':
           scene.noteShot(event.shot);
           break;
+        case 'piece_placed': {
+          // Whose island it went on, which is not always the placer's in a team match.
+          const { width, owner } = session.state;
+          const cells = event.cells.map((i) => ({ x: i % width, y: Math.floor(i / width) }));
+          const first = event.cells[0];
+          if (first !== undefined) scene.noteLanding(cells, (owner[first] as number) - 1);
+          structuresChanged = true;
+          territoryChanged = true;
+          break;
+        }
         case 'castle_selected':
-        case 'piece_placed':
           structuresChanged = true;
           territoryChanged = true;
           break;
@@ -959,8 +1003,18 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     }
     if (structuresChanged) drawBoard();
     if (territoryChanged || structuresChanged) {
+      const before = live.territory;
       live = computeEnclosure(session.state);
-      scene.drawTerritory(session.state, live.territory);
+      const now = performance.now();
+      const flood = floodFrom(
+        before,
+        live.territory,
+        session.state.width,
+        session.state.castles,
+        now,
+      );
+      if (flood !== null) floods.push(flood);
+      drawFloodedTerritory(now);
       hints = buildHints(session.state, session.humanPlayer, live);
     }
   }
@@ -978,7 +1032,13 @@ async function runSession(session: Session, setup: Setup): Promise<void> {
     drawIslandBanners();
     hud.update(session.state, session.humanPlayer, session.status(), live.enclosedCastlesByPlayer);
 
-    scene.drawEffects(session.state, session.tickFraction, delta, live.castleEnclosed);
+    scene.drawEffects(
+      session.state,
+      session.tickFraction,
+      delta,
+      live.castleEnclosed,
+      advanceFloods(),
+    );
     const ghost = { ...controls.ghost(), ...hints };
     scene.drawOverlay(session.state, ghost, session.humanPlayer);
     drawCounters(ghost);

@@ -2,12 +2,14 @@ import { defaultArtConfig, type ArtConfig, type ArtStyle } from '@rampart/config
 import type { MatchState, Shot } from '@rampart/sim';
 import { Application, Container, Graphics } from 'pixi.js';
 
+import type { SealGlow } from '../seal.js';
 import type { Look } from '../transition.js';
 
 import { FlatTheme } from './flat.js';
 import { PixelTheme } from './pixel.js';
 import {
   hex,
+  type Cell,
   type Debris,
   type Ghost,
   type Theme,
@@ -280,10 +282,11 @@ export class Scene {
     tickFraction: number,
     deltaMs: number,
     castleSealed: readonly boolean[],
+    sealGlow: readonly SealGlow[] = [],
   ): void {
     this.applyShake(deltaMs);
     for (const slot of this.visible()) {
-      slot.theme.drawEffects(state, this.view, { tickFraction, deltaMs, castleSealed });
+      slot.theme.drawEffects(state, this.view, { tickFraction, deltaMs, castleSealed, sealGlow });
     }
   }
 
@@ -331,6 +334,11 @@ export class Scene {
   /** On every look, since it only turns a barrel, which should stay true while hidden. */
   noteShot(shot: Shot): void {
     for (const slot of this.all()) slot.theme.noteShot(shot);
+  }
+
+  /** On the looks on screen, for the same reason as impacts. */
+  noteLanding(cells: readonly Cell[], owner: number): void {
+    for (const slot of this.visible()) slot.theme.noteLanding(cells, owner);
   }
 
   /** In the arriving look: a block goes as the banner reaches it, so above the line. */

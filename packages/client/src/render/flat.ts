@@ -3,9 +3,13 @@ import { Structure, Terrain, type MatchState } from '@rampart/sim';
 import { Graphics } from 'pixi.js';
 
 import {
+  FlagHoist,
+  Landings,
   dimEliminated,
   drawBuildHints,
   drawFireReticle,
+  drawOvertimeBorder,
+  drawSealGlow,
   hex,
   playerColour,
   tileX,
@@ -16,6 +20,7 @@ import {
   type ThemeLayers,
   type ViewTransform,
   shotLift,
+  type Cell,
   type Debris,
 } from './theme.js';
 
@@ -61,6 +66,10 @@ export class FlatTheme implements Theme {
 
   private impacts: Impact[] = [];
   private crumbles: Crumble[] = [];
+  private readonly landings = new Landings();
+  private readonly flags = new FlagHoist();
+  /** Milliseconds of drawing, for the flags. */
+  private clock = 0;
 
   init(layers: ThemeLayers, art: ArtConfig): Promise<void> {
     this.art = art;
@@ -98,6 +107,10 @@ export class FlatTheme implements Theme {
         ? hex(this.art.palette.rockDark)
         : playerColour(this.art, block.owner, 'light');
     this.crumbles.push({ x: block.x, y: block.y, colour, age: 0 });
+  }
+
+  noteLanding(cells: readonly Cell[], owner: number): void {
+    this.landings.add(cells, owner);
   }
 
   drawTerrain(state: MatchState, view: ViewTransform): void {
@@ -206,6 +219,11 @@ export class FlatTheme implements Theme {
     const g = this.effectGfx;
     g.clear();
     const now = state.tick + frame.tickFraction;
+    this.clock += frame.deltaMs;
+
+    drawSealGlow(g, view, frame.sealGlow, this.art);
+    this.landings.draw(g, view, this.art, frame.deltaMs);
+    this.drawFlags(state, view, frame);
 
     for (const shot of state.shots) {
       const span = shot.impactTick - shot.launchTick;
@@ -256,9 +274,40 @@ export class FlatTheme implements Theme {
     this.crumbles = this.crumbles.filter((crumble) => crumble.age < crumbleMs);
   }
 
+  /**
+   * A pennant on a plain pole over every sealed castle, hoisted as it is sealed: the
+   * flat style's share of the moment, kept as simple as the rest of it.
+   */
+  private drawFlags(state: MatchState, view: ViewTransform, frame: EffectFrame): void {
+    const g = this.effectGfx;
+    this.flags.update(frame.castleSealed, this.clock);
+    for (const castle of state.castles) {
+      const raised = this.flags.raised(castle.id, this.clock, this.art.effects.flagRaiseMs);
+      if (raised === null) continue;
+      const pole = tileX(view, castle.x + castle.w / 2);
+      const top = tileY(view, castle.y) - view.tile;
+      const foot = tileY(view, castle.y + castle.h / 2);
+      const width = Math.max(2, Math.round(view.tile / 8));
+      g.rect(pole - width / 2, top, width, foot - top);
+      g.fill({ color: hex(this.art.palette.uiInk) });
+      const height = view.tile * 0.7;
+      const y = foot - height - raised * (foot - top - height);
+      g.poly([
+        pole + width / 2,
+        y,
+        pole + width / 2 + view.tile,
+        y + height / 2,
+        pole + width / 2,
+        y + height,
+      ]);
+      g.fill({ color: playerColour(this.art, castle.islandId - 1, 'base') });
+    }
+  }
+
   drawOverlay(state: MatchState, view: ViewTransform, ghost: Ghost, humanPlayer: number): void {
     const g = this.overlayGfx;
     g.clear();
+    drawOvertimeBorder(g, state, view, this.art, performance.now());
 
     for (const castle of ghost.selectable) {
       g.rect(
