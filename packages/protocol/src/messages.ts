@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { SnapshotSchema } from './snapshot.js';
 
 /** Bumped on any breaking change to the message set; mismatched clients are rejected. */
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 
 /**
  * A player's intent. The server overwrites `player` with the sender's own seat before
@@ -79,6 +79,17 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
     seed: z.number().int().nonnegative().max(0xffffffff).optional(),
     /** A bot to play the host's own seat, or null for the host to play it. */
     hostBot: DifficultySchema.nullable().optional(),
+    /**
+     * Moves the person in seat `from` to seat `to`, swapping places with whoever is
+     * there — another person, or a bot, which keeps its skill. Teams belong to seats, so
+     * this is how the host puts people on the same team or on opposing ones.
+     */
+    move: z
+      .strictObject({
+        from: z.number().int().nonnegative().max(7),
+        to: z.number().int().nonnegative().max(7),
+      })
+      .optional(),
   }),
   z.strictObject({ type: z.literal('start') }),
   z.strictObject({ type: z.literal('action'), action: ActionSchema }),

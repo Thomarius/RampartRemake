@@ -610,3 +610,113 @@ describe('a host who watches', () => {
     expect(seat?.connected).toBe(true);
   });
 });
+
+describe('seating, chosen by the host', () => {
+  const lastRoom = (c: TestClient) => {
+    const m = c.received.filter((x) => x.type === 'room').at(-1);
+    if (m?.type !== 'room') throw new Error('no room message');
+    return m;
+  };
+  const seatOf = (c: TestClient, name: string) =>
+    lastRoom(c).seats.find((s) => s.name === name)?.playerId;
+
+  it('swaps two people, and tells each their new seat', () => {
+    const r = room(4);
+    const a = new TestClient('a');
+    const b = new TestClient('b');
+    r.join(a, 'Ada');
+    r.join(b, 'Bo');
+    r.handle(a, { type: 'configure', move: { from: 1, to: 0 } });
+    expect(seatOf(a, 'Bo')).toBe(0);
+    expect(seatOf(a, 'Ada')).toBe(1);
+    expect(a.playerId).toBe(1);
+    expect(b.playerId).toBe(0);
+    // Ada is still the host, in her new seat.
+    expect(lastRoom(b).hostId).toBe(1);
+  });
+
+  it('moves a person onto a bot, which takes their old seat and keeps its skill', () => {
+    const r = room(4);
+    const a = new TestClient('a');
+    r.join(a, 'Ada');
+    r.handle(a, { type: 'configure', bots: ['gunner', 'gunner', 'gunner', 'marshal'] });
+    r.handle(a, { type: 'configure', move: { from: 0, to: 3 } });
+    expect(seatOf(a, 'Ada')).toBe(3);
+    expect(lastRoom(a).bots[0]).toBe('marshal');
+    expect(lastRoom(a).hostId).toBe(3);
+  });
+
+  it('refuses a move from anyone but the host, or from an empty seat', () => {
+    const r = room(4);
+    const a = new TestClient('a');
+    const b = new TestClient('b');
+    r.join(a, 'Ada');
+    r.join(b, 'Bo');
+    r.handle(b, { type: 'configure', move: { from: 1, to: 3 } });
+    expect(seatOf(a, 'Bo')).toBe(1);
+    r.handle(a, { type: 'configure', move: { from: 2, to: 3 } });
+    expect(
+      lastRoom(a)
+        .seats.map((s) => s.playerId)
+        .sort(),
+    ).toEqual([0, 1]);
+  });
+
+  it('seats a newcomer in the lowest free seat, and leaves people put when one goes', () => {
+    const r = room(4);
+    const a = new TestClient('a');
+    const b = new TestClient('b');
+    r.join(a, 'Ada');
+    r.join(b, 'Bo');
+    r.handle(a, { type: 'configure', move: { from: 0, to: 2 } });
+    const c = new TestClient('c');
+    expect(r.join(c, 'Cy')).toBe(0);
+    r.leave(b);
+    expect(seatOf(a, 'Ada')).toBe(2);
+    expect(seatOf(a, 'Cy')).toBe(0);
+  });
+
+  it('hands the host to the lowest seat when the host leaves before the start', () => {
+    const r = room(4);
+    const a = new TestClient('a');
+    const b = new TestClient('b');
+    const c = new TestClient('c');
+    r.join(a, 'Ada');
+    r.join(b, 'Bo');
+    r.join(c, 'Cy');
+    r.leave(a);
+    expect(lastRoom(b).hostId).toBe(1);
+  });
+
+  it('brings people in from seats a shrinking table no longer has', () => {
+    const r = room(4);
+    const a = new TestClient('a');
+    r.join(a, 'Ada');
+    r.handle(a, { type: 'configure', move: { from: 0, to: 3 } });
+    r.handle(a, { type: 'configure', playerCount: 2 });
+    expect(seatOf(a, 'Ada')).toBe(0);
+    expect(a.playerId).toBe(0);
+    expect(lastRoom(a).hostId).toBe(0);
+  });
+
+  it("starts people in the seats they were given, on those seats' teams", () => {
+    const r = room(4, 3);
+    const a = new TestClient('a');
+    const b = new TestClient('b');
+    r.join(a, 'Ada');
+    r.join(b, 'Bo');
+    r.handle(a, { type: 'configure', settings: { teamSize: 2, maxRounds: 10 } });
+    // Teams of two in seat order: seats 0-1 are Team A, 2-3 Team B. Bo moves to seat 3.
+    r.handle(a, { type: 'configure', move: { from: 1, to: 3 } });
+    r.start();
+    const snapshot = a.received.find((m) => m.type === 'snapshot');
+    if (snapshot?.type !== 'snapshot') throw new Error('no snapshot');
+    const players = snapshot.snapshot.players;
+    expect(players[a.playerId]?.name).toBe('Ada');
+    expect(players[b.playerId]?.name).toBe('Bo');
+    expect(a.state?.players[a.playerId]?.team).toBe(0);
+    expect(a.state?.players[b.playerId]?.team).toBe(1);
+    // Two people and two bots, all seated.
+    expect(players.filter((p) => p.isBot)).toHaveLength(2);
+  });
+});

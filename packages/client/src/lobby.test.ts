@@ -175,18 +175,35 @@ describe('lobby', () => {
     expect(counts).toEqual([4, 6, 8]);
   });
 
-  it('puts every seat in a team, and lets only the host move them', () => {
-    const teamed = { settings: { maxRounds: 10, teamSize: 2 }, teams: [0, 1, 0, 1] };
+  it('lets only the host choose who sits where, which is how sides are chosen', () => {
+    const teamed = {
+      settings: { maxRounds: 10, teamSize: 2 },
+      teams: [0, 0, 1, 1],
+      seats: [seat(0, 'Ada'), seat(1, 'Bo')],
+    };
     const host = lobbyMarkup(view(teamed));
-    expect(host.match(/class="team-select"/g)).toHaveLength(4);
-    expect(host).toContain('Team B');
+    // No team dropdowns any more: a seat's team is the column it sits in.
+    expect(host).not.toContain('team-select');
+    const pickers = [
+      ...host.matchAll(/<select class="occupant who" data-seat="(\d)"[^>]*>([\s\S]*?)<\/select>/g),
+    ];
+    expect(pickers.map((m) => m[1])).toEqual(['0', '1', '2', '3']);
+    // A bot's seat offers the bot and every person; a person's, the people to swap with.
+    expect(pickers[2]?.[2]).toContain('<option value="" selected>Bot 3</option>');
+    expect(pickers[2]?.[2]).toContain('<option value="0">Ada</option>');
+    expect(pickers[2]?.[2]).toContain('<option value="1">Bo</option>');
+    expect(pickers[1]?.[2]).toContain('<option value="1" selected>Bo</option>');
 
-    const guest = lobbyMarkup(
-      view({ ...teamed, humanPlayer: 1, seats: [seat(0, 'Ada'), seat(1, 'Bo')] }),
-    );
-    expect(guest).not.toContain('team-select');
-    // Rows come in team columns now, so find Bo's by name rather than by position.
-    expect(rows(guest).find((row) => row.includes('>Bo<'))).toContain('Team B');
+    const guest = lobbyMarkup(view({ ...teamed, humanPlayer: 1 }));
+    expect(guest).not.toContain('class="occupant');
+    expect(guest).toContain('<span class="who">Bo</span>');
+  });
+
+  it('shows a name, not a choice of one, when the host is alone at their seat', () => {
+    const html = lobbyMarkup(view());
+    expect(rows(html)[0]).toContain('<span class="who">Ada</span>');
+    // But every bot seat still offers the host a place.
+    expect(rows(html)[1]).toContain('<option value="0">Ada</option>');
   });
 
   it('will not start unequal teams, and says why', () => {

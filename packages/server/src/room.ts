@@ -164,7 +164,9 @@ export class Room {
     if (this.seats.length >= this.playerCount) return null;
 
     const seat: Seat = {
-      playerId: this.seats.length,
+      // The lowest seat nobody holds: once the host has moved people about, the count of
+      // people is no longer the next free seat.
+      playerId: this.freeSeat(),
       name,
       connection,
       token: this.newToken(),
@@ -184,11 +186,13 @@ export class Room {
     if (!seat) return;
     seat.connection = null;
     if (this.state === null) {
-      // Nothing has started; drop the seat entirely and renumber nobody.
-      const at = this.seats.indexOf(seat);
-      this.seats.splice(at, 1);
-      for (let i = 0; i < this.seats.length; i++) (this.seats[i] as Seat).playerId = i;
-      if (this.seats.length > 0) this.hostId = (this.seats[0] as Seat).playerId;
+      // Nothing has started: drop the seat, and leave everybody else where they sit — the
+      // host may have put them there. It used to renumber everyone, which undid the
+      // seating and never told the renumbered who they had become.
+      this.seats.splice(this.seats.indexOf(seat), 1);
+      if (seat.playerId === this.hostId && this.seats.length > 0) {
+        this.hostId = Math.min(...this.seats.map((s) => s.playerId));
+      }
     } else {
       // Mid-match: hold the seat open, and let a bot play it in the meantime so the
       // match does not stall for everyone else.
@@ -227,6 +231,7 @@ export class Room {
         }
         this.configureTable(settings, message.playerCount ?? this.playerCount, message.teams);
         if (message.seed !== undefined) this.seed = message.seed;
+        if (message.move !== undefined) this.moveSeat(message.move.from, message.move.to);
         if (message.hostBot !== undefined) this.hostBot = message.hostBot as Difficulty | null;
         this.broadcastRoom();
         return;
@@ -275,7 +280,45 @@ export class Room {
       for (let i = 0; i < table.playerCount; i++) {
         this.botDifficulties[i] ??= this.options.server.botDifficulty as Difficulty;
       }
+      // Anybody seated beyond a shrunken table moves to the lowest free seat; there is
+      // always one, since a table never shrinks below the people at it.
+      for (const seat of this.seats) {
+        if (seat.playerId < this.playerCount) continue;
+        const wasHost = seat.playerId === this.hostId;
+        seat.playerId = this.freeSeat();
+        if (wasHost) this.hostId = seat.playerId;
+        this.sendWelcome(seat);
+      }
     }
+  }
+
+  /** The lowest seat nobody holds. */
+  private freeSeat(): number {
+    let seat = 0;
+    while (this.seats.some((s) => s.playerId === seat)) seat++;
+    return seat;
+  }
+
+  /**
+   * Moves a person to another seat, swapping with whoever sits there. A bot swapped out
+   * takes the person's old seat and keeps its skill; the host stays host wherever they
+   * go. Everyone moved is told their new seat, as the start tells them their player.
+   */
+  private moveSeat(from: number, to: number): void {
+    if (from === to || to >= this.playerCount) return;
+    const mover = this.seats.find((s) => s.playerId === from);
+    if (mover === undefined) return;
+    const other = this.seats.find((s) => s.playerId === to);
+    const hostWas = this.hostId;
+    mover.playerId = to;
+    if (other !== undefined) other.playerId = from;
+    if (hostWas === from) this.hostId = to;
+    else if (hostWas === to && other !== undefined) this.hostId = from;
+    const fromTier = this.botDifficulties[from] as Difficulty;
+    this.botDifficulties[from] = this.botDifficulties[to] as Difficulty;
+    this.botDifficulties[to] = fromTier;
+    this.sendWelcome(mover);
+    if (other !== undefined) this.sendWelcome(other);
   }
 
   // --------------------------------------------------------------------- match
@@ -285,9 +328,10 @@ export class Room {
     // Unequal teams cannot start. The host's controls never produce them, so this only
     // turns away a crafted message.
     if (!teamsBalanced(this.teams, this.settings.teamSize)) return;
-    const humans = this.seats.length;
-    // Fill the rest of the table with bots so a match can start under-subscribed.
-    for (let i = humans; i < this.playerCount; i++) {
+    // Fill the rest of the table with bots so a match can start under-subscribed — in the
+    // seats nobody holds, which after the host's moves need not be the last ones.
+    for (let i = 0; i < this.playerCount; i++) {
+      if (this.seats.some((s) => s.playerId === i)) continue;
       this.seats.push({
         playerId: i,
         // Numbered from one, as the lobby numbers its seats.
@@ -300,9 +344,12 @@ export class Room {
       });
     }
 
+    // In seat order, so a seat's index here is its place at the table: its team, its bot's
+    // skill, and what the shuffle deals it are all by seat.
+    this.seats.sort((a, b) => a.playerId - b.playerId);
+
     // Which player, and so which island, each seat becomes — shuffled, so no seat is
-    // always the one with the awkward neighbours. Seats are in join order here, and
-    // until now each seat's player id was its index.
+    // always the one with the awkward neighbours.
     const seed = this.seed;
     const order = seatOrder(seed, this.seats.length);
     const players = new Array<{ name: string; isBot: boolean; team: number }>(this.seats.length);

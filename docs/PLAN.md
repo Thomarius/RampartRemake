@@ -188,8 +188,13 @@ forfeited. `maxRounds: null` lifts the cap for tests; no host can choose it.
   wall against a person's plan would be infuriating. The wall belongs to the island's
   owner, not the placer, so every other rule treats it as theirs. Cannons stay on your own
   territory.
-- **Seating is random**: the host chooses the teams, and which island each seat gets is
-  shuffled at the start (§6). Measured to decide nothing (ARCHIVE 10u).
+- **Teams belong to seats; the host chooses who sits where.** Teams are seats in order
+  (teams of two: seats 1–2 are Team A, 3–4 Team B), shown as one column each, and the host
+  picks the occupant of every seat — a bot or any person at the table, by name — swapping
+  with whoever sat there (`configure.move`). A bot keeps its skill when it moves. There is
+  no per-seat team choice: moving one seat's team always unbalanced them, so it could only
+  ever be refused. Which island each seat gets is shuffled at the start (§6), and the
+  lobby's map shows the deal. Random islands were measured to decide nothing (ARCHIVE 10u).
 - **Shown** by colour families — each team one hue, each member a shade — plus a team letter
   over every island, a roster grouped by team, and team wording on banners and the end
   screen. **The letter is the lobby's**: `denseTeams` numbers the host's labels in label
@@ -316,6 +321,9 @@ sender's seat**, so a client cannot act for someone else.
   host may draw another or type one (`configure.seed`; `?seed=N` for testing). Since
   terrain and the seat shuffle follow from the seed alone, the lobby shows the map that
   will be played and which island each seat gets, in the colour it will play.
+- **Seats are held where the host put them** until the start: a newcomer takes the lowest
+  free seat, somebody leaving moves nobody, a shrinking table brings anyone beyond it into
+  a free seat, and whoever is moved is sent a fresh `welcome` with their new seat.
 - **The host may put a bot in their own seat** (`configure.hostBot`) and watch: the server
   marks the seat a bot's, ignores the host's actions, and keeps it the bot's if they
   reconnect. With nobody else at the table that is a match of bots alone, which replaced

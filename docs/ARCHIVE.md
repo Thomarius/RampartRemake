@@ -1576,3 +1576,29 @@ The last package of the visual pass, and the fix for the team letters found in V
   bursts were too small and sparse to read as a celebration and were enlarged.
 - Seen in frame bursts across a resolution in which the player failed and the bots scored,
   and at a game-over snapshot.
+
+## 11c. Choosing seats instead of teams
+
+**Found by the user**: in a team game the per-seat team dropdowns did nothing. They did
+send the change, but a team assignment is taken only if it leaves the teams equal, and
+changing one seat's team always unbalances them — so every change was refused and the
+dropdown snapped back. Letting it through would have raised the question the user put:
+who moves to the other team to make room, and which one?
+
+**The user's answer, built**: teams belong to seats, and the host chooses who sits in each
+seat — a bot, or any person at the table by name — swapping with whoever was there. The
+per-seat team dropdowns are gone; a seat's team is the column it sits in.
+
+- `configure.move { from, to }`, host only, before the start. A bot swapped out takes the
+  mover's old seat and keeps its skill; the host stays host wherever they go; anyone moved
+  is sent a new `welcome`. Protocol 8.
+- **The room had assumed seats were join order** in three places, all fixed: a newcomer
+  now takes the lowest free seat rather than the next number; bots fill whichever seats
+  are free at the start, and the seats are ordered by seat before the shuffle; and leaving
+  before the start no longer renumbers everyone — which had undone any seating and, as a
+  bug of its own, never told the renumbered players their new seat.
+- A shrinking table brings anyone seated beyond it into a free seat.
+- The local table keeps the host's seat, so a person playing alone against bots can pick
+  their side too.
+- Checked over a real socket with host and guest (both moved onto Team B; the match
+  agreed, islands as the preview dealt them), and in the local lobby.

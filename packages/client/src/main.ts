@@ -332,6 +332,8 @@ interface LobbyHandlers {
   seed(seed: number): void;
   /** A bot to play the host's own seat while they watch, or null to play it. */
   hostBot(tier: Difficulty | null): void;
+  /** The person in seat `from` to seat `to`, swapping with whoever sits there. */
+  move(from: number, to: number): void;
   start(): void;
 }
 
@@ -374,12 +376,12 @@ function drawLobby(view: LobbyView, on: LobbyHandlers): void {
     audio.play('select');
     on.hostBot(hostBot.value === '' ? null : (hostBot.value as Difficulty));
   });
-  for (const field of document.querySelectorAll<HTMLSelectElement>('.team-select')) {
+  // Who sits where. Teams belong to seats, so this is how people choose sides.
+  for (const field of document.querySelectorAll<HTMLSelectElement>('.occupant')) {
     field.addEventListener('change', () => {
+      if (field.value === '') return;
       audio.play('select');
-      const teams = [...view.teams];
-      teams[Number(field.dataset.seat)] = Number(field.value);
-      on.table({ teams });
+      on.move(Number(field.value), Number(field.dataset.seat));
     });
   }
 
@@ -412,6 +414,8 @@ function drawLobby(view: LobbyView, on: LobbyHandlers): void {
 interface TableState extends Table {
   seed: number;
   hostBot: Difficulty | null;
+  /** Where the host sits: they may move to any seat, and the seat decides the team. */
+  hostSeat: number;
   bots: Difficulty[];
 }
 
@@ -427,7 +431,7 @@ function playLocally(common: Common, table: TableState): void {
     // alone, and the host watches.
     seats: table.bots
       .slice(0, table.playerCount)
-      .map((tier, seat) => (seat === 0 ? table.hostBot : tier)),
+      .map((tier, seat) => (seat === table.hostSeat ? table.hostBot : tier)),
     settings: table.settings,
     teams: table.teams,
   };
@@ -501,6 +505,7 @@ function localLobby(common: Common, playerCount: number, seed: number): void {
     bots: Array.from({ length: limits.max }, () => DEFAULT_BOT),
     seed,
     hostBot: null,
+    hostSeat: 0,
   };
 
   const redraw = (): void =>
@@ -508,9 +513,17 @@ function localLobby(common: Common, playerCount: number, seed: number): void {
       {
         code: null,
         playerCount: table.playerCount,
-        hostId: 0,
-        humanPlayer: 0,
-        seats: [{ playerId: 0, name: common.name, isBot: false, connected: true, ready: true }],
+        hostId: table.hostSeat,
+        humanPlayer: table.hostSeat,
+        seats: [
+          {
+            playerId: table.hostSeat,
+            name: common.name,
+            isBot: false,
+            connected: true,
+            ready: true,
+          },
+        ],
         bots: table.bots.slice(0, table.playerCount),
         settings: table.settings,
         settingBounds: SETTING_BOUNDS,
@@ -522,6 +535,8 @@ function localLobby(common: Common, playerCount: number, seed: number): void {
       {
         table: (change) => {
           table = { ...table, ...reshapeTable(table, change, limits, 1) };
+          // A table shrunk out from under the host brings them to the first seat.
+          if (table.hostSeat >= table.playerCount) table.hostSeat = 0;
           redraw();
         },
         bot: (seat, tier) => {
@@ -534,6 +549,16 @@ function localLobby(common: Common, playerCount: number, seed: number): void {
         },
         hostBot: (tier) => {
           table.hostBot = tier;
+          redraw();
+        },
+        move: (from, to) => {
+          // Only the host can be moved here; the bot in the seat they take gets theirs.
+          if (from !== table.hostSeat || to >= table.playerCount) return;
+          [table.bots[from], table.bots[to]] = [
+            table.bots[to] ?? DEFAULT_BOT,
+            table.bots[from] ?? DEFAULT_BOT,
+          ];
+          table.hostSeat = to;
           redraw();
         },
         start: () => playLocally(common, table),
@@ -567,6 +592,7 @@ function roomLobby(
     bots: [...v.bots],
     seed: v.seed,
     hostBot: v.hostBot,
+    hostSeat: v.hostId,
   });
   /** Seats already seen, so a newcomer can be marked as they arrive. */
   let known: Set<number> | null = null;
@@ -583,6 +609,7 @@ function roomLobby(
       },
       seed: (seed) => connection.send({ type: 'configure', seed }),
       hostBot: (tier) => connection.send({ type: 'configure', hostBot: tier }),
+      move: (from, to) => connection.send({ type: 'configure', move: { from, to } }),
       start: () => {
         if (current.seats.length > 1) {
           connection.send({ type: 'start' });

@@ -139,17 +139,25 @@ function tableControls(view: LobbyView, isHost: boolean): string {
     </div>`;
 }
 
-function teamCell(view: LobbyView, index: number, isHost: boolean): string {
-  if (view.settings.teamSize === 1) return '';
-  const team = view.teams[index] ?? 0;
-  const count = view.playerCount / view.settings.teamSize;
-  if (!isHost) return `<em class="tag team">Team ${teamLetter(team)}</em>`;
-  const choices = Array.from({ length: count }, (_, t) => t);
-  return `<select class="team-select" data-seat="${index}" aria-label="Seat ${index + 1} team">${options(
-    choices,
-    team,
-    (t) => `Team ${teamLetter(t)}`,
-  )}</select>`;
+/**
+ * Who sits in a seat: for the host, a choice of every person at the table or the seat's
+ * bot; for everyone else, just the name. Choosing somebody moves them here, swapping with
+ * whoever sat here — which, since teams belong to seats, is how people are put on the same
+ * team or on opposing ones. A choice of one is no choice, so it is shown as a name.
+ */
+function occupant(view: LobbyView, index: number, isHost: boolean, name: string): string {
+  const people = [...view.seats].sort((a, b) => a.playerId - b.playerId);
+  const here = people.find((seat) => seat.playerId === index);
+  const choices = here === undefined ? people.length : people.length - 1;
+  if (!isHost || choices === 0) return `<span class="who">${escape(name)}</span>`;
+  const bot = here === undefined ? `<option value="" selected>${escape(name)}</option>` : '';
+  const names = people
+    .map(
+      (seat) =>
+        `<option value="${seat.playerId}"${seat.playerId === index ? ' selected' : ''}>${escape(seat.name)}</option>`,
+    )
+    .join('');
+  return `<select class="occupant who" data-seat="${index}" aria-label="Who sits in seat ${index + 1}">${bot}${names}</select>`;
 }
 
 /** The seat's number, in the colour it will play in, as its island is labelled on the map. */
@@ -176,7 +184,6 @@ function tierControl(
 
 function seatRow(view: LobbyView, index: number, isHost: boolean, explain: boolean): string {
   const seat = view.seats.find((s) => s.playerId === index);
-  const team = teamCell(view, index, isHost);
   const arrived = view.arrived?.includes(index) ? ' arrived' : '';
 
   if (seat) {
@@ -199,7 +206,7 @@ function seatRow(view: LobbyView, index: number, isHost: boolean, explain: boole
         (t) => `<option value="${t}">${label(t)}</option>`,
       ).join('')}</select>`;
     }
-    return `<li class="seat${mine}${arrived}">${seatBadge(view, index)}<span class="who">${escape(seat.name)}</span>${tags}${control}${team}${blurb}</li>`;
+    return `<li class="seat${mine}${arrived}">${seatBadge(view, index)}${occupant(view, index, isHost, seat.name)}${tags}${control}${blurb}</li>`;
   }
 
   const tier = view.bots[index] ?? 'gunner';
@@ -213,7 +220,7 @@ function seatRow(view: LobbyView, index: number, isHost: boolean, explain: boole
   // produced eight identical lines of explanation, which reads as noise and buries the
   // one line that is doing the work.
   const blurb = explain ? `<small class="blurb">${TIER_BLURB[tier]}</small>` : '';
-  return `<li class="seat bot${arrived}">${seatBadge(view, index)}<span class="who">Bot ${index + 1}</span>${control}${team}${blurb}</li>`;
+  return `<li class="seat bot${arrived}">${seatBadge(view, index)}${occupant(view, index, isHost, `Bot ${index + 1}`)}${control}${blurb}</li>`;
 }
 
 /** The map and the seed it comes from: the host may draw another or type one in. */

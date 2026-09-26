@@ -914,3 +914,10 @@ table.final tr.you td:nth-child(2) {
     background: transparent;
   }
 }
+
+/* Who sits in the seat: the host's picker, as wide as the names it offers. */
+.seats select.occupant {
+  flex: 0 1 auto;
+  min-width: 9ch;
+  margin-right: auto;
+}
